@@ -164,9 +164,7 @@ if __name__ == "__main__":
     wf = DiffusionSolver()
     wf.set_resource(res_desc = {
         'resource': 'anl.polaris',
-#        'queue'   : 'debug',
         'queue'   : wf.args.queue,
-#        'queue'   : 'default',
         'walltime': 60, #MIN
         'cpus'    : 32 * wf.args.num_nodes,
         'gpus'    : 4 * wf.args.num_nodes,

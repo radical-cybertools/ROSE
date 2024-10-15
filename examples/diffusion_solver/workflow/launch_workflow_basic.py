@@ -23,6 +23,8 @@ class DiffusionSolver(object):
                             help='number of phases for doing active learning')
         parser.add_argument('--sim_time', type=int, default=10,
                             help='the fake simulation task is a sleep function, how long in seconds it sleeps')
+        parser.add_argument('--src_dir', default=None, required=True,
+                            help='the source directory of sim/ml/al tasks')
         parser.add_argument('--epochs', type=int, default=10,
                             help='number of epochs in training task')
         parser.add_argument('--al_func', choices=['tod', 'random'], required=True,
@@ -69,7 +71,7 @@ class DiffusionSolver(object):
             ]
         t.executable = 'python'
         t.arguments = [
-            f"{self.args.src_dir}/train_net.py",
+            f"{self.args.src_dir}/ml_and_al/train_net.py",
             '--card=0',
             f'--initial={initial_task}',
             f'--portion={phase_idx+1}',
@@ -102,7 +104,7 @@ class DiffusionSolver(object):
             ]
         t.executable = 'python'
         t.arguments = [
-            f"{self.args.src_dir}/active.py",
+            f"{self.args.src_dir}/ml_and_al/active.py",
             '--card=0',
             f'--portion={phase_idx+1}',
             f'--func={self.args.al_func}',
@@ -142,11 +144,10 @@ if __name__ == "__main__":
     wf = DiffusionSolver()
     wf.set_resource(res_desc = {
         'resource': 'anl.polaris',
-#        'queue'   : 'debug',
         'queue'   : wf.args.queue,
-#        'queue'   : 'default',
         'walltime': 60, #MIN
         'cpus'    : 32 * wf.args.num_nodes,
         'gpus'    : 4 * wf.args.num_nodes,
         'project' : wf.args.project_id
         })
+    wf.run_workflow()

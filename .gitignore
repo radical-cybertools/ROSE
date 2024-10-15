@@ -160,4 +160,5 @@ cython_debug/
 
 #Tianle's own testing code
 _rp_example/
+re.session.polaris*/
 #.idea/
