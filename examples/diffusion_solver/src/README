@@ -1,0 +1,64 @@
+****** FOR train_net.py ******
+
+# TO RUN
+python train_net.py 
+        --card gpu_card_number 
+        --initial initial_training(1)_or_subsequent_training(0)
+        --portion active_learning_portion_out_of_total_acquisition
+        --epochs epochs
+        --es validation_save(1)_or_no_validation_save(0)
+
+# Detail Explanation for arguments
+--card      = Do Nvidia-smi and see which GPU to run the code on 
+--initial   = (1) if the network is trained before active learning for initialization or (0) if network is trained after each active learning round
+--portion   = active_learning_portion_out_of_total_acquisition e.g. 1 to 16 out of 16 rounds
+--epochs    = Number of epochs to run per acquisition rounds
+--es        = (1) if validation is done with early stop to save the model or (0) if the model is saved each epoch regardless of validation
+
+
+# E.g. 
+python train_net.py 
+        --card 0 
+        --initial 1
+        --portion 1
+        --epochs 100
+        --es 1
+
+Above code runs train_net.py on GPU:0 for initialization before active learning for 100 epochs with early stop and validation based saving
+
+!!!!! IMPORTANT NOTE !!!!!
+For Initial run before active learning please set portion as 1
+
+The reason for portion to start with 1 is as follows:
+
+
+for portion in range(1, total_number_of_acquisitions):
+    if portion == 1:
+        do train_net.py (initial = 1, portion = portion)
+    else:
+        do train_net.py (initial = 0, portion = portion)
+    do active.py (func = random or tod, portion = portion)
+
+
+
+****** FOR active.py ******
+
+# TO RUN
+python active.py 
+        --card gpu_card_number 
+        --portion active_learning_portion_out_of_total_acquisition
+        --func random/tod
+
+# Detail Explanation for arguments
+--card      = Do Nvidia-smi and see which GPU to run the code on 
+--portion   = active_learning_portion_out_of_total_acquisition e.g. 1 to 16 out of 16 rounds
+--func      = Acquisition function to be either random or tod
+
+
+# E.g. 
+python train_net.py 
+        --card 0 
+        --portion 1
+        --func tod
+
+Above code runs active.py on GPU:0 for first acquisition round with TOD acquisition function
