@@ -23,6 +23,8 @@ class DiffusionSolver(object):
                             help='number of phases for doing active learning')
         parser.add_argument('--sim_time', type=int, default=10,
                             help='the fake simulation task is a sleep function, how long in seconds it sleeps')
+        parser.add_argument('--src_dir', default=None, required=True,
+                            help='the source directory of sim/ml/al tasks')
         parser.add_argument('--epochs', type=int, default=10,
                             help='number of epochs in training task')
         parser.add_argument('--al_func', choices=['tod', 'random'], required=True,
@@ -35,31 +37,16 @@ class DiffusionSolver(object):
                             help='the queue we used to submit the job')
         parser.add_argument('--num_nodes', type=int, default=1,
                             help='number of nodes used for the workflow')
-        parser.add_argument('--seed', type=int, default=2024,
-                            help='the root seed used for this project')
-        parser.add_argument('--num_reprod', type=int, default=2,
-                            help='number of experiment done with different seed')
+
 
         args = parser.parse_args()
         self.args = args
 
-#This function return a seed for each task (sim, train, al) at each phase with a basic_seed that is different for each pipeline
-    def get_seed(self, basic_seed, task_type, phase):
-        if task_type == 'sim':
-            return basic_seed * 1001 + phase * 11 + 1
-        else if task_type == 'train':
-            return basic_seed * 1001 + phase * 11 + 2
-        else if task_type == 'al':
-            return basic_seed * 1001 + phase * 11 + 3
-        else
-            raise ValueError(f'task_type is not set up correctly: {task_type}')
-
 #use a trivial sleep function in the place where we need a simulation as a temp solution
-    def run_sim(self, phase_idx, basic_seed):
+    def run_sim(self, phase_idx):
         s = entk.Stage()
         t = entk.Task()
-        seed = self.get_seed(basic_seed, "sim", phase_idx)
-
+        
         t.executable = '/bin/sleep'
         t.arguments = [self.args.sim_time]
         t.cpu_reqs = {
@@ -72,10 +59,9 @@ class DiffusionSolver(object):
 
         return s
 
-    def run_train(self, phase_idx, basic_seed):
+    def run_train(self, phase_idx):
         s = entk.Stage()
         t = entk.Task()
-        seed = self.get_seed(basic_seed, "train", phase_idx)
         
         initial_task = 1 if phase_idx == 0 else 0
         t.pre_exec = [
@@ -85,13 +71,12 @@ class DiffusionSolver(object):
             ]
         t.executable = 'python'
         t.arguments = [
-            f"{self.args.src_dir}/train_net.py",
+            f"{self.args.src_dir}/ml_and_al/train_net.py",
             '--card=0',
             f'--initial={initial_task}',
             f'--portion={phase_idx+1}',
             f'--epochs={self.args.epochs}',
             '--es=1',
-            f'--seed={seed}',
             ]
         t.cpu_reqs = {
             'cpu_processes'     : 1,
@@ -107,10 +92,9 @@ class DiffusionSolver(object):
 
         return s
 
-    def run_al(self, phase_idx, basic_seed):
+    def run_al(self, phase_idx):
         s = entk.Stage()
         t = entk.Task()
-        seed = self.get_seed(basic_seed, "al", phase_idx)
         
         initial_task = 1 if phase_idx == 0 else 0
         t.pre_exec = [
@@ -120,11 +104,10 @@ class DiffusionSolver(object):
             ]
         t.executable = 'python'
         t.arguments = [
-            f"{self.args.src_dir}/active.py",
+            f"{self.args.src_dir}/ml_and_al/active.py",
             '--card=0',
             f'--portion={phase_idx+1}',
             f'--func={self.args.al_func}',
-            f'--seed={seed}',
             ]
         t.cpu_reqs = {
             'cpu_processes'     : 1,
@@ -140,23 +123,20 @@ class DiffusionSolver(object):
 
         return s
 
-    def generate_pipeline(self, basic_seed):
+    def generate_pipeline(self):
         p = entk.Pipeline()
         for phase in range(int(self.args.num_phases)):
-            s1 = self.run_sim(phase, basic_seed)
+            s1 = self.run_sim(phase)
             p.add_stages(s1)
-            s2 = self.run_train(phase, basic_seed)
+            s2 = self.run_train(phase)
             p.add_stages(s2)
-            s3 = self.run_al(phase, basic_seed)
+            s3 = self.run_al(phase)
             p.add_stages(s3)
         return p
 
     def run_workflow(self):
-        pipeline_list = []
-        for basic_seed in range(self.args.seed, self.args.seed + self.args.num_reprod)
-            p = self.generate_pipeline(basic_seed)
-            pipeline_list.append(p)
-        self.am.workflow = pipeline_list
+        p = self.generate_pipeline()
+        self.am.workflow = [p]
         self.am.run()
 
 
@@ -164,11 +144,10 @@ if __name__ == "__main__":
     wf = DiffusionSolver()
     wf.set_resource(res_desc = {
         'resource': 'anl.polaris',
-#        'queue'   : 'debug',
         'queue'   : wf.args.queue,
-#        'queue'   : 'default',
         'walltime': 60, #MIN
         'cpus'    : 32 * wf.args.num_nodes,
         'gpus'    : 4 * wf.args.num_nodes,
         'project' : wf.args.project_id
         })
+    wf.run_workflow()
