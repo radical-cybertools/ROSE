@@ -3,6 +3,7 @@ import radical.entk as re
 import radical.utils as ru
 import radical.pilot as rp
 
+from concurrent.futures import as_completed
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -43,16 +44,16 @@ class SerialWorkflow(RoseWorkflow):
         self.simulation_task = simulation_task
         self.training_task = training_task
         self.activelearn_task = activelearn_task
-        
-        self.iterations = max_iterations
 
-        
+        self.max_iterations = max_iterations
+
         super().__init__()
 
     
-    def run(self, resources:rp.PilotDescription):
+    def run(self, resources:rp.PilotDescription, replicas=1):
 
-        N = 1
+        submitted_workflows = None
+
         if self.state == 'idle':
             self.state = 'running'
 
@@ -69,28 +70,31 @@ class SerialWorkflow(RoseWorkflow):
             pilot_manager = rp.PilotManager(session)
 
             resource_pilot = pilot_manager.submit_pilots(resources)
-            
+
             task_manager.add_pilots(resource_pilot)
 
             def _submit(n=1):
 
-                for phase in self.max_iterations:
+                for phase in range(self.max_iterations):
 
-                    self.simulation_task = task_manager.submit_tasks(self.simulation_task)
+                    simulation_task = task_manager.submit_tasks(self.simulation_task)
                     
                     task_manager.wait_tasks(self.simulation_task.uid)
 
-                    self.training_task = task_manager.submit_tasks(self.training_task)
+                    training_task = task_manager.submit_tasks(self.training_task)
 
                     task_manager.wait_tasks(self.training_task.uid)
 
-                    self.activelearn_task = task_manager.submit_tasks(self.activelearn_task)
+                    activelearn_task = task_manager.submit_tasks(self.activelearn_task)
 
                     task_manager.wait_tasks(self.activelearn_task.uid)
 
             with ThreadPoolExecutor() as submitter:
                 # Fire off workflows and don't wait for results
-                futures = [submitter.submit(_submit, i) for i in range(N)]
+                submitted_workflows = [submitter.submit(_submit, i) for i in range(replicas)]
+
+            for future in as_completed(submitted_workflows):
+                print(f"Result: {future.result()}")
 
 
         except Exception as e:
