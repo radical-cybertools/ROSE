@@ -31,6 +31,14 @@ class RoseWorkflow():
     def __init__(self):
         pass
 
+    def _callbacks(self, tasks):
+        pass
+
+class ParalleWorkflow(RoseWorkflow):
+    def __init__(self):
+        pass
+
+# maybe serial Workflow should be the base?
 class SerialWorkflow(RoseWorkflow):
     def __init__(self, simulation_task, training_task,
                  activelearn_task, max_iterations=10):
@@ -39,7 +47,8 @@ class SerialWorkflow(RoseWorkflow):
                                                                      training_task,
                                                                      activelearn_task]):
             raise TypeError(f"All workflow tasks must be of type '{rp.TaskDescription}' ")
-        
+
+
         self.state = 'idle'
         self.simulation_task = simulation_task
         self.training_task = training_task
@@ -54,25 +63,19 @@ class SerialWorkflow(RoseWorkflow):
 
         submitted_workflows = None
 
-        if self.state == 'idle':
-            self.state = 'running'
-
-        elif self.state == 'running':
-            print(f'{self.__class__.__name__} is still running')
-            return
-
         if not isinstance(resources, rp.PilotDescription):
             raise TypeError(f'resources must be of type {rp.PilotDescription}')
 
-        try:
+        if self.state != 'running':
             session =  rp.Session()
             task_manager = rp.TaskManager(session)
             pilot_manager = rp.PilotManager(session)
-
             resource_pilot = pilot_manager.submit_pilots(resources)
-
             task_manager.add_pilots(resource_pilot)
+            
+            self.state = 'running'
 
+        try:
             def _submit(n=1):
 
                 for phase in range(self.max_iterations):
