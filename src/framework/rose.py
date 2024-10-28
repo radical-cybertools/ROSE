@@ -1,6 +1,3 @@
-import os
-import radical.entk as re
-import radical.utils as ru
 import radical.pilot as rp
 
 from concurrent.futures import as_completed
@@ -48,8 +45,9 @@ class SerialWorkflow(RoseWorkflow):
                                                                      activelearn_task]):
             raise TypeError(f"All workflow tasks must be of type '{rp.TaskDescription}' ")
 
-
-        self.state = 'idle'
+        self.workflows_book = {}
+        self.workflows_counter = 0
+        self.runtime_state = 'idle'
         self.simulation_task = simulation_task
         self.training_task = training_task
         self.activelearn_task = activelearn_task
@@ -57,6 +55,10 @@ class SerialWorkflow(RoseWorkflow):
         self.max_iterations = max_iterations
 
         super().__init__()
+    
+
+    def _callbacks(self, task, state):
+        pass
 
     
     def run(self, resources:rp.PilotDescription, replicas=1):
@@ -66,38 +68,59 @@ class SerialWorkflow(RoseWorkflow):
         if not isinstance(resources, rp.PilotDescription):
             raise TypeError(f'resources must be of type {rp.PilotDescription}')
 
-        if self.state != 'running':
+        if self.runtime_state != 'running':
             session =  rp.Session()
             task_manager = rp.TaskManager(session)
             pilot_manager = rp.PilotManager(session)
+            
             resource_pilot = pilot_manager.submit_pilots(resources)
             task_manager.add_pilots(resource_pilot)
-            
-            self.state = 'running'
+
+            self.runtime_state = 'running'
 
         try:
-            def _submit(n=1):
+            def _submit():
 
-                for phase in range(self.max_iterations):
+                done_tasks = []
+                workflow_id = f'wf.{self.workflows_counter}'
 
-                    simulation_task = task_manager.submit_tasks(self.simulation_task)
-                    
-                    task_manager.wait_tasks(self.simulation_task.uid)
+                for _ in range(self.max_iterations):
+                    for t in [self.simulation_task, self.training_task, self.activelearn_task]:
+                        t['name'] = workflow_id
+                        task = task_manager.submit_tasks(t)
+                        print(f'{task.uid} from {workflow_id} was submitted for execution')
+                        task_manager.wait_tasks(task.uid)
 
-                    training_task = task_manager.submit_tasks(self.training_task)
+                        if task.state in [rp.FAILED, rp.CANCELED]:
+                            error = task.exception if not task.stderr else task.stderr
+                            self.workflows_book[workflow_id]['workflow_state'] = rp.FAILED
+                            print(f'{task.uid} from {workflow_id} failed, thus workflow execution failed as well')
+                            return
 
-                    task_manager.wait_tasks(self.training_task.uid)
+                        elif task.state == rp.DONE:
+                            done_tasks.append(task)
+                            print(f'{task.uid} from {workflow_id} finshed succefully')
 
-                    activelearn_task = task_manager.submit_tasks(self.activelearn_task)
-
-                    task_manager.wait_tasks(self.activelearn_task.uid)
+                if all(t.state == rp.DONE for t in done_tasks):
+                    self.workflows_book[workflow_id]['workflow_state'] = rp.DONE
 
             with ThreadPoolExecutor() as submitter:
                 # Fire off workflows and don't wait for results
-                submitted_workflows = [submitter.submit(_submit, i) for i in range(replicas)]
+                for _ in range(replicas):
+                    print(f'workflow wf.{self.workflows_counter} is submitted')
+                    workflow_future = submitter.submit(_submit)
+                    self.workflows_book.update({f'wf.{self.workflows_counter}': {'workflow_state': rp.INITIAL,
+                                                                                 'workflow_future': workflow_future,
+                                                                                 'workflow_tasks':[self.simulation_task,
+                                                                                                   self.training_task,
+                                                                                                   self.activelearn_task]}})
+                    self.workflows_counter +=1
 
-            for future in as_completed(submitted_workflows):
-                print(f"Result: {future.result()}")
+            submitted_workflows = [wf['workflow_future'] for wf in self.workflows_book.values()]
+
+            print('Waiting for all workflows to finish')
+            
+            [f.result() for f in as_completed(submitted_workflows)]
 
 
         except Exception as e:
