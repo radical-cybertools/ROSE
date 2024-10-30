@@ -1,22 +1,45 @@
 import radical.pilot as rp
 
+from data import InputFile, OutputFile
 from concurrent.futures import as_completed
 from concurrent.futures import ThreadPoolExecutor
 
 
 class SimulationTask(rp.TaskDescription):
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         kwargs['name'] = 'SimulationTask'
+        for val in args:
+            if isinstance(val, InputFile):
+                kwargs['stage_in'] = val
+            
+            if isinstance(val, OutputFile):
+                kwargs['stage_out'] = val
+
         super().__init__(kwargs)
 
+
 class TrainingTask(rp.TaskDescription):
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         kwargs['name'] = 'TrainingTask'
+        for val in args:
+            if isinstance(val, InputFile):
+                kwargs['stage_in'] = val
+            
+            if isinstance(val, OutputFile):
+                kwargs['stage_out'] = val
+
         super().__init__(kwargs)
 
 class ActiveLearnTask(rp.TaskDescription):
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         kwargs['name'] ='ActiveLearnTask'
+        for val in args:
+            if isinstance(val, InputFile):
+                kwargs['stage_in'] = val
+            
+            if isinstance(val, OutputFile):
+                kwargs['stage_out'] = val
+
         super().__init__(kwargs)
 
 class RoseResource(rp.PilotDescription):
@@ -72,7 +95,7 @@ class SerialWorkflow(RoseWorkflow):
             session =  rp.Session()
             task_manager = rp.TaskManager(session)
             pilot_manager = rp.PilotManager(session)
-            
+
             resource_pilot = pilot_manager.submit_pilots(resources)
             task_manager.add_pilots(resource_pilot)
 
@@ -94,7 +117,7 @@ class SerialWorkflow(RoseWorkflow):
                         if task.state in [rp.FAILED, rp.CANCELED]:
                             error = task.exception if not task.stderr else task.stderr
                             self.workflows_book[workflow_id]['workflow_state'] = rp.FAILED
-                            print(f'{task.uid} from {workflow_id} failed, thus workflow execution failed as well')
+                            print(f'{task.uid} from {workflow_id} failed with {error}, thus workflow execution failed as well')
                             return
 
                         elif task.state == rp.DONE:
@@ -119,7 +142,7 @@ class SerialWorkflow(RoseWorkflow):
             submitted_workflows = [wf['workflow_future'] for wf in self.workflows_book.values()]
 
             print('Waiting for all workflows to finish')
-            
+
             [f.result() for f in as_completed(submitted_workflows)]
 
 
