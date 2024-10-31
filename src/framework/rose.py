@@ -8,39 +8,18 @@ from concurrent.futures import ThreadPoolExecutor
 class SimulationTask(rp.TaskDescription):
     def __init__(self, *args, **kwargs):
         kwargs['name'] = 'SimulationTask'
-        for val in args:
-            if isinstance(val, InputFile):
-                kwargs['stage_in'] = val
-            
-            if isinstance(val, OutputFile):
-                kwargs['stage_out'] = val
-
         super().__init__(kwargs)
-
 
 class TrainingTask(rp.TaskDescription):
     def __init__(self, *args, **kwargs):
         kwargs['name'] = 'TrainingTask'
-        for val in args:
-            if isinstance(val, InputFile):
-                kwargs['stage_in'] = val
-            
-            if isinstance(val, OutputFile):
-                kwargs['stage_out'] = val
-
         super().__init__(kwargs)
 
 class ActiveLearnTask(rp.TaskDescription):
     def __init__(self, *args, **kwargs):
         kwargs['name'] ='ActiveLearnTask'
-        for val in args:
-            if isinstance(val, InputFile):
-                kwargs['stage_in'] = val
-            
-            if isinstance(val, OutputFile):
-                kwargs['stage_out'] = val
-
         super().__init__(kwargs)
+
 
 class RoseResource(rp.PilotDescription):
     def __init__(self, **kwargs):

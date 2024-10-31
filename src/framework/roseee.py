@@ -1,7 +1,11 @@
-from functools import wraps
+import copy
+
 import radical.utils as ru
 import radical.pilot as rp
+
+from functools import wraps
 from concurrent.futures import Future
+from data import InputFile, OutputFile
 
 class RoseEngine:
     def __init__(self, resources) -> None:
@@ -39,10 +43,11 @@ class RoseWorkflow:
     entities connected to B and C.
     '''
     def __init__(self, engine):
-        self.engine = engine
         self.tasks = {}        # Dictionary to store task futures and their descriptions
+        self.engine = engine   # Runtime engine and theortically it should be agnostic from RCT
         self.dependencies = {} # Dictionary to track dependencies for each task
         self.task_manager = self.engine.task_manager
+        self.workflows_book = []
 
     def __call__(self, func):
         """Use RoseEngine as a decorator to register workflow tasks."""
@@ -53,12 +58,24 @@ class RoseWorkflow:
             task_descriptions['uid'] = ru.generate_id('task.%(item_counter)06d',
                                                       ru.ID_CUSTOM, ns=self.engine.session.uid)
             dependencies = []
+            input_files = []
+            output_files = []
 
-            for possible_task in args:
-                if isinstance(possible_task, rp.TaskDescription):
-                    dependencies.append(possible_task)
+            for arg in args:
+                # it is a task deps
+                if isinstance(arg, rp.TaskDescription):
+                    dependencies.append(arg)
+                # it is input file needs to be obtained from somewhere
+                elif isinstance(arg, InputFile):
+                    input_files.append(arg.filename)
+                # it is output file needs to be obtained from the task folder
+                elif isinstance(arg, OutputFile):
+                    output_files.append(arg.filename)
 
-            task_descriptions['metadata'] = {'dependencies': dependencies}
+            task_descriptions['metadata'] = {'dependencies': dependencies,
+                                             'input_files': input_files,
+                                             'output_files': output_files}
+
             task_fut = Future()  # Create a Future object for this task
             self.tasks[task_fut] = task_descriptions  # Store task description with Future as key
             self.dependencies[task_descriptions['uid']] = dependencies
@@ -68,12 +85,26 @@ class RoseWorkflow:
             return task_descriptions
 
         return wrapper
+    
+    def link_data_deps(self, task_id, file_name=None):
+        if not file_name:
+            file_name = task_id
+
+        data_deps = {'source': f"pilot:///{task_id}/{file_name}",
+                     'target': f"task:///{file_name}", 'action': rp.TRANSFER}
+
+        return data_deps
+
 
     def run(self):
         # Iteratively resolve dependencies and submit tasks when ready
         resolved = set()  # Track tasks that have been resolved
         executed = set()  # Track tasks that have been successfully executed
         unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
+        
+        self.workflows_book.append(copy.copy(self.tasks))
+
+        print(f'Now resolving and executing workflow-{len(self.workflows_book)}\n')
 
         while unresolved:
             to_submit = []  # Collect tasks to submit this round
@@ -84,11 +115,26 @@ class RoseWorkflow:
                 if all(dep['uid'] in resolved for dep in dependencies):
                     task_desc = next(t for fut, t in self.tasks.items() if t['uid'] == task_uid)
 
-                    # Only add input_staging data after dependency has executed successfully
-                    task_desc['input_staging'] = [{'source': f"pilot:///{dep['uid']}/{dep['uid']}.out",
-                                                   'target': f"task:///{dep['uid']}.out"} for dep in dependencies if dep['uid'] in resolved]
+                    input_staging = []
+                    
+                    # Gather staging information for input files
+                    for dep in dependencies:
+                        dep_desc = next(t for t in self.tasks.values() if t['uid'] == dep['uid'])
+                        for output_file in dep_desc['metadata']['output_files']:
+                            if output_file in task_desc['metadata']['input_files']:
+                                input_staging.append(self.link_data_deps(dep['uid'], output_file))
 
-                    # print(task_desc.name, task_desc.input_staging)
+                    # Add independent input files to input_staging like local file, https file and so on
+                    #for input_file in task_desc['metadata']['input_files']:
+                    #    if input_file not in [item['target'].split('/')[-1] for item in input_staging]:
+                    #        input_staging.append({
+                    #            'source': f"pilot:///{input_file}",
+                    #            'target': f"task:///{input_file}",
+                    #            'action': rp.TRANSFER
+                    #        })
+
+                    task_desc.input_staging = input_staging
+
                     # Add the task to the submission list
                     to_submit.append((task_desc, task_uid))
                     #print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
