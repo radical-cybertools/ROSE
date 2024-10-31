@@ -8,7 +8,7 @@ from concurrent.futures import Future
 from data import InputFile, OutputFile
 
 
-class RoseEngine:
+class ResourceEngine:
     def __init__(self, resources) -> None:
         try:
             self.session = rp.Session()
@@ -29,7 +29,7 @@ class RoseEngine:
         self.session.close(download=True)
 
 
-class RoseWorkflow:
+class WorkflowEngine:
     '''
     In a Directed Acyclic Graph (DAG), nodes can have identical labels
     or properties, but they must be distinct entities within the graph.

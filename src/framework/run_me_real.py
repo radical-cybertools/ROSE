@@ -1,9 +1,9 @@
 from data import InputFile, OutputFile
-from roseee import RoseWorkflow, RoseEngine
+from roseee import ResourceEngine, WorkflowEngine
 from rose import SimulationTask, ActiveLearnTask, TrainingTask
 
-engine = RoseEngine({'resource': 'local.localhost'})
-flow = RoseWorkflow(engine=engine)
+engine = ResourceEngine({'resource': 'local.localhost'})
+flow = WorkflowEngine(engine=engine)
 code_path = 'python3 /home/aymen/RADICAL/ROSE/src/framework/samples/'
 
 @flow
@@ -19,6 +19,10 @@ def acl(*args):
     return ActiveLearnTask(executable=code_path+'active_learn.py')
 
 
+@flow
+def downaload_and_echo(*args):
+    return ActiveLearnTask(executable=f"/bin/cat sample3.txt")
+
 for i in range(5):
     acl(train(sim(OutputFile('data_simulated.npz')
                   ),
@@ -30,5 +34,9 @@ for i in range(5):
 
     flow.run()
     flow.clear()
+
+
+# downaload_and_echo(InputFile('https://filesamples.com/samples/document/txt/sample3.txt'))
+# flow.run()
 
 engine.shutdown()
