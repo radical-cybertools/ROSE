@@ -63,7 +63,7 @@ class RoseWorkflow:
             self.tasks[task_fut] = task_descriptions  # Store task description with Future as key
             self.dependencies[task_descriptions['uid']] = dependencies
 
-            print(f"Registered task '{task_descriptions['name']}' with dependencies: {[dep['name'] for dep in dependencies]}")
+            #print(f"Registered task '{task_descriptions['name']}' with dependencies: {[dep['name'] for dep in dependencies]}")
 
             return task_descriptions
 
@@ -84,9 +84,14 @@ class RoseWorkflow:
                 if all(dep['uid'] in resolved for dep in dependencies):
                     task_desc = next(t for fut, t in self.tasks.items() if t['uid'] == task_uid)
 
+                    # Only add input_staging data after dependency has executed successfully
+                    task_desc['input_staging'] = [{'source': f"pilot:///{dep['uid']}/{dep['uid']}.out",
+                                                   'target': f"task:///{dep['uid']}.out"} for dep in dependencies if dep['uid'] in resolved]
+
+                    # print(task_desc.name, task_desc.input_staging)
                     # Add the task to the submission list
                     to_submit.append((task_desc, task_uid))
-                    print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
+                    #print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
@@ -101,35 +106,25 @@ class RoseWorkflow:
 
     def submit(self, tasks):
         # Submit tasks in one go to the engine
-        if len(tasks) > 1:
-            print(f'Executing {[t[0]["name"] for t in tasks]} conccurently')
-        else:
-            print(f'Executing {[t[0]["name"] for t in tasks]}')
+        #if len(tasks) > 1:
+        #    print(f'Executing {[t[0]["name"] for t in tasks]} conccurently')
+        #else:
+        #    print(f'Executing {[t[0]["name"] for t in tasks]}')
 
         # Submit the list of tasks
         task_futures = [next(fut for fut, desc in self.tasks.items() if desc['uid'] == task_uid) for _, task_uid in tasks]
 
         # This assumes `submit_tasks` can take a list of task descriptions
         submitted_tasks = self.task_manager.submit_tasks([task_desc for task_desc, _ in tasks])
-        
+
         # Wait for all tasks to complete
         self.task_manager.wait_tasks([task.uid for task in submitted_tasks])
 
         # Set the result for each future
         for task_fut, task in zip(task_futures, submitted_tasks):
             if task.state in [rp.FAILED, rp.CANCELED]:
-                print(f'{task.name} is FAILED')
+                print(f'{task.name} is Failed and has error of {task.stderr}')
                 task_fut.set_exception('failed')
             elif task.state == rp.DONE:
-                print(f'{task.name} is DONE')
+                print(f'{task.name} is Done and has output of {task.stdout}')
                 task_fut.set_result('Done')  # Set the result to the future
-
-        # Wait for all tasks to complete and check their states
-        #for task_fut in self.tasks.keys():
-        #    if task_fut.done():
-        #        task_result = task_fut.result()
-        #        if task_result.state in [rp.FAILED, rp.CANCELED]:
-        #            raise Exception(f"{self.tasks[task_fut]['name']} Failed Exiting")
-        #        elif task_result.state == rp.DONE:
-        #            
-        #            print(f"{self.tasks[task_fut]['name']} Finished successfully")
