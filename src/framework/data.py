@@ -1,6 +1,4 @@
-import os
 import requests
-import radical.pilot as rp
 
 from pathlib import Path
 from typing import List, Union
@@ -8,10 +6,11 @@ from typing import List, Union
 
 class File:
     def __init__(self) -> None:
-        pass
+        self.filename = None
+        self.filepath = None
 
     @staticmethod
-    def process_remote_url(self, url: str) -> Path:
+    def process_remote_url(url: str) -> Path:
         """Download the remote file to the current directory and return its full path."""
         response = requests.get(url, stream=True)
         response.raise_for_status()  # Check if the download was successful
@@ -28,50 +27,36 @@ class File:
         return file_path.resolve()  # Return the absolute path
 
 
-class XInputFile(File):
-    def __new__(cls, urls: List[Union[os.PathLike, str]]) -> dict:
+class InputFile(File):
+    def __init__(self, file):
+
+        if file.startswith('https') or file.startswith('http'):
+            self.remote_url = file
+        else:
+            self.local_file = file
+
+        if self.remote_url:
+            # the default URL path would be the task sandbox
+            # FIXME: maybe instead of downloading it and then stage it
+            # inject a download command to the task.pre_exec?
+            self.filepath = self.process_remote_url(self.remote_url)
+
+        elif self.local_file and Path(self.local_file).exists():
+            # local file to stage in to the task sandbox
+            self.filepath = Path(self.local_file).resolve()  # Convert to absolute path
+
+        else:
+            raise Exception('Could not resolve file, please check your file')
         
-        input_files = []
+        if not self.filepath:
+            raise Exception('Failed to obtain the input file localy or remotley')
 
-        # Process each URL
-        for url in urls:
-            # remote file
-            if url.startswith('https') or url.startswith('http'):
-                file = cls.process_remote_url(url)
-
-            # local file - get absolute path
-            elif Path(url).exists():
-                file = Path(url).resolve()  # Convert to absolute path
-
-            # not supported
-            else:
-                raise TypeError('Unrecognized file type, make sure your file is remote (https/http) or local')
-
-            if file:
-                # Populate the stage_in dictionary with full path
-                stage_in= {'source': str(file), 'target': f'task://{file.name}', 'action': rp.TRANSFER}
-                input_files.append(stage_in)
-            else:
-                raise Exception('Could not resolve file, please check your file')
-        
-        return input_files  # Return the list directly instead of an instance
+        self.filename = self.filepath.name
 
 
-class XOutputFile(File):
-    def __new__(cls, urls: List[Union[os.PathLike, str]], target_task_sandbox) -> dict:
-
-        output_files = []
-        for url in urls:
-            stage_in= {'source': f'task://{url}', 'target': f'{target_task_sandbox}/{url}', 'action': rp.TRANSFER}
-            output_files.append(stage_in)
-
-
-class InputFile:
+class OutputFile(File):
     def __init__(self, filename):
         self.filename = filename
 
-class OutputFile:
-    def __init__(self, filename):
-        self.filename = filename
-
-
+        if '/' in self.filename:
+            self.filename = self.filename.split('/')[-1]

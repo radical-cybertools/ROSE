@@ -140,13 +140,12 @@ class RoseWorkflow:
                                 input_staging.append(self.link_data_deps(dep['uid'], output_file))
 
                     # Add independent input files to input_staging like local file, https file and so on
-                    #for input_file in task_desc['metadata']['input_files']:
-                    #    if input_file not in [item['target'].split('/')[-1] for item in input_staging]:
-                    #        input_staging.append({
-                    #            'source': f"pilot:///{input_file}",
-                    #            'target': f"task:///{input_file}",
-                    #            'action': rp.TRANSFER
-                    #        })
+                    for input_file in task_desc['metadata']['input_files']:
+                        if input_file not in [item['target'].split('/')[-1] for item in input_staging]:
+                            # FIXME: link_data_deps() must be able to link input files
+                            input_staging.append({'source': input_file,
+                                                  'target': f"task:///{input_file}",
+                                                  'action': rp.TRANSFER})
 
                     task_desc.input_staging = input_staging
 
