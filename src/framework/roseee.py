@@ -7,10 +7,10 @@ from functools import wraps
 from concurrent.futures import Future
 from data import InputFile, OutputFile
 
+
 class RoseEngine:
     def __init__(self, resources) -> None:
         try:
-        
             self.session = rp.Session()
             self.task_manager = rp.TaskManager(self.session)
             self.pilot_manager = rp.PilotManager(self.session)
@@ -57,35 +57,24 @@ class RoseWorkflow:
             task_descriptions['name'] = func.__name__
             task_descriptions['uid'] = ru.generate_id('task.%(item_counter)06d',
                                                       ru.ID_CUSTOM, ns=self.engine.session.uid)
-            dependencies = []
-            input_files = []
-            output_files = []
 
-            for arg in args:
-                # it is a task deps
-                if isinstance(arg, rp.TaskDescription):
-                    dependencies.append(arg)
-                # it is input file needs to be obtained from somewhere
-                elif isinstance(arg, InputFile):
-                    input_files.append(arg.filename)
-                # it is output file needs to be obtained from the task folder
-                elif isinstance(arg, OutputFile):
-                    output_files.append(arg.filename)
+            task_deps, input_files_deps, output_files_deps = self._detect_dependencies(args)
 
-            task_descriptions['metadata'] = {'dependencies': dependencies,
-                                             'input_files': input_files,
-                                             'output_files': output_files}
+            task_descriptions['metadata'] = {'dependencies': task_deps,
+                                             'input_files': input_files_deps,
+                                             'output_files': output_files_deps}
 
             task_fut = Future()  # Create a Future object for this task
             self.tasks[task_fut] = task_descriptions  # Store task description with Future as key
-            self.dependencies[task_descriptions['uid']] = dependencies
+            self.dependencies[task_descriptions['uid']] = task_deps
 
-            #print(f"Registered task '{task_descriptions['name']}' with dependencies: {[dep['name'] for dep in dependencies]}")
+            # print(f"Registered task '{task_descriptions['name']}' with dependencies: {[dep['name'] for dep in dependencies]}")
 
             return task_descriptions
 
         return wrapper
-    
+
+
     def link_data_deps(self, task_id, file_name=None):
         if not file_name:
             file_name = task_id
@@ -95,6 +84,32 @@ class RoseWorkflow:
 
         return data_deps
 
+
+    def _detect_dependencies(self, possible_dependencies):
+
+        dependencies = []
+        input_files = []
+        output_files = []
+
+        for possible_dep in possible_dependencies:
+            # it is a task deps
+            if isinstance(possible_dep, rp.TaskDescription):
+                dependencies.append(possible_dep)
+            # it is input file needs to be obtained from somewhere
+            elif isinstance(possible_dep, InputFile):
+                input_files.append(possible_dep.filename)
+            # it is output file needs to be obtained from the task folder
+            elif isinstance(possible_dep, OutputFile):
+                output_files.append(possible_dep.filename)
+        
+        return dependencies, input_files, output_files
+
+
+    def clear(self):
+
+        self.tasks.clear()
+        self.dependencies.clear()
+    
 
     def run(self):
         # Iteratively resolve dependencies and submit tasks when ready

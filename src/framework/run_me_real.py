@@ -29,7 +29,6 @@ for i in range(5):
     )
 
     flow.run()
-    flow.tasks.clear()
-    flow.dependencies.clear()
+    flow.clear()
 
 engine.shutdown()
