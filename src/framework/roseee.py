@@ -1,4 +1,5 @@
 import copy
+import typeguard
 
 import radical.utils as ru
 import radical.pilot as rp
@@ -6,12 +7,16 @@ import radical.pilot as rp
 from functools import wraps
 from concurrent.futures import Future
 from data import InputFile, OutputFile
+from typing import Callable, Dict, List
 
 
 class ResourceEngine:
-    def __init__(self, resources) -> None:
+    
+    @typeguard.typechecked
+    def __init__(self, resources:Dict) -> None:
         try:
-            self.session = rp.Session()
+            self.session = rp.Session(uid=ru.generate_id('rose.session',
+                                                         mode=ru.ID_PRIVATE))
             self.task_manager = rp.TaskManager(self.session)
             self.pilot_manager = rp.PilotManager(self.session)
             self.resource_pilot = self.pilot_manager.submit_pilots(rp.PilotDescription(resources))
@@ -25,7 +30,7 @@ class ResourceEngine:
         return self.resource_pilot
 
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.session.close(download=True)
 
 
@@ -42,14 +47,18 @@ class WorkflowEngine:
     In this case, you have two nodes labeled A, but they are different
     entities connected to B and C.
     '''
-    def __init__(self, engine):
+    
+    @typeguard.typechecked
+    def __init__(self, engine:ResourceEngine) -> None:
         self.tasks = {}        # Dictionary to store task futures and their descriptions
         self.engine = engine   # Runtime engine and theortically it should be agnostic from RCT
         self.dependencies = {} # Dictionary to track dependencies for each task
         self.task_manager = self.engine.task_manager
         self.workflows_book = []
 
-    def __call__(self, func):
+
+    @typeguard.typechecked
+    def __call__(self, func:Callable):
         """Use RoseEngine as a decorator to register workflow tasks."""
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -109,14 +118,14 @@ class WorkflowEngine:
 
         self.tasks.clear()
         self.dependencies.clear()
-    
+
 
     def run(self):
         # Iteratively resolve dependencies and submit tasks when ready
         resolved = set()  # Track tasks that have been resolved
         executed = set()  # Track tasks that have been successfully executed
         unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
-        
+
         self.workflows_book.append(copy.copy(self.tasks))
 
         print(f'Now resolving and executing workflow-{len(self.workflows_book)}\n')

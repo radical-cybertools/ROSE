@@ -30,10 +30,19 @@ class File:
 class InputFile(File):
     def __init__(self, file):
 
+        self.remote_url = None
+        self.local_file = None
+        self.other_task_file = None
+
+        # File will be downloaded
         if file.startswith('https') or file.startswith('http'):
             self.remote_url = file
-        else:
+        # File is local and will be staged in
+        elif '/' in file:
             self.local_file = file
+        # File produced from another task
+        else:
+            self.other_task_file = file
 
         if self.remote_url:
             # the default URL path would be the task sandbox
@@ -44,10 +53,13 @@ class InputFile(File):
         elif self.local_file and Path(self.local_file).exists():
             # local file to stage in to the task sandbox
             self.filepath = Path(self.local_file).resolve()  # Convert to absolute path
+        
+        elif self.other_task_file:
+            self.filepath = Path(self.other_task_file)
 
         else:
-            raise Exception('Could not resolve file, please check your file')
-        
+            raise Exception(f'Failed to find/resolve InputFile: {file}')
+
         if not self.filepath:
             raise Exception('Failed to obtain the input file localy or remotley')
 

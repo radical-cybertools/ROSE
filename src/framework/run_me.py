@@ -1,9 +1,9 @@
-from roseee import ResourceEngine, ResourceEngine
+from roseee import ResourceEngine, WorkflowEngine
 from rose import SimulationTask, ActiveLearnTask, TrainingTask
 
 engine = ResourceEngine({'resource': 'local.localhost'})
 
-flow = ResourceEngine(engine=engine)
+flow = WorkflowEngine(engine=engine)
 
 @flow
 def pi1(*args):
@@ -39,10 +39,10 @@ def decision(*args):
 
 #flow.run()
 
-# mean(pi1(),
-#     pi2(pi1()),
-#     pi3(pi1(),
-#         pi2()))
+mean(pi1(),
+     pi2(pi1()),
+     pi3(pi1(),
+         pi2()))
 
 
 # case-1 basic
@@ -59,3 +59,4 @@ def decision(*args):
 
 flow.run()
 engine.shutdown()
+
