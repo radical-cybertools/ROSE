@@ -1,4 +1,5 @@
 import copy
+import uuid
 import typeguard
 
 import radical.utils as ru
@@ -23,8 +24,16 @@ class ResourceEngine:
             self.task_manager.add_pilots(self.resource_pilot)
         
         except Exception as e:
-            print(f'RoseEngine Failed to start due to {e}, terminating')
-            self.shutdown()
+            print(f'Resource Engine Failed to start, terminating')
+            raise
+
+        except (KeyboardInterrupt, SystemExit):
+            # the callback called sys.exit(), and we can here catch the
+            # corresponding KeyboardInterrupt exception for shutdown.  We also catch
+            # SystemExit (which gets raised if the main threads exits for some other
+            # reason).
+            raise
+
 
     def state(self):
         return self.resource_pilot
@@ -53,8 +62,8 @@ class WorkflowEngine:
         self.tasks = {}        # Dictionary to store task futures and their descriptions
         self.engine = engine   # Runtime engine and theortically it should be agnostic from RCT
         self.dependencies = {} # Dictionary to track dependencies for each task
+        self.workflows_book = [] # A way to track the number of workflows and their history
         self.task_manager = self.engine.task_manager
-        self.workflows_book = []
 
 
     @typeguard.typechecked
@@ -74,10 +83,11 @@ class WorkflowEngine:
                                              'output_files': output_files_deps}
 
             task_fut = Future()  # Create a Future object for this task
+            task_fut.id = task_descriptions['uid'].split('task.')[1]
             self.tasks[task_fut] = task_descriptions  # Store task description with Future as key
             self.dependencies[task_descriptions['uid']] = task_deps
 
-            # print(f"Registered task '{task_descriptions['name']}' with dependencies: {[dep['name'] for dep in dependencies]}")
+            print(f"Registered task '{task_descriptions['name']}' and id of {task_fut.id} with dependencies: {[dep['name'] for dep in task_deps]}")
 
             return task_descriptions
 
@@ -128,8 +138,6 @@ class WorkflowEngine:
 
         self.workflows_book.append(copy.copy(self.tasks))
 
-        print(f'Now resolving and executing workflow-{len(self.workflows_book)}\n')
-
         while unresolved:
             to_submit = []  # Collect tasks to submit this round
 
@@ -171,6 +179,8 @@ class WorkflowEngine:
                 tuid = t[1]
                 resolved.add(tuid)
                 unresolved.remove(tuid)
+        
+        self.clear()
 
 
     def submit(self, tasks):
