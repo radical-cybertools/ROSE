@@ -56,7 +56,7 @@ class WorkflowEngine:
     In this case, you have two nodes labeled A, but they are different
     entities connected to B and C.
     '''
-    
+
     @typeguard.typechecked
     def __init__(self, engine:ResourceEngine) -> None:
         self.tasks = {}        # Dictionary to store task futures and their descriptions
@@ -84,7 +84,9 @@ class WorkflowEngine:
 
             task_fut = Future()  # Create a Future object for this task
             task_fut.id = task_descriptions['uid'].split('task.')[1]
-            self.tasks[task_fut] = task_descriptions  # Store task description with Future as key
+            
+            # Store the future and task description in the tasks dictionary, keyed by UID
+            self.tasks[task_descriptions['uid']] = {'future': task_fut, 'description': task_descriptions}
             self.dependencies[task_descriptions['uid']] = task_deps
 
             print(f"Registered task '{task_descriptions['name']}' and id of {task_fut.id} with dependencies: {[dep['name'] for dep in task_deps]}")
@@ -124,16 +126,18 @@ class WorkflowEngine:
         return dependencies, input_files, output_files
 
 
+
     def clear(self):
 
         self.tasks.clear()
         self.dependencies.clear()
 
 
+
     def run(self):
+
         # Iteratively resolve dependencies and submit tasks when ready
         resolved = set()  # Track tasks that have been resolved
-        executed = set()  # Track tasks that have been successfully executed
         unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
 
         self.workflows_book.append(copy.copy(self.tasks))
@@ -145,13 +149,13 @@ class WorkflowEngine:
                 dependencies = self.dependencies[task_uid]
                 # Check if all dependencies have been resolved
                 if all(dep['uid'] in resolved for dep in dependencies):
-                    task_desc = next(t for fut, t in self.tasks.items() if t['uid'] == task_uid)
+                    task_desc = self.tasks[task_uid]['description']
 
                     input_staging = []
-                    
+
                     # Gather staging information for input files
                     for dep in dependencies:
-                        dep_desc = next(t for t in self.tasks.values() if t['uid'] == dep['uid'])
+                        dep_desc = self.tasks[dep['uid']]['description']
                         for output_file in dep_desc['metadata']['output_files']:
                             if output_file in task_desc['metadata']['input_files']:
                                 input_staging.append(self.link_data_deps(dep['uid'], output_file))
@@ -167,40 +171,35 @@ class WorkflowEngine:
                     task_desc.input_staging = input_staging
 
                     # Add the task to the submission list
-                    to_submit.append((task_desc, task_uid))
-                    #print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
+                    to_submit.append(task_desc)
+                    print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
                 self.submit(to_submit)
 
             # make sure to update dependencies records only when tasks are submitted/succeeded
-            for t in to_submit:
-                tuid = t[1]
-                resolved.add(tuid)
-                unresolved.remove(tuid)
-        
+            for task in to_submit:
+                resolved.add(task.uid)
+                unresolved.remove(task.uid)
+
         self.clear()
 
 
     def submit(self, tasks):
-        # Submit tasks in one go to the engine
-        #if len(tasks) > 1:
-        #    print(f'Executing {[t[0]["name"] for t in tasks]} conccurently')
-        #else:
-        #    print(f'Executing {[t[0]["name"] for t in tasks]}')
 
-        # Submit the list of tasks
-        task_futures = [next(fut for fut, desc in self.tasks.items() if desc['uid'] == task_uid) for _, task_uid in tasks]
+        print(f'submitting {[t.name for t in tasks]} for execution')
 
         # This assumes `submit_tasks` can take a list of task descriptions
-        submitted_tasks = self.task_manager.submit_tasks([task_desc for task_desc, _ in tasks])
+        submitted_tasks = self.task_manager.submit_tasks(tasks)
 
         # Wait for all tasks to complete
         self.task_manager.wait_tasks([task.uid for task in submitted_tasks])
 
         # Set the result for each future
-        for task_fut, task in zip(task_futures, submitted_tasks):
+        for task in submitted_tasks:
+            task_fut = self.tasks[task.uid]['future']
+
             if task.state in [rp.FAILED, rp.CANCELED]:
                 print(f'{task.name} is Failed and has error of {task.stderr}')
                 task_fut.set_exception('failed')
