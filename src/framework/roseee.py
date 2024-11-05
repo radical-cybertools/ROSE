@@ -1,5 +1,4 @@
-import copy
-import uuid
+import inspect
 import typeguard
 
 import radical.utils as ru
@@ -12,7 +11,44 @@ from typing import Callable, Dict, List
 
 
 class ResourceEngine:
+    """
+    The ResourceEngine class is responsible for managing computing resources and creating 
+    sessions for executing tasks. It interfaces with a resource management framework to initialize 
+    sessions, manage task execution, and submit resources required for the workflow.
+
+    Attributes:
+        session (rp.Session): A session instance used to manage and track task execution, 
+            uniquely identified by a generated ID. This session serves as the primary context for 
+            all task and resource management within the workflow.
+        
+        task_manager (rp.TaskManager): Manages the lifecycle of tasks, handling their submission, 
+            tracking, and completion within the session.
+        
+        pilot_manager (rp.PilotManager): Manages computing resources, known as "pilots," which 
+            are dynamically allocated based on the provided resources. The pilot manager coordinates 
+            these resources to support task execution.
+
+        resource_pilot (rp.Pilot): Represents the submitted computing resources as a pilot. 
+            This pilot is described by the `resources` parameter provided during initialization, 
+            specifying details such as CPU, GPU, and memory requirements.
     
+    Parameters:
+        resources (Dict): A dictionary specifying the resource requirements for the pilot, 
+            including details like the number of CPUs, GPUs, and memory. This dictionary 
+            configures the pilot to match the needs of the tasks that will be executed.
+    
+    Raises:
+        Exception: If session creation, pilot submission, or task manager setup fails, 
+            the ResourceEngine will raise an exception, ensuring the resources are correctly 
+            allocated and managed.
+
+    Example:
+        ```python
+        resources = {"cpu": 4, "gpu": 1, "memory": "8GB"}
+        engine = ResourceEngine(resources)
+        ```
+    """
+
     @typeguard.typechecked
     def __init__(self, resources:Dict) -> None:
         try:
@@ -23,8 +59,10 @@ class ResourceEngine:
             self.resource_pilot = self.pilot_manager.submit_pilots(rp.PilotDescription(resources))
             self.task_manager.add_pilots(self.resource_pilot)
 
+            print(f'Resource Engine started successfully\n')
+
         except Exception as e:
-            print(f'Resource Engine Failed to start, terminating')
+            print(f'Resource Engine Failed to start, terminating\n')
             raise
 
         except (KeyboardInterrupt, SystemExit):
@@ -38,32 +76,66 @@ class ResourceEngine:
     def state(self):
         return self.resource_pilot
 
+    def task_state_cb(self, task, state):
+        pass
 
     def shutdown(self) -> None:
         self.session.close(download=True)
 
 
 class WorkflowEngine:
-    '''
-    In a Directed Acyclic Graph (DAG), nodes can have identical labels
-    or properties, but they must be distinct entities within the graph.
+    """
+    A WorkflowEngine manages and executes tasks within a Directed Acyclic Graph (DAG) structure, 
+    allowing for complex workflows where tasks may have dependencies. Each node in the DAG represents 
+    a distinct task, even if some nodes have identical labels. This allows for flexible, reusable 
+    task definitions in workflows with intricate dependencies.
+
+    In this DAG, nodes (tasks) can have the same label or identifier, but they represent distinct 
+    entities within the workflow. 
 
     Example:
-    Consider the following DAG representation:
+        Consider a simple DAG representation:
 
-    Nodes: A, A (identical labels, but distinct instances)
-    Edges: A → B, A → C
-    In this case, you have two nodes labeled A, but they are different
-    entities connected to B and C.
-    '''
+        Nodes: A, A (two distinct nodes with identical labels)
+        Edges: A → B, A → C
+
+        Here, two nodes labeled 'A' are distinct instances connected to 'B' and 'C', 
+        each with its own role in the workflow.
+
+    Attributes:
+        engine (ResourceEngine): An instance of `ResourceEngine`, responsible for managing the 
+            runtime resources needed to execute tasks. This engine is agnostic to the specific 
+            runtime context (RCT).
+
+        sequential_execution (bool): A flag indicating if tasks should be gathered and run in 
+            parallel wherever dependencies allow or sequentially. If `True`, tasks are executed
+            in sequence according to dependencies. if `False` (default), it will run tasks
+            concurrently when possible.
+
+        tasks (dict): A dictionary storing task identifiers and associated task objects (futures).
+            This enables tracking of task states and results as the workflow progresses.
+
+        dependencies (dict): A dictionary that maps each task to its list of dependencies, 
+            enabling the engine to resolve dependencies before executing each task.
+
+        task_manager: This attribute references the `task_manager` provided by the `ResourceEngine`, 
+            which handles the underlying task operations and states.
+    """
 
     @typeguard.typechecked
-    def __init__(self, engine:ResourceEngine) -> None:
-        self.tasks = {}        # Dictionary to store task futures and their descriptions
-        self.engine = engine   # Runtime engine and theortically it should be agnostic from RCT
-        self.dependencies = {} # Dictionary to track dependencies for each task
-        self.workflows_book = [] # A way to track the number of workflows and their history
+    def __init__(self, engine:ResourceEngine,
+                 sequential_execution:bool=False) -> None:
+
+        self.tasks = {}
+        self.engine = engine
+        self.dependencies = {}
         self.task_manager = self.engine.task_manager
+        self.sequential_execution = sequential_execution
+
+        if not self.sequential_execution:
+            print('Workflow engine will use conccurent tasks execution startegy when is possible!\n')
+        else:
+            print('Workflow engine will use sequential tasks execution startegy!\n')
 
 
     @typeguard.typechecked
@@ -89,6 +161,9 @@ class WorkflowEngine:
             self.dependencies[task_descriptions['uid']] = task_deps
 
             print(f"Registered task '{task_descriptions['name']}' and id of {task_fut.id} with dependencies: {[dep['name'] for dep in task_deps]}")
+
+            if self.sequential_execution:
+                self.run()
 
             return task_descriptions
 
@@ -143,8 +218,6 @@ class WorkflowEngine:
         resolved = set()  # Track tasks that have been resolved
         unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
 
-        self.workflows_book.append(copy.copy(self.tasks))
-
         while unresolved:
             to_submit = []  # Collect tasks to submit this round
 
@@ -164,12 +237,12 @@ class WorkflowEngine:
                     # Gather staging information for input files
                     for dep in dependencies:
                         dep_desc = self.tasks[dep['uid']]['description']
-                        for output_file in dep_desc['metadata']['output_files']:
-                            if output_file in task_desc['metadata']['input_files']:
+                        for output_file in dep_desc.metadata['output_files']:
+                            if output_file in task_desc.metadata['input_files']:
                                 input_staging.append(self.link_data_deps(dep['uid'], output_file))
 
                     # Add independent input files to input_staging like local file, https file and so on
-                    for input_file in task_desc['metadata']['input_files']:
+                    for input_file in task_desc.metadata['input_files']:
                         if input_file not in [item['target'].split('/')[-1] for item in input_staging]:
                             # FIXME: link_data_deps() must be able to link input files
                             input_staging.append({'source': input_file,
@@ -180,7 +253,7 @@ class WorkflowEngine:
 
                     # Add the task to the submission list
                     to_submit.append(task_desc)
-                    print(f"Task '{task_desc['name']}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
+                    print(f"Task '{task_desc.name}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
@@ -207,9 +280,11 @@ class WorkflowEngine:
             task_fut = self.tasks[task.uid]['future']
 
             if task.state in [rp.FAILED, rp.CANCELED]:
-                print(f'{task.name} is Failed and has error of {task.stderr}')
-                task_fut.set_exception('failed')
-            elif task.state == rp.DONE:
-                print(f'{task.name} is Done and has output of {task.stdout}')
-                task_fut.set_result('Done')  # Set the result to the future
+                task_fut.set_exception(task.state)
+                self.tasks[task.uid]['description'].stderr = task.stderr
 
+            elif task.state == rp.DONE:
+                task_fut.set_result(task.state)  # Set the result to the future
+                self.tasks[task.uid]['description'].stdout = task.stdout
+            
+            print(f'Task {task.name} finished with state: {task.state}')
