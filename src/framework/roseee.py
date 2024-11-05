@@ -191,8 +191,6 @@ class WorkflowEngine:
                 resolved.add(task.uid)
                 unresolved.remove(task.uid)
 
-        #self.clear()
-
 
     def submit(self, tasks):
 
