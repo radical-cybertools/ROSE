@@ -1,45 +1,46 @@
-import inspect
-import typeguard
+# flake8: noqa
+
+from functools import wraps
+from typing import Callable, Dict
+from concurrent.futures import Future
 
 import radical.utils as ru
 import radical.pilot as rp
 
-from functools import wraps
-from concurrent.futures import Future
+import typeguard
 from data import InputFile, OutputFile
-from typing import Callable, Dict, List
 
 
 class ResourceEngine:
     """
-    The ResourceEngine class is responsible for managing computing resources and creating 
-    sessions for executing tasks. It interfaces with a resource management framework to initialize 
-    sessions, manage task execution, and submit resources required for the workflow.
+    The ResourceEngine class is responsible for managing computing resources and creating
+    sessions for executing tasks. It interfaces with a resource management framework to
+    initialize sessions, manage task execution, and submit resources required for the workflow.
 
     Attributes:
-        session (rp.Session): A session instance used to manage and track task execution, 
-            uniquely identified by a generated ID. This session serves as the primary context for 
+        session (rp.Session): A session instance used to manage and track task execution,
+            uniquely identified by a generated ID. This session serves as the primary context for
             all task and resource management within the workflow.
-        
-        task_manager (rp.TaskManager): Manages the lifecycle of tasks, handling their submission, 
+
+        task_manager (rp.TaskManager): Manages the lifecycle of tasks, handling their submission,
             tracking, and completion within the session.
-        
-        pilot_manager (rp.PilotManager): Manages computing resources, known as "pilots," which 
-            are dynamically allocated based on the provided resources. The pilot manager coordinates 
+
+        pilot_manager (rp.PilotManager): Manages computing resources, known as "pilots," which
+            are dynamically allocated based on the provided resources. The pilot manager coordinates
             these resources to support task execution.
 
-        resource_pilot (rp.Pilot): Represents the submitted computing resources as a pilot. 
-            This pilot is described by the `resources` parameter provided during initialization, 
+        resource_pilot (rp.Pilot): Represents the submitted computing resources as a pilot.
+            This pilot is described by the `resources` parameter provided during initialization,
             specifying details such as CPU, GPU, and memory requirements.
-    
+
     Parameters:
-        resources (Dict): A dictionary specifying the resource requirements for the pilot, 
-            including details like the number of CPUs, GPUs, and memory. This dictionary 
+        resources (Dict): A dictionary specifying the resource requirements for the pilot,
+            including details like the number of CPUs, GPUs, and memory. This dictionary
             configures the pilot to match the needs of the tasks that will be executed.
-    
+
     Raises:
-        Exception: If session creation, pilot submission, or task manager setup fails, 
-            the ResourceEngine will raise an exception, ensuring the resources are correctly 
+        Exception: If session creation, pilot submission, or task manager setup fails,
+            the ResourceEngine will raise an exception, ensuring the resources are correctly
             allocated and managed.
 
     Example:
@@ -50,7 +51,7 @@ class ResourceEngine:
     """
 
     @typeguard.typechecked
-    def __init__(self, resources:Dict) -> None:
+    def __init__(self, resources: Dict) -> None:
         try:
             self.session = rp.Session(uid=ru.generate_id('rose.session',
                                                          mode=ru.ID_PRIVATE))
@@ -59,10 +60,10 @@ class ResourceEngine:
             self.resource_pilot = self.pilot_manager.submit_pilots(rp.PilotDescription(resources))
             self.task_manager.add_pilots(self.resource_pilot)
 
-            print(f'Resource Engine started successfully\n')
+            print('Resource Engine started successfully\n')
 
-        except Exception as e:
-            print(f'Resource Engine Failed to start, terminating\n')
+        except Exception:
+            print('Resource Engine Failed to start, terminating\n')
             raise
 
         except (KeyboardInterrupt, SystemExit):
@@ -71,7 +72,6 @@ class ResourceEngine:
             # SystemExit (which gets raised if the main threads exits for some other
             # reason).
             raise
-
 
     def state(self):
         return self.resource_pilot
@@ -85,13 +85,13 @@ class ResourceEngine:
 
 class WorkflowEngine:
     """
-    A WorkflowEngine manages and executes tasks within a Directed Acyclic Graph (DAG) structure, 
-    allowing for complex workflows where tasks may have dependencies. Each node in the DAG represents 
-    a distinct task, even if some nodes have identical labels. This allows for flexible, reusable 
-    task definitions in workflows with intricate dependencies.
+    A WorkflowEngine manages and executes tasks within a Directed Acyclic Graph (DAG)
+    structure, allowing for complex workflows where tasks may have dependencies. Each
+    node in the DAG represents a distinct task, even if some nodes have identical labels.
+    This allows for flexible, reusable task definitions in workflows with intricate dependencies.
 
-    In this DAG, nodes (tasks) can have the same label or identifier, but they represent distinct 
-    entities within the workflow. 
+    In this DAG, nodes (tasks) can have the same label or identifier, but they represent distinct
+    entities within the workflow.
 
     Example:
         Consider a simple DAG representation:
@@ -99,15 +99,15 @@ class WorkflowEngine:
         Nodes: A, A (two distinct nodes with identical labels)
         Edges: A → B, A → C
 
-        Here, two nodes labeled 'A' are distinct instances connected to 'B' and 'C', 
+        Here, two nodes labeled 'A' are distinct instances connected to 'B' and 'C',
         each with its own role in the workflow.
 
     Attributes:
-        engine (ResourceEngine): An instance of `ResourceEngine`, responsible for managing the 
-            runtime resources needed to execute tasks. This engine is agnostic to the specific 
+        engine (ResourceEngine): An instance of `ResourceEngine`, responsible for managing the
+            runtime resources needed to execute tasks. This engine is agnostic to the specific
             runtime context (RCT).
 
-        sequential_execution (bool): A flag indicating if tasks should be gathered and run in 
+        sequential_execution (bool): A flag indicating if tasks should be gathered and run in
             parallel wherever dependencies allow or sequentially. If `True`, tasks are executed
             in sequence according to dependencies. if `False` (default), it will run tasks
             concurrently when possible.
@@ -115,16 +115,16 @@ class WorkflowEngine:
         tasks (dict): A dictionary storing task identifiers and associated task objects (futures).
             This enables tracking of task states and results as the workflow progresses.
 
-        dependencies (dict): A dictionary that maps each task to its list of dependencies, 
+        dependencies (dict): A dictionary that maps each task to its list of dependencies,
             enabling the engine to resolve dependencies before executing each task.
 
-        task_manager: This attribute references the `task_manager` provided by the `ResourceEngine`, 
+        task_manager: This attribute references the `task_manager` provided by the `ResourceEngine`,
             which handles the underlying task operations and states.
     """
 
     @typeguard.typechecked
-    def __init__(self, engine:ResourceEngine,
-                 sequential_execution:bool=False) -> None:
+    def __init__(self, engine: ResourceEngine,
+                 sequential_execution: bool = False) -> None:
 
         self.tasks = {}
         self.engine = engine
@@ -133,13 +133,14 @@ class WorkflowEngine:
         self.sequential_execution = sequential_execution
 
         if not self.sequential_execution:
-            print('Workflow engine will use conccurent tasks execution strategy when is possible!\n')
+            print('Workflow engine will use conccurent tasks\
+                   execution strategy when is possible!\n')
         else:
-            print('Workflow engine will use sequential tasks execution strategy!\n')
-
+            print('Workflow engine will use sequential tasks\
+                   execution strategy!\n')
 
     @typeguard.typechecked
-    def __call__(self, func:Callable):
+    def __call__(self, func: Callable):
         """Use RoseEngine as a decorator to register workflow tasks."""
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -157,10 +158,13 @@ class WorkflowEngine:
             task_fut.id = task_descriptions['uid'].split('task.')[1]
 
             # Store the future and task description in the tasks dictionary, keyed by UID
-            self.tasks[task_descriptions['uid']] = {'future': task_fut, 'description': task_descriptions}
+            self.tasks[task_descriptions['uid']] = {'future': task_fut,
+                                                    'description': task_descriptions}
             self.dependencies[task_descriptions['uid']] = task_deps
 
-            print(f"Registered task '{task_descriptions['name']}' and id of {task_fut.id} with dependencies: {[dep['name'] for dep in task_deps]}")
+            msg = f"Registered task '{task_descriptions['name']}' and id of {task_fut.id}"
+            msg += f" with dependencies: {[dep['name'] for dep in task_deps]}"
+            print(msg)
 
             if self.sequential_execution:
                 self.run()
@@ -169,12 +173,10 @@ class WorkflowEngine:
 
         return wrapper
 
-
     def __assign_task_uid(self):
-           uid = ru.generate_id('task.%(item_counter)06d',
-                                ru.ID_CUSTOM, ns=self.engine.session.uid)
-           return uid
-
+        uid = ru.generate_id('task.%(item_counter)06d',
+                             ru.ID_CUSTOM, ns=self.engine.session.uid)
+        return uid
 
     def link_data_deps(self, task_id, file_name=None):
         if not file_name:
@@ -184,7 +186,6 @@ class WorkflowEngine:
                      'target': f"task:///{file_name}", 'action': rp.TRANSFER}
 
         return data_deps
-
 
     def _detect_dependencies(self, possible_dependencies):
 
@@ -205,12 +206,10 @@ class WorkflowEngine:
 
         return dependencies, input_files, output_files
 
-
     def clear(self):
 
         self.tasks.clear()
         self.dependencies.clear()
-
 
     def run(self):
 
@@ -241,9 +240,10 @@ class WorkflowEngine:
                             if output_file in task_desc.metadata['input_files']:
                                 input_staging.append(self.link_data_deps(dep['uid'], output_file))
 
-                    # Add independent input files to input_staging like local file, https file and so on
+                    # Add independent input files to input_staging: local file, https file
                     for input_file in task_desc.metadata['input_files']:
-                        if input_file not in [item['target'].split('/')[-1] for item in input_staging]:
+                        _data_target = [item['target'].split('/')[-1] for item in input_staging]
+                        if input_file not in _data_target:
                             # FIXME: link_data_deps() must be able to link input files
                             input_staging.append({'source': input_file,
                                                   'target': f"task:///{input_file}",
@@ -253,7 +253,9 @@ class WorkflowEngine:
 
                     # Add the task to the submission list
                     to_submit.append(task_desc)
-                    print(f"Task '{task_desc.name}' ready to submit; resolved dependencies: {[dep['name'] for dep in dependencies]}")
+                    msg = f"Task '{task_desc.name}' ready to submit;"
+                    msg += f" resolved dependencies: {[dep['name'] for dep in dependencies]}"
+                    print(msg)
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
@@ -263,7 +265,6 @@ class WorkflowEngine:
             for task in to_submit:
                 resolved.add(task.uid)
                 unresolved.remove(task.uid)
-
 
     def submit(self, tasks):
 
@@ -286,5 +287,5 @@ class WorkflowEngine:
             elif task.state == rp.DONE:
                 task_fut.set_result(task.state)  # Set the result to the future
                 self.tasks[task.uid]['description'].stdout = task.stdout
-            
+
             print(f'Task {task.name} finished with state: {task.state}')
