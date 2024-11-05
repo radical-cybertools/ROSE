@@ -21,7 +21,7 @@ def task3(*args):
 print('Running 1-layer funnel DAG workflow\n')
 print("Shape:")
 print("""
-  task1      task2
+  task1      task2 <---- running in parallel
      \\       /
        task3
 """)
@@ -33,9 +33,9 @@ flow.run()
 print('Running 2-layer funnel DAG workflow\n')
 print("Shape:")
 print("""
-   task1      task2
+   task1      task2 <---- running in parallel
      |          |
-   task2      task1
+   task2      task1 <---- running in parallel
      \\        /
        task3
 """)
@@ -47,12 +47,17 @@ flow.run()
 print('Running sequential pipelines\n')
 print("Shape:")
 print("""
-   Run 1          Run 2
-   task1          task1
-      |             |
-   task2          task2
-      |             |
-   task3          task3
+   task1
+     | 
+   task2
+     | 
+   task3
+   -------
+   task1
+     |
+   task2
+     |
+   task3
 """)
 for i in range(2):
     task3(task2(task1()))
@@ -63,11 +68,12 @@ for i in range(2):
 print('Running concurrent pipelines\n')
 print("Shape:")
 print("""
-   task1       task1
-      |           |
-   task2       task2
-      |           |
-   task3       task3
+
+   task1          task1
+      |             |
+   task2          task2
+      |             |
+   task3          task3
 """)
 for i in range(2):
     task3(task2(task1()))
