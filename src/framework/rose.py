@@ -10,6 +10,11 @@ import radical.pilot as rp
 import typeguard
 from data import InputFile, OutputFile
 
+class Task(rp.TaskDescription):
+    def __init__(self, *args, **kwargs):
+        kwargs['name'] = 'SimulationTask'
+        super().__init__(kwargs)
+
 
 class ResourceEngine:
     """
