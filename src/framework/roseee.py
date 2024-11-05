@@ -22,7 +22,7 @@ class ResourceEngine:
             self.pilot_manager = rp.PilotManager(self.session)
             self.resource_pilot = self.pilot_manager.submit_pilots(rp.PilotDescription(resources))
             self.task_manager.add_pilots(self.resource_pilot)
-        
+
         except Exception as e:
             print(f'Resource Engine Failed to start, terminating')
             raise
@@ -73,8 +73,7 @@ class WorkflowEngine:
         def wrapper(*args, **kwargs):
             task_descriptions = func(*args, **kwargs)
             task_descriptions['name'] = func.__name__
-            task_descriptions['uid'] = ru.generate_id('task.%(item_counter)06d',
-                                                      ru.ID_CUSTOM, ns=self.engine.session.uid)
+            task_descriptions['uid'] = self.__assign_task_uid()
 
             task_deps, input_files_deps, output_files_deps = self._detect_dependencies(args)
 
@@ -84,7 +83,7 @@ class WorkflowEngine:
 
             task_fut = Future()  # Create a Future object for this task
             task_fut.id = task_descriptions['uid'].split('task.')[1]
-            
+
             # Store the future and task description in the tasks dictionary, keyed by UID
             self.tasks[task_descriptions['uid']] = {'future': task_fut, 'description': task_descriptions}
             self.dependencies[task_descriptions['uid']] = task_deps
@@ -94,6 +93,12 @@ class WorkflowEngine:
             return task_descriptions
 
         return wrapper
+
+
+    def __assign_task_uid(self):
+           uid = ru.generate_id('task.%(item_counter)06d',
+                                ru.ID_CUSTOM, ns=self.engine.session.uid)
+           return uid
 
 
     def link_data_deps(self, task_id, file_name=None):
@@ -122,16 +127,14 @@ class WorkflowEngine:
             # it is output file needs to be obtained from the task folder
             elif isinstance(possible_dep, OutputFile):
                 output_files.append(possible_dep.filename)
-        
-        return dependencies, input_files, output_files
 
+        return dependencies, input_files, output_files
 
 
     def clear(self):
 
         self.tasks.clear()
         self.dependencies.clear()
-
 
 
     def run(self):
@@ -146,6 +149,11 @@ class WorkflowEngine:
             to_submit = []  # Collect tasks to submit this round
 
             for task_uid in list(unresolved):
+                if self.tasks[task_uid]['future'].done():
+                    resolved.add(task_uid)
+                    unresolved.remove(task_uid)
+                    continue
+
                 dependencies = self.dependencies[task_uid]
                 # Check if all dependencies have been resolved
                 if all(dep['uid'] in resolved for dep in dependencies):
@@ -183,7 +191,7 @@ class WorkflowEngine:
                 resolved.add(task.uid)
                 unresolved.remove(task.uid)
 
-        self.clear()
+        #self.clear()
 
 
     def submit(self, tasks):
@@ -206,3 +214,4 @@ class WorkflowEngine:
             elif task.state == rp.DONE:
                 print(f'{task.name} is Done and has output of {task.stdout}')
                 task_fut.set_result('Done')  # Set the result to the future
+
