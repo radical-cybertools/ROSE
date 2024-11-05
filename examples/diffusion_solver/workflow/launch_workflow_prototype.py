@@ -12,7 +12,7 @@ from roseee import ResourceEngine, WorkflowEngine
 from rose import SimulationTask, ActiveLearnTask, TrainingTask
 
 def set_argparse():
-    parser = argparse.ArgumentParser(description="Diffusion_Solver_entk_for_rose")
+    parser = argparse.ArgumentParser(description="Diffusion_Solver_rose_prototype")
 
     parser.add_argument('--num_phases', type=int, default=3,
                         help='number of phases for doing active learning')
@@ -41,8 +41,8 @@ my_args = set_argparse()
 res_desc = {
         'resource': 'anl.polaris',
         'queue'   : my_args.queue,
-        'walltime': 60, #MIN
-        'cpus'    : 32 * my_args.num_nodes,
+        'runtime' : 60, #MIN
+        'cores'   : 32 * my_args.num_nodes,
         'gpus'    : 4 * my_args.num_nodes,
         'project' : my_args.project_id
         }
