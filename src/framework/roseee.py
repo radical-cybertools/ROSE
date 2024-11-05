@@ -133,9 +133,9 @@ class WorkflowEngine:
         self.sequential_execution = sequential_execution
 
         if not self.sequential_execution:
-            print('Workflow engine will use conccurent tasks execution startegy when is possible!\n')
+            print('Workflow engine will use conccurent tasks execution strategy when is possible!\n')
         else:
-            print('Workflow engine will use sequential tasks execution startegy!\n')
+            print('Workflow engine will use sequential tasks execution strategy!\n')
 
 
     @typeguard.typechecked
