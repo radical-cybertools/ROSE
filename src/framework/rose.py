@@ -12,18 +12,21 @@ from data import InputFile, OutputFile
 
 class Task(rp.TaskDescription):
     """
-    Represents a task description by extending the `TaskDescription` class from `rp` (an external module).
+    Represents a task description by extending the `TaskDescription` class from `rp`
+    (an external module).
 
-    This class is primarily used to define and manage the details of a task, inheriting properties and methods 
-    from the `rp.TaskDescription` base class. Additional arguments and keyword arguments can be passed to further 
-    configure the task, which are then forwarded to the base class.
+    This class is primarily used to define and manage the details of a task, inheriting
+    properties and methods from the `rp.TaskDescription` base class. Additional arguments
+    and keyword arguments can be passed to further configure the task, which are then
+    forwarded to the base class.
 
     Parameters
     ----------
     *args : tuple
         Positional arguments to pass to the parent class constructor, if needed.
     **kwargs : dict
-        Keyword arguments to configure the task. Passed directly to the `TaskDescription` initializer.
+        Keyword arguments to configure the task. Passed directly to the `TaskDescription`
+        initializer.
 
     Methods
     -------
@@ -49,8 +52,8 @@ class ResourceEngine:
             tracking, and completion within the session.
 
         pilot_manager (rp.PilotManager): Manages computing resources, known as "pilots," which
-            are dynamically allocated based on the provided resources. The pilot manager coordinates
-            these resources to support task execution.
+            are dynamically allocated based on the provided resources. The pilot manager
+            coordinates these resources to support task execution.
 
         resource_pilot (rp.Pilot): Represents the submitted computing resources as a pilot.
             This pilot is described by the `resources` parameter provided during initialization,
@@ -89,20 +92,47 @@ class ResourceEngine:
             print('Resource Engine Failed to start, terminating\n')
             raise
 
-        except (KeyboardInterrupt, SystemExit):
+        except (KeyboardInterrupt, SystemExit) as e:
             # the callback called sys.exit(), and we can here catch the
             # corresponding KeyboardInterrupt exception for shutdown.  We also catch
             # SystemExit (which gets raised if the main threads exits for some other
             # reason).
-            raise
+            excp_msg = f'Resource engine failed internally, please check {self.session}'
+            raise SystemExit(excp_msg) from e
 
     def state(self):
+        """
+        Retrieve the current state of the resource pilot.
+
+        Returns:
+            The current state of the resource pilot.
+        """
         return self.resource_pilot
 
     def task_state_cb(self, task, state):
+        """
+        Callback function for handling task state changes.
+
+        Args:
+            task: The task object whose state has changed.
+            state: The new state of the task.
+        
+        Note:
+            This method is intended to be overridden or extended
+            to perform specific actions when a task's state changes.
+        """
         pass
 
     def shutdown(self) -> None:
+        """
+        Gracefully shuts down the session, downloading any necessary data.
+
+        This method ensures that the session is properly closed and any
+        required data is downloaded before finalizing the shutdown.
+
+        Returns:
+            None
+        """
         self.session.close(download=True)
 
 
@@ -141,8 +171,8 @@ class WorkflowEngine:
         dependencies (dict): A dictionary that maps each task to its list of dependencies,
             enabling the engine to resolve dependencies before executing each task.
 
-        task_manager: This attribute references the `task_manager` provided by the `ResourceEngine`,
-            which handles the underlying task operations and states.
+        task_manager: This attribute references the `task_manager` provided by the
+            `ResourceEngine`, which handles the underlying task operations and states.
     """
 
     @typeguard.typechecked
@@ -156,11 +186,11 @@ class WorkflowEngine:
         self.sequential_execution = sequential_execution
 
         if not self.sequential_execution:
-            print('Workflow engine will use conccurent tasks\
-                   execution strategy when is possible!\n')
+            print('Workflow engine will use conccurent tasks'
+                  ' execution strategy when is possible!\n')
         else:
-            print('Workflow engine will use sequential tasks\
-                   execution strategy!\n')
+            print('Workflow engine will use sequential tasks'
+                  ' execution strategy!\n')
 
     @typeguard.typechecked
     def __call__(self, func: Callable):
@@ -196,12 +226,27 @@ class WorkflowEngine:
 
         return wrapper
 
+
+    @staticmethod
+    def shutdown_on_failure(func: Callable):
+        """
+        Decorator that calls `shutdown` if an exception occurs in the decorated function.
+        """
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except Exception as e:
+                self.engine.shutdown()  # Call shutdown on exception
+                raise e
+        return wrapper
+
+
     def __assign_task_uid(self):
         uid = ru.generate_id('task.%(item_counter)06d',
                              ru.ID_CUSTOM, ns=self.engine.session.uid)
         return uid
 
-    def link_data_deps(self, task_id, file_name=None):
+    def link_explicit_data_deps(self, task_id, file_name=None):
         if not file_name:
             file_name = task_id
 
@@ -209,6 +254,23 @@ class WorkflowEngine:
                      'target': f"task:///{file_name}", 'action': rp.TRANSFER}
 
         return data_deps
+
+    def link_implicit_data_deps(self, src_task):
+
+        cmd1 = f'export SRC_TUID={src_task.uid}'
+
+        cmd2 = (
+            'python -c "import os; import shutil; import glob; '
+            'src_dir = os.path.join(os.environ[\'RP_PILOT_SANDBOX\'], os.environ[\'SRC_TUID\']); '
+            'dest_dir = os.environ[\'RP_TASK_SANDBOX\']; '
+            'files = [f for f in glob.glob(os.path.join(src_dir, \'*\')) '
+            'if not os.path.basename(f).startswith(\'task.\')]; '
+            '[shutil.copy(file_path, dest_dir) for file_path in files]"')
+
+        python_commands = [cmd1, cmd2]
+
+        return python_commands
+
 
     def _detect_dependencies(self, possible_dependencies):
 
@@ -234,6 +296,7 @@ class WorkflowEngine:
         self.tasks.clear()
         self.dependencies.clear()
 
+    @shutdown_on_failure
     def run(self):
 
         # Iteratively resolve dependencies and submit tasks when ready
@@ -259,9 +322,16 @@ class WorkflowEngine:
                     # Gather staging information for input files
                     for dep in dependencies:
                         dep_desc = self.tasks[dep['uid']]['description']
+
+                        # implicit data dependcies
+                        if not dep_desc.metadata.get('output_files'):
+                            task_desc.pre_exec.extend(self.link_implicit_data_deps(dep_desc))
+
+                        # explicit data dependcies
                         for output_file in dep_desc.metadata['output_files']:
                             if output_file in task_desc.metadata['input_files']:
-                                input_staging.append(self.link_data_deps(dep['uid'], output_file))
+                                input_staging.append(self.link_explicit_data_deps(dep['uid'],
+                                                                                  output_file))
 
                     # Add independent input files to input_staging: local file, https file
                     for input_file in task_desc.metadata['input_files']:
@@ -289,6 +359,7 @@ class WorkflowEngine:
                 resolved.add(task.uid)
                 unresolved.remove(task.uid)
 
+    @shutdown_on_failure
     def submit(self, tasks):
 
         print(f'submitting {[t.name for t in tasks]} for execution')
