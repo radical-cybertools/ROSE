@@ -1,11 +1,11 @@
-from radical import entk
 import os
 import argparse, sys, math
+import json
+import time
+
+from radical import entk
 import radical.pilot as rp
 import radical.utils as ru
-import json
-import math
-import time
 
 
 class ActiveLearningAlgoSeletcion(object):
@@ -98,7 +98,7 @@ class ActiveLearningAlgoSeletcion(object):
         s.add_tasks(t)
         return s
 
-    def run_al(self, phase_idx):
+    def run_al(self, phase_idx, al_func):
         s = entk.Stage()
         t = entk.Task()
         
@@ -144,7 +144,7 @@ class ActiveLearningAlgoSeletcion(object):
 
     def run_workflow(self):
         pipeline_list = []
-        for al_func in self.args.al_func_list
+        for al_func in self.args.al_func_list:
             p = self.generate_pipeline(al_func)
             pipeline_list.append(p)
         self.am.workflow = pipeline_list
@@ -152,7 +152,7 @@ class ActiveLearningAlgoSeletcion(object):
 
 
 if __name__ == "__main__":
-    wf = SurrogateTraining()
+    wf = ActiveLearningAlgoSeletcion()
     wf.set_resource(res_desc = {
         'resource': 'anl.polaris',
         'queue'   : wf.args.queue,

@@ -51,11 +51,11 @@ class SurrogateTraining(object):
     def get_seed(self, basic_seed, task_type, phase):
         if task_type == 'sim':
             return basic_seed * 1001 + phase * 11 + 1
-        else if task_type == 'train':
+        elif task_type == 'train':
             return basic_seed * 1001 + phase * 11 + 2
-        else if task_type == 'al':
+        elif task_type == 'al':
             return basic_seed * 1001 + phase * 11 + 3
-        else
+        else:
             raise ValueError(f'task_type is not set up correctly: {task_type}')
 
     def run_sim(self, phase_idx, basic_seed):
@@ -157,7 +157,7 @@ class SurrogateTraining(object):
 
     def run_workflow(self):
         pipeline_list = []
-        for basic_seed in range(self.args.seed, self.args.seed + self.args.num_reprod)
+        for basic_seed in range(self.args.seed, self.args.seed + self.args.num_reprod):
             p = self.generate_pipeline(basic_seed)
             pipeline_list.append(p)
         self.am.workflow = pipeline_list
