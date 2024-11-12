@@ -240,7 +240,6 @@ class WorkflowEngine:
                 raise e
         return wrapper
 
-
     def __assign_task_uid(self):
         uid = ru.generate_id('task.%(item_counter)06d',
                              ru.ID_CUSTOM, ns=self.engine.session.uid)
@@ -260,7 +259,7 @@ class WorkflowEngine:
         cmd1 = f'export SRC_TUID={src_task.uid}'
 
         cmd2 = (
-            'python -c "import os; import shutil; import glob; '
+            '$(which python3) -c "import os; import shutil; import glob; '
             'src_dir = os.path.join(os.environ[\'RP_PILOT_SANDBOX\'], os.environ[\'SRC_TUID\']); '
             'dest_dir = os.environ[\'RP_TASK_SANDBOX\']; '
             'files = [f for f in glob.glob(os.path.join(src_dir, \'*\')) '
