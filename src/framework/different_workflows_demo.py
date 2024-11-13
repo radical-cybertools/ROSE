@@ -25,8 +25,9 @@ print("""
      \\       /
        task3
 """)
-task3(task1(), task2())
-flow.run()
+t3 = task3(task1(), task2())
+
+print(t3.result())
 
 # ====================================================
 # Workflow-2: 2-layer funnel DAG
@@ -39,8 +40,9 @@ print("""
      \\        /
        task3
 """)
-task3(task2(task1()), task1(task2()))
-flow.run()
+t3 = task3(task2(task1()), task1(task2()))
+print(t3.result())
+
 
 # ====================================================
 # Workflow-3: Sequential Pipelines (Repeated Twice)
@@ -59,9 +61,10 @@ print("""
      |
    task3
 """)
+res = []
 for i in range(2):
-    task3(task2(task1()))
-    flow.run()
+    t3 = task3(task2(task1()))
+    print(t3.result())
 
 # ====================================================
 # Workflow-4: Concurrent Pipelines
@@ -75,9 +78,11 @@ print("""
       |             |
    task3          task3
 """)
+res = []
 for i in range(2):
-    task3(task2(task1()))
+    t3 = task3(task2(task1()))
+    res.append(t3)
 
-flow.run()
+print([t.result() for t in res])
 
 engine.shutdown()

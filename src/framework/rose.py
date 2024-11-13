@@ -1,8 +1,12 @@
 # flake8: noqa
+import queue
+import time
+import threading
 
 from functools import wraps
 from typing import Callable, Dict
 from concurrent.futures import Future
+from concurrent.futures import ThreadPoolExecutor
 
 import radical.utils as ru
 import radical.pilot as rp
@@ -121,7 +125,7 @@ class ResourceEngine:
             This method is intended to be overridden or extended
             to perform specific actions when a task's state changes.
         """
-        pass
+        raise NotImplementedError
 
     def shutdown(self) -> None:
         """
@@ -160,11 +164,6 @@ class WorkflowEngine:
             runtime resources needed to execute tasks. This engine is agnostic to the specific
             runtime context (RCT).
 
-        sequential_execution (bool): A flag indicating if tasks should be gathered and run in
-            parallel wherever dependencies allow or sequentially. If `True`, tasks are executed
-            in sequence according to dependencies. if `False` (default), it will run tasks
-            concurrently when possible.
-
         tasks (dict): A dictionary storing task identifiers and associated task objects (futures).
             This enables tracking of task states and results as the workflow progresses.
 
@@ -175,22 +174,40 @@ class WorkflowEngine:
             `ResourceEngine`, which handles the underlying task operations and states.
     """
 
-    @typeguard.typechecked
-    def __init__(self, engine: ResourceEngine,
-                 sequential_execution: bool = False) -> None:
-
+    #@typeguard.typechecked
+    def __init__(self, engine: ResourceEngine) -> None:
         self.tasks = {}
         self.engine = engine
+        self.resolved = set()
+        self.unresolved = set()
         self.dependencies = {}
+        self.queue = queue.Queue()
         self.task_manager = self.engine.task_manager
-        self.sequential_execution = sequential_execution
 
-        if not self.sequential_execution:
-            print('Workflow engine will use conccurent tasks'
-                  ' execution strategy when is possible!\n')
-        else:
-            print('Workflow engine will use sequential tasks'
-                  ' execution strategy!\n')
+        # Start the submission thread
+        submission_thread = threading.Thread(target=self.submit, name='WFSubmitThread')
+        submission_thread.daemon = True
+        submission_thread.start()
+
+        # Start the run method in a background thread
+        run_thread = threading.Thread(target=self.run, name='WFRunThread')
+        run_thread.daemon = True
+        run_thread.start()
+
+        self.task_manager.register_callback(self.callbacks)
+        self._conccurent_wf_submitter = ThreadPoolExecutor()
+
+    def as_async(self, func: Callable):
+        """
+        A decorator to run `blocking` function in a seperate thread.
+        """
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Submit the function to the thread pool and return the Future
+            future = self._conccurent_wf_submitter.submit(func, *args, **kwargs)
+            return future  # The caller can wait for the future's result if needed
+
+        return wrapper
 
     @typeguard.typechecked
     def __call__(self, func: Callable):
@@ -209,6 +226,7 @@ class WorkflowEngine:
 
             task_fut = Future()  # Create a Future object for this task
             task_fut.id = task_descriptions['uid'].split('task.')[1]
+            task_fut.task = task_descriptions
 
             # Store the future and task description in the tasks dictionary, keyed by UID
             self.tasks[task_descriptions['uid']] = {'future': task_fut,
@@ -219,13 +237,9 @@ class WorkflowEngine:
             msg += f" with dependencies: {[dep['name'] for dep in task_deps]}"
             print(msg)
 
-            if self.sequential_execution:
-                self.run()
-
-            return task_descriptions
+            return task_fut
 
         return wrapper
-
 
     @staticmethod
     def shutdown_on_failure(func: Callable):
@@ -241,11 +255,36 @@ class WorkflowEngine:
         return wrapper
 
     def __assign_task_uid(self):
+        """
+        Generates a unique identifier (UID) for a task.
+
+        This method generates a custom task UID based on the format `task.%(item_counter)06d`
+        and assigns it a session-specific namespace using the engine session UID.
+
+        Returns:
+            str: The generated unique identifier for the task.
+        """
         uid = ru.generate_id('task.%(item_counter)06d',
                              ru.ID_CUSTOM, ns=self.engine.session.uid)
         return uid
 
     def link_explicit_data_deps(self, task_id, file_name=None):
+        """
+        Creates a dictionary linking explicit data dependencies between tasks.
+
+        This method defines the source and target for data transfer between tasks, 
+        using the provided task ID and optional file name. If no file name is provided, 
+        the task ID is used as the file name.
+
+        Args:
+            task_id (str): The task ID to link data dependencies from.
+            file_name (str, optional): The file name to be used in the data dependency. 
+                                        Defaults to None, in which case the task_id is used.
+
+        Returns:
+            dict: A dictionary containing the data dependencies, including source, 
+                target, and transfer action.
+        """
         if not file_name:
             file_name = task_id
 
@@ -255,7 +294,19 @@ class WorkflowEngine:
         return data_deps
 
     def link_implicit_data_deps(self, src_task):
+        """
+        Generates commands to link implicit data dependencies for a source task.
 
+        This method creates shell commands to copy files from the source task's sandbox
+        to the current task's sandbox, excluding task-related files. The commands are 
+        returned as a list of Python shell commands to execute in the task environment.
+
+        Args:
+            src_task (Task): The source task whose files are to be copied.
+
+        Returns:
+            list: A list of shell commands to link implicit data dependencies between tasks.
+        """
         cmd1 = f'export SRC_TUID={src_task.uid}'
 
         cmd2 = (
@@ -270,16 +321,35 @@ class WorkflowEngine:
 
         return python_commands
 
-
     def _detect_dependencies(self, possible_dependencies):
+        """
+        Detects and categorizes possible dependencies into tasks, input files, and output files.
 
+        This method iterates over a list of possible dependencies and classifies them into three
+          categories:
+        - Tasks that are instances of `Future` with a `task` attribute (task dependencies).
+        - Input files that are instances of `InputFile` (files required by the task).
+        - Output files that are instances of `OutputFile` (files produced by the task).
+
+        Args:
+            possible_dependencies (list): A list of possible dependencies, which can include
+            tasks, input files, and output files.
+
+        Returns:
+            tuple: A tuple containing three lists:
+                - `dependencies`: A list of tasks that need to be completed.
+                - `input_files`: A list of input file names that need to be fetched.
+                - `output_files`: A list of output file names that need to be retrieved
+                   from the task folder.
+        """
         dependencies = []
         input_files = []
         output_files = []
 
         for possible_dep in possible_dependencies:
             # it is a task deps
-            if isinstance(possible_dep, rp.TaskDescription):
+            if isinstance(possible_dep, Future) and hasattr(possible_dep, 'task'):
+                possible_dep = possible_dep.task
                 dependencies.append(possible_dep)
             # it is input file needs to be obtained from somewhere
             elif isinstance(possible_dep, InputFile):
@@ -291,29 +361,35 @@ class WorkflowEngine:
         return dependencies, input_files, output_files
 
     def clear(self):
+        """
+        clear worfklow tasks and their deps
+        """
 
         self.tasks.clear()
         self.dependencies.clear()
 
     @shutdown_on_failure
     def run(self):
+        """Background method to resolve dependencies and submit tasks."""
 
-        # Iteratively resolve dependencies and submit tasks when ready
-        resolved = set()  # Track tasks that have been resolved
-        unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
+        while True:
+            # Continuously try to resolve dependencies and submit tasks as they become ready
+            self.unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
 
-        while unresolved:
-            to_submit = []  # Collect tasks to submit this round
+            to_submit = []  # Collect tasks to submit in each iteration
 
-            for task_uid in list(unresolved):
+            for task_uid in list(self.unresolved):
                 if self.tasks[task_uid]['future'].done():
-                    resolved.add(task_uid)
-                    unresolved.remove(task_uid)
+                    self.resolved.add(task_uid)
+                    self.unresolved.remove(task_uid)
+                    continue
+
+                if self.tasks[task_uid]['future'].running():
                     continue
 
                 dependencies = self.dependencies[task_uid]
-                # Check if all dependencies have been resolved
-                if all(dep['uid'] in resolved for dep in dependencies):
+                # Check if all dependencies have been resolved and are done
+                if all(dep['uid'] in self.resolved and self.tasks[dep['uid']]['future'].done() for dep in dependencies):
                     task_desc = self.tasks[task_uid]['description']
 
                     input_staging = []
@@ -322,15 +398,15 @@ class WorkflowEngine:
                     for dep in dependencies:
                         dep_desc = self.tasks[dep['uid']]['description']
 
-                        # implicit data dependcies
+                        # implicit data dependencies
                         if not dep_desc.metadata.get('output_files'):
                             task_desc.pre_exec.extend(self.link_implicit_data_deps(dep_desc))
 
-                        # explicit data dependcies
+                        # explicit data dependencies
                         for output_file in dep_desc.metadata['output_files']:
                             if output_file in task_desc.metadata['input_files']:
                                 input_staging.append(self.link_explicit_data_deps(dep['uid'],
-                                                                                  output_file))
+                                                                                output_file))
 
                     # Add independent input files to input_staging: local file, https file
                     for input_file in task_desc.metadata['input_files']:
@@ -351,34 +427,61 @@ class WorkflowEngine:
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
-                self.submit(to_submit)
+                self.queue.put(to_submit)
+                for t in to_submit:
+                    self.tasks[t.uid]['future'].set_running_or_notify_cancel()
+                    self.resolved.add(t.uid)
+                    self.unresolved.remove(t.uid)
 
-            # make sure to update dependencies records only when tasks are submitted/succeeded
-            for task in to_submit:
-                resolved.add(task.uid)
-                unresolved.remove(task.uid)
+            time.sleep(0.5)  # Small delay to prevent excessive CPU usage in the loop
+
+    def callbacks(self, task, state):
+        """
+        Callback function to handle task state changes and set results or exceptions.
+
+        This method is called when the state of a task changes. It updates the corresponding 
+        `future` in the task dictionary with either the task's result or an exception, 
+        depending on the final state of the task.
+
+        Args:
+            task (rp.Task): The task whose state has changed.
+            state (str): The current state of the task (e.g., rp.DONE, rp.FAILED, rp.CANCELED).
+
+        Raises:
+            Exception: If the task has failed or was canceled, an exception is set on the future.
+        """
+        task_fut = self.tasks[task.uid]['future']
+
+        if state == rp.DONE:
+            print(f'{task.uid} is DONE')
+            task_fut.set_result(task.stdout)
+
+        elif state in [rp.FAILED, rp.CANCELED]:
+            excp = Exception(task.stderr)
+            task_fut.set_exception(excp)
 
     @shutdown_on_failure
-    def submit(self, tasks):
+    def submit(self):
+        """
+        Submits tasks from the queue for execution in a loop until an error occurs.
 
-        print(f'submitting {[t.name for t in tasks]} for execution')
+        This method repeatedly checks the task queue for new tasks and submits them for 
+        execution using the `task_manager.submit_tasks()` method. If the queue is empty, 
+        the method waits briefly before checking again. If any exceptions are encountered 
+        during the submission process, they are caught and logged.
 
-        # This assumes `submit_tasks` can take a list of task descriptions
-        submitted_tasks = self.task_manager.submit_tasks(tasks)
+        The method will keep running until it encounters an error or is explicitly stopped.
 
-        # Wait for all tasks to complete
-        self.task_manager.wait_tasks([task.uid for task in submitted_tasks])
-
-        # Set the result for each future
-        for task in submitted_tasks:
-            task_fut = self.tasks[task.uid]['future']
-
-            if task.state in [rp.FAILED, rp.CANCELED]:
-                task_fut.set_exception(task.state)
-                self.tasks[task.uid]['description'].stderr = task.stderr
-
-            elif task.state == rp.DONE:
-                task_fut.set_result(task.state)  # Set the result to the future
-                self.tasks[task.uid]['description'].stdout = task.stdout
-
-            print(f'Task {task.name} finished with state: {task.state}')
+        Raises:
+            Exception: If any exception occurs while submitting tasks, it is logged.
+        """
+        while True:
+            try:
+                tasks = self.queue.get(timeout=1)
+                print(f'submitting {[t.name for t in tasks]} for execution')
+                self.task_manager.submit_tasks(tasks)
+            except queue.Empty:
+                time.sleep(0.5)
+            except Exception as e:
+                # Handle other possible exceptions
+                print(f"An error occurred: {e}")
