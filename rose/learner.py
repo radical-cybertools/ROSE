@@ -1,5 +1,5 @@
-from rose import ResourceEngine
-from rose import WorkflowEngine
+from .engine import ResourceEngine
+from .engine import WorkflowEngine
 from typing import Callable
 from functools import wraps
 

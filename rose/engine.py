@@ -12,7 +12,7 @@ import radical.utils as ru
 import radical.pilot as rp
 
 import typeguard
-from data import InputFile, OutputFile
+from .data import InputFile, OutputFile
 
 class Task(rp.TaskDescription):
     """
