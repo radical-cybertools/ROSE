@@ -174,13 +174,13 @@ class WorkflowEngine:
             `ResourceEngine`, which handles the underlying task operations and states.
     """
 
-    #@typeguard.typechecked
+    @typeguard.typechecked
     def __init__(self, engine: ResourceEngine) -> None:
         self.tasks = {}
         self.engine = engine
         self.resolved = set()
-        self.unresolved = set()
         self.dependencies = {}
+        self.unresolved = set()
         self.queue = queue.Queue()
         self.task_manager = self.engine.task_manager
 
