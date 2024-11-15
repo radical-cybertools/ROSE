@@ -1,5 +1,4 @@
-from data import InputFile, OutputFile
-from rose import ResourceEngine, WorkflowEngine, Task
+from rose.engine import ResourceEngine, WorkflowEngine, Task
 
 engine = ResourceEngine({'resource': 'local.localhost'})
 flow = WorkflowEngine(engine=engine)
