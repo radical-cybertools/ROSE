@@ -1,10 +1,15 @@
-from .engine import ResourceEngine
-from .engine import WorkflowEngine
+import typeguard
+
 from typing import Callable
 from functools import wraps
 
+from .engine import ResourceEngine
+from .engine import WorkflowEngine
+
 
 class ActiveLearner(WorkflowEngine):
+    
+    @typeguard.typechecked
     def __init__(self, engine: ResourceEngine) -> None:
 
         self.criterion_function = {}
