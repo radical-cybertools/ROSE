@@ -74,11 +74,18 @@ class ActiveLearner(WorkflowEngine):
         return super().__call__(func)(*args, **kwargs)
 
 
-    def _invok_stop_criterion(self):
+    def _invok_stop_criterion(self, *args, **kwargs):
+        # Extract the function, args, and kwargs from the criterion_function
         func = self.criterion_function['func']
-        args = self.criterion_function['args'] + args
-        kwargs = self.criterion_function['kwargs']
-        return func(*args, **kwargs)
+        criterion_args = self.criterion_function['args']
+        criterion_kwargs = self.criterion_function['kwargs']
+        
+        # Concatenate the new args and kwargs with the existing ones
+        all_args = criterion_args + args  # Concatenate tuple of args
+        all_kwargs = {**criterion_kwargs, **kwargs}  # Merge the dictionaries of kwargs
+        
+        # Call the function with the combined arguments and kwargs
+        return func(*all_args, **all_kwargs)
 
 
     def _start_pre_step(self):
@@ -142,7 +149,7 @@ class ActiveLearner(WorkflowEngine):
         elif max_iter and self.criterion_function:
             print('Both stop condition and max_iter were specified, running until they are satisified')
             # Run up to max_iter or until stop criterion is met
-            for _ in range(max_iter):
+            for i in range(max_iter):
                 print(f'Iteration-{i}\n')
                 acl_task = self._register_task(self.active_learn_function, deps=train_task)
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
