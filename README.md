@@ -54,8 +54,8 @@ def active_learn(*args):
 6- Optionally you can define a stop criterion or run for MAX ITERATIONS
 ```python
 # Defining the stop criterion with a metric (MSE in this case)
-@acl.as_stop_criterion
-def check_accuracy(*args):
+@acl.as_stop_criterion(metric_name='mean_squared_error_mse', threshold=0.1)
+def check_mse(*args):
     return Task(executable=f'python3 check_mse.py 0.25')
 ```
 
@@ -64,7 +64,7 @@ def check_accuracy(*args):
 simul = simulation()
 train = training()
 active = active_learn()
-stop_cond = check_accuracy()
+stop_cond = check_mse()
 
 # Start the teaching loop and break if max_iter = 10 or stop condition is met
 acl.teach(max_iter=10)
