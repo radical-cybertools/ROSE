@@ -56,17 +56,17 @@ def active_learn(*args):
 # Defining the stop criterion with a metric (MSE in this case)
 @acl.as_stop_criterion
 def check_accuracy(*args):
-    return Task(executable=f'{code_path}/check_mse.py 0.25')
+    return Task(executable=f'python3 check_mse.py 0.25')
 ```
 
-7- Finally invoke the tasks and run the active learning
+7- Finally invoke the tasks and register them with the active learner as a workflow
 ```python
 simul = simulation()
 train = training()
 active = active_learn()
 stop_cond = check_accuracy()
 
-# Start the teaching process and break if max_iter = 10 or stop condition is met
+# Start the teaching loop and break if max_iter = 10 or stop condition is met
 acl.teach(max_iter=10)
 engine.shutdown()
 ```
