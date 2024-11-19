@@ -8,8 +8,6 @@ ROSE also provides a set of tools to facilitate the selection of the best surrog
 
 ROSE is built on top of the RADICAL-Cybertools framework, which provides a set of tools to facilitate the development of scientific workflows on HPC resources. 
 
-RADICAL-Cybertools provides a set of tools to manage the execution of tasks on HPC resources, to transfer data between resources, and to monitor the execution of tasks.
-
 How to install:
 `pip install .`
 
