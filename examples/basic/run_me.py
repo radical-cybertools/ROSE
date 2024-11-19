@@ -6,7 +6,7 @@ from rose.engine import Task, ResourceEngine
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
 acl = ActiveLearner(engine)
-code_path = f'/home/aymen/ve/rct_debug_latest/bin/python3 {os.getcwd()}'
+code_path = f'python3 {os.getcwd()}'
 
 # Define and register the simulation task
 @acl.simulation_task
