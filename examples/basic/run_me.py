@@ -2,6 +2,7 @@ import os
 
 from rose.learner import ActiveLearner
 from rose.engine import Task, ResourceEngine
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
@@ -24,8 +25,7 @@ def active_learn(*args):
     return Task(executable=f'{code_path}/active.py')
 
 # Defining the stop criterion with a metric (MSE in this case)
-@acl.as_stop_criterion(metric_name='mean_squared_error_mse',
-                       threshold=0.1)
+@acl.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
 def check_mse(*args):
     return Task(executable=f'{code_path}/check_mse.py')
 
