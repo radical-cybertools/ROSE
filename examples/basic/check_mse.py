@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 
 
-def check(input_file='acl_output.pkl', threshold=0.1):
+def check(input_file='acl_output.pkl'):
     # Load the model after active learning
     with open(input_file, 'rb') as f:
         model = pickle.load(f)
@@ -19,11 +19,7 @@ def check(input_file='acl_output.pkl', threshold=0.1):
     # Evaluate the model on the new data
     y_pred_eval = model.predict(X_eval)
     mse_eval = mean_squared_error(y_eval, y_pred_eval)
-
-    # Check if the MSE is below the threshold
-    stop_flag = mse_eval <= threshold    
-    print(stop_flag)
+    print(mse_eval)
 
 if __name__ == "__main__":
-    mse = float(sys.argv[1]) if len(sys.argv) > 1 else 0.1
-    check(threshold=mse)  # Running the check task
+    check()  # Running the check task

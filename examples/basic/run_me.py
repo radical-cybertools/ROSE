@@ -6,7 +6,7 @@ from rose.engine import Task, ResourceEngine
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
 acl = ActiveLearner(engine)
-code_path = f'python3 {os.getcwd()}'
+code_path = f'/home/aymen/ve/rct_debug_latest/bin/python3 {os.getcwd()}'
 
 # Define and register the simulation task
 @acl.simulation_task
@@ -24,15 +24,16 @@ def active_learn(*args):
     return Task(executable=f'{code_path}/active.py')
 
 # Defining the stop criterion with a metric (MSE in this case)
-@acl.as_stop_criterion
-def check_accuracy(*args):
-    return Task(executable=f'{code_path}/check_mse.py 0.25')
+@acl.as_stop_criterion(metric_name='mean_squared_error_mse',
+                       threshold=0.1)
+def check_mse(*args):
+    return Task(executable=f'{code_path}/check_mse.py')
 
 # Now, call the tasks and teach
 simul = simulation()
 train = training()
 active = active_learn()
-stop_cond = check_accuracy()
+stop_cond = check_mse()
 
 # Start the teaching process
 acl.teach(max_iter=10)

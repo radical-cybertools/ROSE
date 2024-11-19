@@ -6,6 +6,38 @@ from functools import wraps
 from .engine import ResourceEngine
 from .engine import WorkflowEngine
 
+METRIC_MAP = {
+    "model_accuracy": ">=",                  # Accuracy should be greater than or equal to a threshold
+    "query_efficiency": ">",                 # Efficiency should be greater than a threshold
+    "labeling_cost": "<",                    # Cost should be less than a threshold
+    "diversity_of_selected_samples": ">",    # Diversity should be greater than a threshold
+    "uncertainty": "<",                      # Uncertainty should be less than a threshold
+    "query_reduction": ">",                  # Query reduction should be greater than a threshold
+    "area_under_learning_curve_auc": ">",    # AUC should be greater than a threshold
+    "expected_model_improvement_emi": ">",   # Improvement should be greater than a threshold
+    "sampling_bias": "<",                    # Bias should be less than a threshold
+    "prediction_confidence": ">",            # Confidence should be greater than a threshold
+    "class_distribution_shift": "<",         # Distribution shift should be less than a threshold
+    "cumulative_error_reduction": ">",       # Error reduction should be greater than a threshold
+    "query_selection_strategy_performance": ">",  # Strategy performance should be greater than a threshold
+    "number_of_iterations": "<",             # Iterations should be less than a threshold
+    "f1_score": ">",                         # F1 Score should be greater than a threshold
+    "precision": ">",                        # Precision should be greater than a threshold
+    "recall": ">",                           # Recall should be greater than a threshold
+    "information_gain": ">",                 # Information gain should be greater than a threshold
+    "time_to_convergence": "<",              # Time to convergence should be less than a threshold
+    "model_complexity": "<",                 # Model complexity should be minimized (less complex models preferred)
+    "data_labeling_redundancy": "<",         # Redundancy in labeled data should be minimized
+    "generalization_error": "<",             # Generalization error should be minimized (closer to zero)
+    "learning_rate": "<",                    # Learning rate should be minimized for faster convergence
+    "training_time": "<",                    # Training time should be minimized
+    "confidence_interval_width": "<",        # Confidence intervals should be narrow for better certainty
+    "overfitting": "<",                      # Overfitting should be minimized (avoid excessively complex models)
+    "active_learning_efficiency": ">",       # Efficiency of the active learning loop (should increase over time)
+    "exploration_vs_exploitation": ">",      # Balance exploration and exploitation (higher value preferred)
+    "mean_squared_error_mse": "<",           # MSE should be minimized (closer to zero)
+}
+
 
 class ActiveLearner(WorkflowEngine):
     
@@ -48,16 +80,22 @@ class ActiveLearner(WorkflowEngine):
             return func
         return wrapper
 
-
-    def as_stop_criterion(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.criterion_function = {'func':func,
-                                       'args':args,
-                                       'kwargs':kwargs}
-            return func
-        return wrapper
-
+    def as_stop_criterion(self, metric_name: str,
+                                threshold: float):
+        # This is the outer function that takes arguments like metric_name and threshold
+        def decorator(func: Callable):  # This is the actual decorator function that takes func
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                # Store the relevant information in self.criterion_function
+                self.criterion_function = {
+                    'func': func,
+                    'args': args,
+                    'kwargs': kwargs,
+                    'threshold': threshold,
+                    'metric_name': metric_name}
+                return func
+            return wrapper
+        return decorator
 
     def _register_task(self, task_obj, deps=None):
         func = task_obj['func']
@@ -73,6 +111,21 @@ class ActiveLearner(WorkflowEngine):
 
         return super().__call__(func)(*args, **kwargs)
 
+    def compare_metric(self, metric_name, metric_value, threshold):
+        operator = METRIC_MAP.get(metric_name)
+        if operator == "<":
+            return metric_value < threshold
+        elif operator == ">":
+            return metric_value > threshold
+        elif operator == "==":
+            return metric_value == threshold
+        elif operator == "<=":
+            return metric_value <= threshold
+        elif operator == ">=":
+            return metric_value >= threshold
+        else:
+            raise ValueError(f"Unknown comparison operator for metric {metric_name}")
+
 
     def _start_pre_step(self):
         
@@ -85,16 +138,19 @@ class ActiveLearner(WorkflowEngine):
     
 
     def _check_stop_criterion(self, stop_task_result):
-        
-        stop = stop_task_result
-        if isinstance(stop, str) and stop.lower().strip() in ['true', 'false']:
-            if eval(stop):
-                print('stop criterion is met, breaking the active learning loop')
+
+        metric_value = eval(stop_task_result)
+        if isinstance(metric_value, float) or isinstance(metric_value, int):
+            threshold = self.criterion_function['threshold']
+            metric_name = self.criterion_function['metric_name']
+
+            if self.compare_metric(metric_name, metric_value, threshold):
+                print(f'stop criterion metric {metric_name} is met, breaking the active learning loop')
                 return True
             else:
                 return False
         else:
-            raise TypeError('Stop criterion script must return a boolean value ("True/False")')
+            raise TypeError(f'Stop criterion script must return a numerical got {type(metric_value)} instead')
 
     def teach(self, max_iter: int = 0):
 
@@ -120,8 +176,7 @@ class ActiveLearner(WorkflowEngine):
                 train_task = self._register_task(self.training_function, deps=sim_task)
 
                 # block/wait for each workflow until it finishes
-                train_task.result()            
-
+                train_task.result()
 
         elif self.criterion_function and not max_iter:
             print('No max_iter was specified running until stop condition is met!')
