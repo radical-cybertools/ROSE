@@ -56,7 +56,7 @@ def active_learn(*args):
 # Defining the stop criterion with a metric (MSE in this case)
 @acl.as_stop_criterion(metric_name='mean_squared_error_mse', threshold=0.1)
 def check_mse(*args):
-    return Task(executable=f'python3 check_mse.py 0.25')
+    return Task(executable=f'python3 check_mse.py')
 ```
 
 7- Finally invoke the tasks and register them with the active learner as a workflow
