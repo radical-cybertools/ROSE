@@ -74,20 +74,6 @@ class ActiveLearner(WorkflowEngine):
         return super().__call__(func)(*args, **kwargs)
 
 
-    def _invok_stop_criterion(self, *args, **kwargs):
-        # Extract the function, args, and kwargs from the criterion_function
-        func = self.criterion_function['func']
-        criterion_args = self.criterion_function['args']
-        criterion_kwargs = self.criterion_function['kwargs']
-        
-        # Concatenate the new args and kwargs with the existing ones
-        all_args = criterion_args + args  # Concatenate tuple of args
-        all_kwargs = {**criterion_kwargs, **kwargs}  # Merge the dictionaries of kwargs
-        
-        # Call the function with the combined arguments and kwargs
-        return func(*all_args, **all_kwargs)
-
-
     def _start_pre_step(self):
         
         # start the initlial step for active learning by 
@@ -96,16 +82,19 @@ class ActiveLearner(WorkflowEngine):
         train_task = self._register_task(self.training_function,
                                          deps=sim_task)
         return sim_task, train_task
+    
 
-
-    def _start_main_step(self):
-
-        acl_task = self._register_task(self.active_learn_function)
-        sim_task = self._register_task(self.simulation_function)
-        train_task = self._register_task(self.training_function)
-
-        return acl_task, sim_task, train_task
-
+    def _check_stop_criterion(self, stop_task_result):
+        
+        stop = stop_task_result
+        if isinstance(stop, str) and stop.lower().strip() in ['true', 'false']:
+            if eval(stop):
+                print('stop criterion is met, breaking the active learning loop')
+                return True
+            else:
+                return False
+        else:
+            raise TypeError('Stop criterion script must return a boolean value ("True/False")')
 
     def teach(self, max_iter: int = 0):
 
@@ -130,33 +119,38 @@ class ActiveLearner(WorkflowEngine):
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
 
-                train_task.result()
+                # block/wait for each workflow until it finishes
+                train_task.result()            
+
 
         elif self.criterion_function and not max_iter:
             print('No max_iter was specified running until stop condition is met!')
             # Run indefinitely until stop criterion is met
             while True:
                 acl_task = self._register_task(self.active_learn_function, deps=train_task)
+                
+                stop_task = self._register_task(self.criterion_function, deps=acl_task)
+                stop = stop_task.result()
+
+                if self._check_stop_criterion(stop):
+                    break
+
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
-
-                train_task.result()
-
-                result = self._invok_stop_criterion()
-                if result:
-                    break
 
         elif max_iter and self.criterion_function:
             print('Both stop condition and max_iter were specified, running until they are satisified')
             # Run up to max_iter or until stop criterion is met
             for i in range(max_iter):
                 print(f'Iteration-{i}\n')
-                acl_task = self._register_task(self.active_learn_function, deps=train_task)
+                acl_task = self._register_task(self.active_learn_function, deps=(sim_task,
+                                                                                 train_task))
+
+                stop_task = self._register_task(self.criterion_function, deps=acl_task)
+                stop = stop_task.result()
+
+                if self._check_stop_criterion(stop):
+                    break
+
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
-
-                train_task.result()
-
-                result = self._invok_stop_criterion()
-                if result:
-                    break

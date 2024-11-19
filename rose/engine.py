@@ -457,8 +457,8 @@ class WorkflowEngine:
             task_fut.set_result(task.stdout)
 
         elif state in [rp.FAILED, rp.CANCELED]:
-            excp = Exception(task.stderr)
-            task_fut.set_exception(excp)
+            print(f'{task.uid} is FAILED')
+            task_fut.set_exception(Exception(task.stderr))
 
     @shutdown_on_failure
     def submit(self):
