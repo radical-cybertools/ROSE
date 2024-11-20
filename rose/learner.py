@@ -117,7 +117,7 @@ class ActiveLearner(WorkflowEngine):
             if not operator:
                 excp = f'Operator value must be provided for custom metric {metric_name}, '
                 excp += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
-                excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+                excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD'
                 raise ValueError(excp)
 
         # standard metric
