@@ -168,6 +168,17 @@ class ActiveLearner(WorkflowEngine):
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
     def teach(self, max_iter: int = 0):
+        '''
+        Cycle 1:
+        Simulation --> Training --> Active Learning --> Check stop condition --> Repeat if not met
+
+        Cycle 2:
+        Simulation --> Training --> Active Learning --> Check stop condition --> Repeat if not met
+        ...
+        Final Cycle:
+        Simulation --> Training --> Active Learning --> Stop if condition is met
+
+        '''
 
         if not self.simulation_function or \
               not self.training_function or \
@@ -224,3 +235,15 @@ class ActiveLearner(WorkflowEngine):
 
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
+    
+
+    def get_result(self, task_name: str):
+        '''
+        Get the result of a task(s) by its name, tasks might have
+        similar name yet different future and task IDs.
+        '''
+        tasks = [t['future'].result() 
+                 for t in self.tasks.values() 
+                 if t['description']['name'] == task_name]
+
+        return tasks
