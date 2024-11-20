@@ -48,6 +48,17 @@ class ActiveLearner(WorkflowEngine):
             return func
         return wrapper
 
+
+    def utility_task(self, func:Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            utility_function = {'func':func,
+                                'args':args,
+                                'kwargs':kwargs}
+            return self._register_task(utility_function)
+        return wrapper
+
+
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
                                 threshold: float,
@@ -84,11 +95,31 @@ class ActiveLearner(WorkflowEngine):
         return super().__call__(func)(*args, **kwargs)
 
     def compare_metric(self, metric_name, metric_value, threshold, operator=''):
-
+        """
+        Compare a metric value against a threshold using a specified operator.
+        
+        Args:
+            metric_name (str): Name of the metric to compare.
+            metric_value (float): The value of the metric.
+            threshold (float): The threshold to compare against.
+            operator (str): The comparison operator. Supported values:
+                - '<': metric_value < threshold
+                - '>': metric_value > threshold
+                - '==': metric_value == threshold
+                - '<=': metric_value <= threshold
+                - '>=': metric_value >= threshold
+        
+        Returns:
+            bool: The result of the comparison.
+        """
         # check for custom/user defined metric
         if not metrics.is_supported_metric(metric_name):
             if not operator:
-                raise ValueError(f"Operator (>, <, <=, >=) must be provided for custom metric {metric_name}")
+                excp = f'Operator value must be provided for custom metric {metric_name}, '
+                excp += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
+                excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+                raise ValueError(excp)
+
         # standard metric
         else:
             operator = metrics.get_operator(metric_name)
@@ -167,7 +198,7 @@ class ActiveLearner(WorkflowEngine):
             # Run indefinitely until stop criterion is met
             while True:
                 acl_task = self._register_task(self.active_learn_function, deps=train_task)
-                
+
                 stop_task = self._register_task(self.criterion_function, deps=acl_task)
                 stop = stop_task.result()
 
