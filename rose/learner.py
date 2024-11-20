@@ -117,7 +117,12 @@ class ActiveLearner(WorkflowEngine):
 
     def _check_stop_criterion(self, stop_task_result):
 
-        metric_value = eval(stop_task_result)
+        try:
+            metric_value = eval(stop_task_result)
+        except Exception as e:
+            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
+
+        # check if the metric value is a number
         if isinstance(metric_value, float) or isinstance(metric_value, int):
             operator = self.criterion_function['operator']
             threshold = self.criterion_function['threshold']
@@ -129,7 +134,7 @@ class ActiveLearner(WorkflowEngine):
             else:
                 return False
         else:
-            raise TypeError(f'Stop criterion script must return a numerical got {type(metric_value)} instead')
+            raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
     def teach(self, max_iter: int = 0):
 
