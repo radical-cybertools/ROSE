@@ -160,7 +160,7 @@ class ActiveLearner(WorkflowEngine):
             metric_name = self.criterion_function['metric_name']
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric {metric_name} is met, breaking the active learning loop')
+                print(f'stop criterion metric: {metric_name} is met, breaking the active learning loop')
                 return True
             else:
                 return False

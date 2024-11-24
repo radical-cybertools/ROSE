@@ -83,10 +83,10 @@ class ResourceEngine:
     @typeguard.typechecked
     def __init__(self, resources: Dict) -> None:
         try:
-            self.session = rp.Session(uid=ru.generate_id('rose.session',
-                                                         mode=ru.ID_PRIVATE))
-            self.task_manager = rp.TaskManager(self.session)
-            self.pilot_manager = rp.PilotManager(self.session)
+            self._session = rp.Session(uid=ru.generate_id('rose.session',
+                                                          mode=ru.ID_PRIVATE))
+            self.task_manager = rp.TaskManager(self._session)
+            self.pilot_manager = rp.PilotManager(self._session)
             self.resource_pilot = self.pilot_manager.submit_pilots(rp.PilotDescription(resources))
             self.task_manager.add_pilots(self.resource_pilot)
 
@@ -101,7 +101,7 @@ class ResourceEngine:
             # corresponding KeyboardInterrupt exception for shutdown.  We also catch
             # SystemExit (which gets raised if the main threads exits for some other
             # reason).
-            excp_msg = f'Resource engine failed internally, please check {self.session}'
+            excp_msg = f'Resource engine failed internally, please check {self._session.path}'
             raise SystemExit(excp_msg) from e
 
     def state(self):
@@ -111,7 +111,7 @@ class ResourceEngine:
         Returns:
             The current state of the resource pilot.
         """
-        return self.resource_pilot
+        raise NotImplementedError
 
     def task_state_cb(self, task, state):
         """
@@ -137,7 +137,7 @@ class ResourceEngine:
         Returns:
             None
         """
-        self.session.close(download=True)
+        self._session.close(download=True)
 
 
 class WorkflowEngine:
@@ -265,7 +265,7 @@ class WorkflowEngine:
             str: The generated unique identifier for the task.
         """
         uid = ru.generate_id('task.%(item_counter)06d',
-                             ru.ID_CUSTOM, ns=self.engine.session.uid)
+                             ru.ID_CUSTOM, ns=self.engine._session.uid)
         return uid
 
     def link_explicit_data_deps(self, task_id, file_name=None):
@@ -482,6 +482,3 @@ class WorkflowEngine:
                 self.task_manager.submit_tasks(tasks)
             except queue.Empty:
                 time.sleep(0.5)
-            except Exception as e:
-                # Handle other possible exceptions
-                print(f"An error occurred: {e}")
