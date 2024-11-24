@@ -37,8 +37,10 @@ class Task(rp.TaskDescription):
     None. This class relies on inherited methods from `rp.TaskDescription`.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(kwargs)
+    def __init__(self, **kwargs):
+        # we pass only the kwargs as dict to the rp.TaskDescription
+        # as it only allows from_dict
+        super().__init__(from_dict=kwargs)
 
 
 class ResourceEngine:
@@ -307,19 +309,18 @@ class WorkflowEngine:
         Returns:
             list: A list of shell commands to link implicit data dependencies between tasks.
         """
-        cmd1 = f'export SRC_TUID={src_task.uid}'
+        cmd1 = f'export SRC_TASK_ID={src_task.uid}'
+        cmd2 = f'export SRC_TASK_SANDBOX="$RP_PILOT_SANDBOX/$SRC_TASK_ID"'
 
-        cmd2 = (
-            '$(which python3) -c "import os; import shutil; import glob; '
-            'src_dir = os.path.join(os.environ[\'RP_PILOT_SANDBOX\'], os.environ[\'SRC_TUID\']); '
-            'dest_dir = os.environ[\'RP_TASK_SANDBOX\']; '
-            'files = [f for f in glob.glob(os.path.join(src_dir, \'*\')) '
-            'if not os.path.basename(f).startswith(\'task.\')]; '
-            '[shutil.copy(file_path, dest_dir) for file_path in files]"')
+        cmd3 = '''files=$(cd "$SRC_TASK_SANDBOX" && ls | grep -ve "^$SRC_TASK_ID")
+                  for f in $files
+                  do 
+                      cp -r "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
+                  done'''
 
-        python_commands = [cmd1, cmd2]
+        commands = [cmd1, cmd2, cmd3]
 
-        return python_commands
+        return commands
 
     def _detect_dependencies(self, possible_dependencies):
         """
