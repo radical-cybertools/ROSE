@@ -1,8 +1,24 @@
+import os
 import requests
 
 from pathlib import Path
 from typing import List, Union
 
+import radical.utils as ru
+
+URL_SCHEMES = [
+    "http",           # Hypertext Transfer Protocol (HTTP)
+    "https",          # Hypertext Transfer Protocol Secure (HTTPS)
+    "ftp",            # File Transfer Protocol (FTP)
+    "ftps",           # File Transfer Protocol Secure (FTPS, FTP over SSL/TLS)
+    "sftp",           # Secure File Transfer Protocol (SFTP, SSH-based)
+    "file",           # Local file system (Access files directly from the file system)
+    "data",           # Data URIs (Inline base64-encoded files, though not common for large files)
+    "s3",             # Amazon S3 (Cloud storage URL, used to expose files stored in S3)
+    "azure",          # Azure Storage (Blob storage URL)
+    "r2",             # Cloudflare R2 (Object storage URL)
+    "gs",             # Google Cloud Storage (Bucket URL)
+]
 
 class File:
     def __init__(self) -> None:
@@ -10,7 +26,7 @@ class File:
         self.filepath = None
 
     @staticmethod
-    def process_remote_url(url: str) -> Path:
+    def download_remote_url(url: str) -> Path:
         """Download the remote file to the current directory and return its full path."""
         response = requests.get(url, stream=True)
         response.raise_for_status()  # Check if the download was successful
@@ -29,46 +45,52 @@ class File:
 
 class InputFile(File):
     def __init__(self, file):
-
+        # Initialize file-related variables
         self.remote_url = None
         self.local_file = None
         self.other_task_file = None
+        
+        self.filepath = None  # Ensure that filepath is initialized
 
-        # File will be downloaded
-        if file.startswith('https') or file.startswith('http'):
+        # Determine file type (remote, local, or task-produced)
+        possible_url = ru.Url(file)
+        if possible_url.scheme in URL_SCHEMES:
             self.remote_url = file
-        # File is local and will be staged in
-        elif '/' in file:
+        elif os.path.exists(file):  # Check if it's a local file
             self.local_file = file
-        # File produced from another task
         else:
             self.other_task_file = file
 
+        # Handle remote file (download and resolve path)
         if self.remote_url:
-            # the default URL path would be the task sandbox
-            # FIXME: maybe instead of downloading it and then stage it
-            # inject a download command to the task.pre_exec?
-            self.filepath = self.process_remote_url(self.remote_url)
-
-        elif self.local_file and Path(self.local_file).exists():
-            # local file to stage in to the task sandbox
-            self.filepath = Path(self.local_file).resolve()  # Convert to absolute path
+            self.filepath = self.download_remote_url(self.remote_url)
         
+        # Handle local file (ensure it exists and resolve path)
+        elif self.local_file:
+            self.filepath = Path(self.local_file).resolve()  # Convert to absolute path
+
+        # Handle file from another task. We do not resolve Path here as this
+        # file is not created yet and it will be resolved when the task is executed.
         elif self.other_task_file:
             self.filepath = Path(self.other_task_file)
 
-        else:
-            raise Exception(f'Failed to find/resolve InputFile: {file}')
-
+        # If file resolution failed, raise an exception with a more descriptive message
         if not self.filepath:
-            raise Exception('Failed to obtain the input file localy or remotley')
+            raise Exception(f"Failed to resolve InputFile: {file}. "
+                             "Ensure it's a valid URL, local path, or task output.")
 
+        # Set the filename from the resolved filepath
         self.filename = self.filepath.name
 
 
 class OutputFile(File):
     def __init__(self, filename):
-        self.filename = filename
+        if not filename:
+            raise ValueError("Filename cannot be empty")
 
-        if '/' in self.filename:
-            self.filename = self.filename.split('/')[-1]
+        # Use os.path.basename() to handle paths
+        self.filename = os.path.basename(filename)
+
+        # Edge case: If the filename ends with a separator (e.g., '/')
+        if not self.filename:
+            raise ValueError(f"Invalid filename, the path {filename} does not include a file")

@@ -291,7 +291,7 @@ class WorkflowEngine:
             file_name = task_id
 
         data_deps = {'source': f"pilot:///{task_id}/{file_name}",
-                     'target': f"task:///{file_name}", 'action': rp.TRANSFER}
+                     'target': f"task:///{file_name}", 'action': rp.LINK}
 
         return data_deps
 
@@ -315,7 +315,7 @@ class WorkflowEngine:
         cmd3 = '''files=$(cd "$SRC_TASK_SANDBOX" && ls | grep -ve "^$SRC_TASK_ID")
                   for f in $files
                   do 
-                      cp -r "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
+                      ln -sf "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
                   done'''
 
         commands = [cmd1, cmd2, cmd3]
