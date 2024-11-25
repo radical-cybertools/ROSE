@@ -218,7 +218,7 @@ class WorkflowEngine:
         def wrapper(*args, **kwargs):
             task_descriptions = func(*args, **kwargs)
             task_descriptions['name'] = func.__name__
-            task_descriptions['uid'] = self.__assign_task_uid()
+            task_descriptions['uid'] = self._assign_task_uid()
 
             task_deps, input_files_deps, output_files_deps = self._detect_dependencies(args)
 
@@ -256,7 +256,7 @@ class WorkflowEngine:
                 raise e
         return wrapper
 
-    def __assign_task_uid(self):
+    def _assign_task_uid(self):
         """
         Generates a unique identifier (UID) for a task.
 
