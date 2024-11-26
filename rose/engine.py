@@ -252,8 +252,8 @@ class WorkflowEngine:
             try:
                 return func(self, *args, **kwargs)
             except Exception as e:
-                self.engine.shutdown()  # Call shutdown on exception
                 print('Internal failure is detected, shutting down the resource engine')
+                self.engine.shutdown()  # Call shutdown on exception
                 raise e
         return wrapper
 
