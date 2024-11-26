@@ -139,6 +139,7 @@ class ResourceEngine:
         Returns:
             None
         """
+        print('Shutdown is triggered, terminating the resources gracefully')
         self._session.close(download=True)
 
 
