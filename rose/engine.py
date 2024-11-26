@@ -362,7 +362,7 @@ class WorkflowEngine:
 
         return dependencies, input_files, output_files
 
-    def clear(self):
+    def _clear(self):
         """
         clear worfklow tasks and their deps
         """
@@ -377,6 +377,9 @@ class WorkflowEngine:
         while True:
             # Continuously try to resolve dependencies and submit tasks as they become ready
             self.unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
+
+            if not self.unresolved:
+                time.sleep(0.1)  # Small delay to prevent excessive CPU usage in the loop
 
             to_submit = []  # Collect tasks to submit in each iteration
 

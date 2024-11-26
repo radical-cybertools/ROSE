@@ -219,6 +219,9 @@ class ActiveLearner(WorkflowEngine):
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
 
+                # block/wait for each workflow until it finishes
+                train_task.result() 
+
         elif max_iter and self.criterion_function:
             print('Both stop condition and max_iter were specified, running until they are satisified')
             # Run up to max_iter or until stop criterion is met
@@ -235,7 +238,9 @@ class ActiveLearner(WorkflowEngine):
 
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
-    
+
+                # block/wait for each workflow until it finishes
+                train_task.result()    
 
     def get_result(self, task_name: str):
         '''
