@@ -1,12 +1,12 @@
 # ROSE
 What is ROSE:
 
-RADICAL Optimal & Smart-Surrogate Explorer (ROSE) toolkit is a framework to support the concurrent and adaptive executions of simulation and surrogate training and selection tasks on High Performance Computing (HPC) resources.
-ROSE is a Python package that provides a set of tools to facilitate the development of active learning workflows for scientific simulations. It allows users to define simulation and surrogate training tasks, and to automatically manage their execution on HPC resources. 
+The RADICAL Optimal & Smart-Surrogate Explorer (ROSE) toolkit is a framework for supporting the concurrent and adaptive execution of simulation and surrogate training and selection tasks on High-Performance Computing (HPC) resources.
+ROSE is a Python package that provides tools to facilitate the development of active learning methods for scientific applications. It allows users to define simulation and surrogate training tasks and automatically manage their execution on HPC resources. 
 
-ROSE also provides a set of tools to facilitate the selection of the best surrogate model for a given simulation, based on a set of performance metrics.
+ROSE also provides tools to facilitate the selection of the best surrogate model for a given simulation based on performance metrics.
 
-ROSE is built on top of the RADICAL-Cybertools framework, which provides a set of tools to facilitate the development of scientific workflows on HPC resources. 
+ROSE uses RADICAL-Cybertools -- middleware building blocks to facilitate the development of sophisticated scientific workflows on HPC resources. 
 
 How to install:
 `pip install .`
