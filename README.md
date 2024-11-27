@@ -1,28 +1,70 @@
 # ROSE
 What is ROSE:
 
-ROSE is a framework that
-1). Integrate AL-coupled HPC workflow with active learning to improve the performance
-2). Provide a list of pre-build AL policy and allow user to customize their own active learning policy
-3). Can be used to compare the performance of various active learning policy that user are interested
-4). Provide a number of execution pattern for running active learning workflow with different bottleneck
+RADICAL Optimal & Smart-Surrogate Explorer (ROSE) toolkit is a framework to support the concurrent and adaptive executions of simulation and surrogate training and selection tasks on High Performance Computing (HPC) resources.
+ROSE is a Python package that provides a set of tools to facilitate the development of active learning workflows for scientific simulations. It allows users to define simulation and surrogate training tasks, and to automatically manage their execution on HPC resources. 
 
+ROSE also provides a set of tools to facilitate the selection of the best surrogate model for a given simulation, based on a set of performance metrics.
 
+ROSE is built on top of the RADICAL-Cybertools framework, which provides a set of tools to facilitate the development of scientific workflows on HPC resources. 
 
-How to build:
+How to install:
+`pip install .`
 
-Simply install radical on top of the simulation and training environment
+How to use:
 
+1- Import the necessary pacakges
+```python
+import os
 
+from rose.learner import ActiveLearner
+from rose.engine import Task, ResourceEngine
+```
 
-How to run two examples:
+2- Define the resource engine and Active learner
+```python
+engine = ResourceEngine({'runtime': 30,
+                         'resource': 'local.localhost'})
+acl = ActiveLearner(engine)
+```
 
-For the exalearn example, it is implemented using bash script instead of rct, so following the follow steps:
-1). Run "prepare_data_dir.py" to setup experiment directory
-2). In workflow directory, choose the workflow that you want to execute
-If files in this directory fails to execute correctly, please use this repo:
-https://github.com/GKNB/AL-Exalearn-phase-2
-and use the scripts in branch AL-two-uncertainty-v2 for serial workflow, and branch AL-two-uncertainty-stream for stream workflow
+3- Define the simulation task
+```python
+@acl.simulation_task
+def simulation(*args):
+    return Task(executable=f'python3 sim.py')
+```
 
-For the diffusion solver example, it is implemented using rct, but only support serial workflow with a single instance, and parallel workflow with different seed. To run them, just do
-python launch_workflow_basic.py
+4- Define the surrogate training task
+```python
+@acl.training_task
+def training(*args):
+    return Task(executable=f'python3 train.py')
+```
+
+5- Define and register the active learning task
+```python
+@acl.active_learn_task
+def active_learn(*args):
+    return Task(executable=f'python3 active.py')
+```
+
+6- Optionally you can define a stop criterion or run for MAX ITERATIONS
+```python
+# Defining the stop criterion with a metric (MSE in this case)
+@acl.as_stop_criterion(metric_name='mean_squared_error_mse', threshold=0.1)
+def check_mse(*args):
+    return Task(executable=f'python3 check_mse.py')
+```
+
+7- Finally invoke the tasks and register them with the active learner as a workflow
+```python
+simul = simulation()
+train = training()
+active = active_learn()
+stop_cond = check_mse()
+
+# Start the teaching loop and break if max_iter = 10 or stop condition is met
+acl.teach(max_iter=10)
+engine.shutdown()
+```
