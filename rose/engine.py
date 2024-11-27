@@ -317,7 +317,9 @@ class WorkflowEngine:
         cmd3 = '''files=$(cd "$SRC_TASK_SANDBOX" && ls | grep -ve "^$SRC_TASK_ID")
                   for f in $files
                   do 
-                      ln -sf "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
+                      if [ ! -L "$SRC_TASK_SANDBOX/$f" ]; then  # Check if $f is not a symbolic link
+                          ln -s "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
+                      fi
                   done'''
 
         commands = [cmd1, cmd2, cmd3]
@@ -381,6 +383,7 @@ class WorkflowEngine:
 
             if not self.unresolved:
                 time.sleep(0.1)  # Small delay to prevent excessive CPU usage in the loop
+                continue
 
             to_submit = []  # Collect tasks to submit in each iteration
 
