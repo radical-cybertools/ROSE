@@ -192,14 +192,14 @@ class ActiveLearner(WorkflowEngine):
         return tasks
 
 
-class SequntialActiveLearner(ActiveLearner):
+class SequentialActiveLearner(ActiveLearner):
     '''
-    SequntialActiveLearner is a subclass of ActiveLearner that implements
+    SequentialActiveLearner is a subclass of ActiveLearner that implements
     a sequential active learning loop.
     '''
     def __init__(self, engine: ResourceEngine) -> None:
         '''
-        Initialize the SequntialActiveLearner object.
+        Initialize the SequentialActiveLearner object.
 
         Args:
             engine: The ResourceEngine object that manages the resources and tasks submission to
