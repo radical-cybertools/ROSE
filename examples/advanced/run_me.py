@@ -30,7 +30,6 @@ def active_learn(*args):
 def check_accuracy(*args):
     return Task(executable=f'{code_path}/check_accuracy.py')
 
-
 def teach():
     # 10 iterations of active learn
     for acl_iter in range(10):
