@@ -1,13 +1,14 @@
 import os
+import sys
 
-from rose.learner import ActiveLearner
+from rose.learner import SequntialActiveLearner
 from rose.engine import Task, ResourceEngine
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
-acl = ActiveLearner(engine)
-code_path = f'python3 {os.getcwd()}'
+acl = SequntialActiveLearner(engine)
+code_path = f'{sys.executable} {os.getcwd()}'
 
 # Define and register the simulation task
 @acl.simulation_task

@@ -317,9 +317,7 @@ class WorkflowEngine:
         cmd3 = '''files=$(cd "$SRC_TASK_SANDBOX" && ls | grep -ve "^$SRC_TASK_ID")
                   for f in $files
                   do 
-                      if [ ! -L "$SRC_TASK_SANDBOX/$f" ]; then  # Check if $f is not a symbolic link
-                          ln -s "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
-                      fi
+                     ln -sf "$SRC_TASK_SANDBOX/$f" "$RP_TASK_SANDBOX"
                   done'''
 
         commands = [cmd1, cmd2, cmd3]
