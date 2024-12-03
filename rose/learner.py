@@ -1,4 +1,5 @@
 import typeguard
+import itertools
 
 from typing import Callable
 from functools import wraps
@@ -12,7 +13,6 @@ class ActiveLearner(WorkflowEngine):
     @typeguard.typechecked
     def __init__(self, engine: ResourceEngine, register_and_submit: bool=True) -> None:
 
-        self.teaching_strategy = {}
         self.criterion_function = {}
         self.training_function = {}
         self.simulation_function = {}
@@ -38,8 +38,8 @@ class ActiveLearner(WorkflowEngine):
         @wraps(func)
         def wrapper(*args, **kwargs):
             self.training_function = {'func':func,
-                                       'args':args,
-                                       'kwargs':kwargs}
+                                      'args':args,
+                                      'kwargs':kwargs}
             if self.register_and_submit:
                 return self._register_task(self.training_function)
         return wrapper
@@ -147,9 +147,11 @@ class ActiveLearner(WorkflowEngine):
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
     def _start_pre_loop(self):
+        """
+        start the initlial step for active learning by 
+        defining and setting simulation and training tasks
+        """
 
-        # start the initlial step for active learning by 
-        # defining and setting simulation and training tasks
         sim_task = self._register_task(self.simulation_function)
         train_task = self._register_task(self.training_function, deps=sim_task)
         return sim_task, train_task
@@ -202,8 +204,8 @@ class SequentialActiveLearner(ActiveLearner):
         Initialize the SequentialActiveLearner object.
 
         Args:
-            engine: The ResourceEngine object that manages the resources and tasks submission to
-            HPC resources during the active learning loop.
+            engine: The ResourceEngine object that manages the resources and
+            tasks submission to HPC resources during the active learning loop.
         '''
         super().__init__(engine, register_and_submit=False)
 
@@ -212,8 +214,9 @@ class SequentialActiveLearner(ActiveLearner):
         Run the active learning loop for a specified number of iterations.
 
         Args:
-            max_iter (int, optional): The maximum number of iterations for the active learning loop.
-                If not provided, the value set during initialization will be used. Defaults to 0.
+            max_iter (int, optional): The maximum number of iterations for the
+            active learning loop. If not provided, the value set during initialization
+            will be used. Defaults to 0.
         '''
         # start the initlial step for active learning by
         # defining and setting simulation and training tasks

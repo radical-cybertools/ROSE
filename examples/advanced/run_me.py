@@ -33,6 +33,7 @@ def check_accuracy(*args):
 def teach():
     # 10 iterations of active learn
     for acl_iter in range(10):
+        print(f'Starting Iteration-{acl_iter}')
         simul = simulation()
         train = training(simul)
         active = active_learn(simul, train)

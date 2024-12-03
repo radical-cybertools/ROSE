@@ -37,5 +37,5 @@ active = active_learn()
 stop_cond = check_mse()
 
 # Start the teaching process
-acl.teach(max_iter=10)
+acl.teach()
 engine.shutdown()
