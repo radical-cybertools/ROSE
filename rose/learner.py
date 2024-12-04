@@ -170,13 +170,14 @@ class ActiveLearner(WorkflowEngine):
             metric_name = self.criterion_function['metric_name']
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric: {metric_name} is met, breaking the active learning loop')
+                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
+                      '. Breaking the active learning loop')
                 return True
             else:
+                print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
                 return False
         else:
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
-
 
     def teach(self, max_iter:int = 0):
         raise NotImplementedError('This is not supported, please define your teach method and invoke it directly')
@@ -337,7 +338,11 @@ class ParallelActiveLearner(SequentialActiveLearner):
             super(ParallelActiveLearner, self).teach(max_iter=1,
                                                      skip_pre_loop=skip_pre_loop)
 
+        submitted_learners = []
         for learner in range(parallel_learners):
-            print(f'Submitting Learner-{learner} for execution')
             async_teach = self.as_async(_parallel_active_learn)
-            async_teach()
+            submitted_learners.append(async_teach())
+            print(f'Learner-{learner} is submitted for execution')
+
+        # block/wait for each workflow until it finishes
+        [learner.result() for learner in submitted_learners]
