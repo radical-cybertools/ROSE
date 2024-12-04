@@ -198,6 +198,23 @@ class SequentialActiveLearner(ActiveLearner):
     '''
     SequentialActiveLearner is a subclass of ActiveLearner that implements
     a sequential active learning loop.
+
+           Iteration 1:
+    [Sim] -> [Active Learn] -> [Train]
+
+                |
+                v
+           Iteration 2:
+    [Sim] -> [Active Learn] -> [Train]
+
+                |
+                v
+           Iteration 3:
+    [Sim] -> [Active Learn] -> [Train]
+
+                |
+                v
+           Iteration N
     '''
     def __init__(self, engine: ResourceEngine) -> None:
         '''
@@ -260,3 +277,67 @@ class SequentialActiveLearner(ActiveLearner):
 
             # block/wait for each workflow until it finishes
             train_task.result()
+
+
+class ParallelActiveLearner(SequentialActiveLearner):
+    '''
+    ParallelActiveLearner is a subclass of ActiveLearner that implements
+    a parallel active learning loop.
+
+    Parallel Learner 1        Parallel Learner 2        Parallel Learner 3
+        |                          |                         |
+      [Sim]                      [Sim]                     [Sim]
+        |                          |                         |
+    [Active Learn]           [Active Learn]            [Active Learn]
+        |                          |                         |
+     [Train]                    [Train]                   [Train]
+        |                          |                         |
+        v                          v                         v
+    -------------------------------------------------------------
+                    Parallel Execution of All Learners
+
+                                   |
+                                   v
+                      (Next Parallel Learner N)
+                                   |
+                                 [Sim]
+                                   |
+                             [Active Learn]
+                                   |
+                                [Train]
+    '''
+    def __init__(self, engine: ResourceEngine) -> None:
+        '''
+        Initialize the ParallelActiveLearner object.
+
+        Args:
+            engine: The ResourceEngine object that manages the resources and
+            tasks submission to HPC resources during the active learning loop.
+        '''
+        super().__init__(engine)
+
+    def teach(self, parallel_learners:int = 2, skip_pre_loop:bool = False):
+        '''
+        Run the active learning loop for a specified number of iterations.
+
+        Args:
+            skip_pre_loop: (bool, optional): Whether to skip the pre-loop step.
+            If True, the pre-loop step will be skipped. Defaults to False.
+
+            parallel_learners: (int, optional): The maximum number of active learner workflows
+            to be submitted in parallel. If not provided, the value set during initialization
+            will be used. Defaults to 1.
+        '''
+        if parallel_learners < 2:
+            excp = 'parallel_learners must be greater than 1. '
+            excp += 'Otherwise use SequentialActiveLearner'
+            raise ValueError(excp)
+
+        def _parallel_active_learn():
+            super(ParallelActiveLearner, self).teach(max_iter=1,
+                                                     skip_pre_loop=skip_pre_loop)
+
+        for learner in range(parallel_learners):
+            print(f'Submitting Learner-{learner} for execution')
+            async_teach = self.as_async(_parallel_active_learn)
+            async_teach()
