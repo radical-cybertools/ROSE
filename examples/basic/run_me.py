@@ -1,13 +1,14 @@
 import os
+import sys
 
-from rose.learner import ActiveLearner
+from rose.learner import SequentialActiveLearner
 from rose.engine import Task, ResourceEngine
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
-acl = ActiveLearner(engine)
-code_path = f'python3 {os.getcwd()}'
+acl = SequentialActiveLearner(engine)
+code_path = f'{sys.executable} {os.getcwd()}'
 
 # Define and register the simulation task
 @acl.simulation_task
@@ -36,5 +37,5 @@ active = active_learn()
 stop_cond = check_mse()
 
 # Start the teaching process
-acl.teach(max_iter=10)
+acl.teach()
 engine.shutdown()
