@@ -1,7 +1,6 @@
 import typeguard
 import itertools
-
-from typing import Callable
+from typing import Callable, Dict
 from functools import wraps
 
 from .engine import ResourceEngine
@@ -256,6 +255,7 @@ class SequentialActiveLearner(ActiveLearner):
             max_iter = itertools.count()
 
             if not self.criterion_function:
+                #FIXME: TIANLE: No need for this branch, you already checked this above in line 245-246
                 excp = 'Stop criterion function must be provided if max_iter is not specified'
                 raise ValueError(excp)
         else:
@@ -345,4 +345,106 @@ class ParallelActiveLearner(SequentialActiveLearner):
             print(f'Learner-{learner} is submitted for execution')
 
         # block/wait for each workflow until it finishes
+        [learner.result() for learner in submitted_learners]
+
+
+class ParallelActiveLearningAlgoSelector(ActiveLearner):
+    """
+    ParallelActiveLearningAlgoSelector is a subclass of ActiveLearner that implements 
+    multiple active learning pipelines in parallel, each pipeline is a 
+    sequential active learning loop, and uses the same simulation and 
+    training tasks, but distinct active learning task.
+    """
+    def __init__(self, engine: ResourceEngine) -> None:
+        ''' 
+        Initialize the ParallelActiveLearningAlgoSelector object.
+
+        Args:
+            engine: The ResourceEngine object that manages the resources and
+            tasks submission to HPC resources during the active learning loop.
+        '''
+        super().__init__(engine, register_and_submit=False)
+        self.active_learn_functions: Dict[str, Dict] = {}
+
+    def active_learn_task(self, name: str):
+        """
+        A decorator that registers an active learning task under the given name.
+        
+        Usage:
+        
+        @algo_selector.active_learn_task(name='algo_1')
+        def active_learn_1(*args):
+            ...
+        
+        @algo_selector.active_learn_task(name='algo_2')
+        def active_learn_2(*args):
+            ...
+        """
+        def decorator(func: Callable):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                self.active_learn_functions[name] = {
+                    'func': func,
+                    'args': args,
+                    'kwargs': kwargs
+                }
+                if self.register_and_submit:
+                    return self._register_task(self.active_learn_functions[name])
+            return wrapper
+        return decorator
+
+    def teach(self, max_iter:int = 0, skip_pre_loop:bool = False):
+        """
+        Run the active learning pipelines in parallel, each using a different AL algorithm,
+        for multiple iterations similar to SequentialActiveLearner.
+
+        Args:
+            max_iter (int, optional): The maximum number of iterations for each pipeline.
+                                      If 0 and a criterion function is provided, it will run
+                                      until the criterion is met.
+            skip_pre_loop (bool, optional): If True, skip the initial pre-loop step
+                                            (simulation+training setup).
+        """
+        if not self.simulation_function or \
+              not self.training_function or \
+                not self.active_learn_functions:
+            raise Exception("Simulation, Training, and at least one AL function must be set!")
+
+        if not max_iter and not self.criterion_function:
+            raise Exception("Either max_iter or a stop_criterion_function must be provided.")
+
+        def _parallel_active_learn(al_task):
+            if not skip_pre_loop:
+                sim_task, train_task = self._start_pre_loop()
+            else:
+                sim_task, train_task = (), ()
+
+            if not max_iter:
+                iteration_num = itertools.count()
+            else:
+                iteration_num = range(max_iter)
+
+            for i in iteration_num:
+                print(f'[Pipeline: {al_task["func"].__name__}] Starting Iteration-{i}')
+                acl_task = self._register_task(al_task, deps=(sim_task, train_task))
+
+                if self.criterion_function:
+                    stop_task = self._register_task(self.criterion_function, deps=acl_task)
+                    stop = stop_task.result()
+
+                    if self._check_stop_criterion(stop):
+                        break
+
+                sim_task = self._register_task(self.simulation_function, deps=acl_task)
+                train_task = self._register_task(self.training_function, deps=sim_task)
+                # Wait for the training to complete before next iteration
+                train_task.result()
+
+        submitted_learners = []
+        for name, al_task in self.active_learn_functions.items():
+            async_teach = self.as_async(_parallel_active_learn)
+            submitted_learners.append(async_teach(al_task))
+            print(f'Pipeline-{name} is submitted for execution')
+
+        # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
