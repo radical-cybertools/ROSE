@@ -366,6 +366,35 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
         super().__init__(engine, register_and_submit=False)
         self.active_learn_functions: Dict[str, Dict] = {}
 
+        # A dictionary to store stats for each active learning pipeline
+        # e.g. self._pipeline_stats['algo_1'] = {'iterations': 5, 'last_result': 0.01}
+        self._pipeline_stats: Dict[str, Dict] {}
+        self.best_pipeline_name = None
+        self.best_pipeline_stats = None
+
+    def _check_stop_criterion_and_return_value(self, stop_task_result):
+
+        try:
+            metric_value = eval(stop_task_result)
+        except Exception as e:
+            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
+
+        # check if the metric value is a number
+        if isinstance(metric_value, float) or isinstance(metric_value, int):
+            operator = self.criterion_function['operator']
+            threshold = self.criterion_function['threshold']
+            metric_name = self.criterion_function['metric_name']
+
+            if self.compare_metric(metric_name, metric_value, threshold, operator):
+                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
+                      '. Breaking the active learning loop')
+                return True, metric_value
+            else:
+                print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
+                return False, metric_value
+        else:
+            raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
+
     def active_learn_task(self, name: str):
         """
         A decorator that registers an active learning task under the given name.
@@ -413,18 +442,21 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
         if not max_iter and not self.criterion_function:
             raise Exception("Either max_iter or a stop_criterion_function must be provided.")
 
-        def _parallel_active_learn(al_task):
+        def _parallel_active_learn(al_task, name):
             if not skip_pre_loop:
                 sim_task, train_task = self._start_pre_loop()
             else:
                 sim_task, train_task = (), ()
 
             if not max_iter:
-                iteration_num = itertools.count()
+                iteration_range = itertools.count()
             else:
-                iteration_num = range(max_iter)
+                iteration_range = range(max_iter)
 
-            for i in iteration_num:
+            stop_value = float('inf')
+            num_iterations = 0
+
+            for i in iteration_range:
                 print(f'[Pipeline: {al_task["func"].__name__}] Starting Iteration-{i}')
                 acl_task = self._register_task(al_task, deps=(sim_task, train_task))
 
@@ -432,19 +464,40 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
                     stop_task = self._register_task(self.criterion_function, deps=acl_task)
                     stop = stop_task.result()
 
-                    if self._check_stop_criterion(stop):
+                    should_stop, stop_value = self._check_stop_criterion_and_return_value(stop):
+                    if should_stop:
+                        num_iterations = i + 1
                         break
 
                 sim_task = self._register_task(self.simulation_function, deps=acl_task)
                 train_task = self._register_task(self.training_function, deps=sim_task)
                 # Wait for the training to complete before next iteration
                 train_task.result()
+                num_iterations = i + 1
+            
+            self._pipeline_stats[name] = {
+                'iterations': num_iterations,
+                'last_result': stop_value
+            }
 
         submitted_learners = []
         for name, al_task in self.active_learn_functions.items():
             async_teach = self.as_async(_parallel_active_learn)
-            submitted_learners.append(async_teach(al_task))
+            submitted_learners.append(async_teach(al_task, name))
             print(f'Pipeline-{name} is submitted for execution')
 
         # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
+
+        if self._pipeline_stats:
+            # Sort by (iterations, last_result)
+            sorted_pipelines = sorted(
+                self._pipeline_stats.items(),
+                key=lambda kv: (kv[1]['iterations'], kv[1]['last_result'])
+            )
+            self.best_pipeline_name, self.best_pipeline_stats = sorted_pipelines[0]
+            print(f"Best pipeline is '{self.best_pipeline_name}' "
+                  f"with {self.best_pipeline_stats['iterations']} iteration(s) "
+                  f"and final metric result {self.best_pipeline_stats['last_result']}")
+        else:
+            print("no pipeline stats found!!!")
