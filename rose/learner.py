@@ -368,7 +368,7 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
 
         # A dictionary to store stats for each active learning pipeline
         # e.g. self._pipeline_stats['algo_1'] = {'iterations': 5, 'last_result': 0.01}
-        self._pipeline_stats: Dict[str, Dict] {}
+        self._pipeline_stats: Dict[str, Dict] = {}
         self.best_pipeline_name = None
         self.best_pipeline_stats = None
 
@@ -464,7 +464,7 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
                     stop_task = self._register_task(self.criterion_function, deps=acl_task)
                     stop = stop_task.result()
 
-                    should_stop, stop_value = self._check_stop_criterion_and_return_value(stop):
+                    should_stop, stop_value = self._check_stop_criterion_and_return_value(stop)
                     if should_stop:
                         num_iterations = i + 1
                         break
@@ -489,6 +489,7 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
         # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
 
+        print(f'self._pipeline_stats: = \n{self._pipeline_stats:}')
         if self._pipeline_stats:
             # Sort by (iterations, last_result)
             sorted_pipelines = sorted(
