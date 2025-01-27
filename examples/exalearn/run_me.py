@@ -43,38 +43,39 @@ data_dir= f'{os.getcwd()}/data/seed_{seed}'
 # Define and register the simulation task
 @acl.simulation_task
 def simulation(*args):
-    task = Task(executable=f'{code_path}/replacement_sim.py', arguments=args) # this is a replaced task, dont actually run the simulation 
-    return task
+#    return Task(executable=f'{code_path}/simulation_resample.py', arguments=args) 
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args) # this is a replaced task, dont actually run the simulation sample
 
 # Define and register a utility task
 @acl.utility_task
 def merge_preprocess(*args):
-    return Task(executable=f'{code_path}/merge_preprocess_hdf5.py', arguments=args)
+#    return Task(executable=f'{code_path}/merge_preprocess_hdf5.py', arguments=args)
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
 # Define and register the training task
 @acl.training_task
 def training(*args):
-    task = Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
-    return task
+#    return Task(executable=f'{code_path}/train.py', arguments=args)
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
 # Define and register the active learning task
 @acl.active_learn_task
 def active_learn(*args):
-    task = Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
-    return task
+#    return Task(executable=f'{code_path}/active_learning.py', arguments=args)
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
 # Prepare Data
 # Define the simulation sample task
 @acl.utility_task
 def sample_simulation(*args):
-    task = Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
-    return task
+#    task = Task(executable=f'{code_path}/simulation_sample.py', arguments=args)
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
-# Define the simulation sweep task
+#simulation sweep task
 @acl.utility_task
 def sweep_simulation(*args):
-    task = Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
-    return task
+#    task = Task(executable=f'{code_path}/simulation_sweep.py', arguments=args)
+    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
 def bootstrap():
     os.system(f'{code_path}/prepare_data_dir_pm.py --seed {seed}')
