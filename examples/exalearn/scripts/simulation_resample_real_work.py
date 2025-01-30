@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os,sys
-sys.path.insert(0,os.path.expanduser("~/g2full_polaris/GSASII/"))
+sys.path.insert(0,os.path.expanduser("~/g2full/GSAS-II/GSASII/"))
 import GSASIIscriptable as G2sc
 
 from mpi4py import MPI

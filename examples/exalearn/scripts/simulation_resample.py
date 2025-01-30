@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os,sys
-sys.path.insert(0,os.path.expanduser("~/g2full_polaris/GSASII/"))
+sys.path.insert(0,os.path.expanduser("~/g2full/GSAS-II/GSASII/"))
 import GSASIIscriptable as G2sc
 
 from mpi4py import MPI
@@ -133,6 +133,38 @@ def generate_tetragonal_random_sample(sz, a_min, a_max, c_min, c_max):
     c_arr = _generate_random_uniform(sz, c_min, c_max)
     return np.column_stack((a_arr, c_arr))
 
+#Here the input y_study is mixed which has [a, c, alpha, class]
+#Here freq is also mixed based on y_study
+#Here samples we generate will be separated for better comm with _remove_out_of_box 
+def generate_gaussian_sample_separate(y_study, freq, std_dev_cubic, std_dev_trigonal, std_dev_tetragonal, do_print = False):
+    samples_cubic = []
+    samples_trigonal = []
+    samples_tetragonal = []
+    for i in range(len(freq)):
+        if freq[i] > 0:
+            if do_print:
+                print("i = ", i, " freq[i] = ", freq[i], " y_study[i] = ", y_study[i], '\n')
+            if y_study[i, 3] == 0:  #trigonal
+                for _ in range(freq[i]):
+                    sample = np.random.normal(loc=[y_study[i, 0], y_study[i, 2]], scale=std_dev_trigonal)
+                    if do_print:
+                        print("trigonal sample = ", sample, '\n')
+                    samples_trigonal.append(sample)
+            elif y_study[i, 3] == 1:    #tetragonal
+                for _ in range(freq[i]):
+                    sample = np.random.normal(loc=[y_study[i, 0], y_study[i, 1]], scale=std_dev_tetragonal)
+                    if do_print:
+                        print("tetragonal sample = ", sample, '\n')
+                    samples_tetragonal.append(sample)
+            elif y_study[i, 3] == 2:    #cubic
+                for _ in range(freq[i]):
+                    sample = np.random.normal(loc=[y_study[i, 0]], scale=std_dev_cubic)
+                    if do_print:
+                        print("cubic sample = ", sample, '\n')
+                    samples_cubic.append(sample)
+
+    return np.vstack(samples_cubic), np.vstack(samples_trigonal), np.vstack(samples_tetragonal)
+
 def _remove_out_of_box(sym, sample_in, bounding_box, min_diff):
     assert bounding_box.shape[1] == 2       #[[begin1, end1], [begin2, end2], [begin3, end3], ...]
     if sym == "cubic":
@@ -159,30 +191,28 @@ def _remove_out_of_box(sym, sample_in, bounding_box, min_diff):
     return sample_in
 
 #All rank will execute this function
-#Here sz_g is the global total number of samples to simulate, which means each rank will only do sz_g/size samples
-#Here x_min, x_max are global range, and will be the same for all ranks!
-#Here seed_g is the global seed, and need to compute the local seed!!!
-def create_all_samples(rank, size, sz_g, seed_g,
-                       a_min1, a_max1, 
-                       a_min2, a_max2, alpha_min, alpha_max, 
-                       c_min, c_max, 
+#Different from other simulation_xxx, it will first generate exactly the same sample list
+#Then different rank will simulate different part of it
+#Because of that all rank use global seed!
+def create_all_samples(rank, size, seed_g,
+                       y_study, freq, 
                        cubic_bounding_box, 
                        trigonal_bounding_box, alpha_diff_trigonal,
                        tetragonal_bounding_box, ac_diff_tetragonal):
+    np.random.seed(seed_g)
+    do_print = (rank == 0)
+    print("IMPORTANT: In resample, rank = {}, seed for create_all_samples = {}!!!".format(rank, seed_g))
 
-    sz = int(sz_g / size)
-    seed = seed_g * 65537 + rank
-    np.random.seed(seed)
-    print("IMPORTANT: rank = {}, seed for create_all_samples = {}!!!".format(rank, seed))
-
-    sample_cubic      = generate_cubic_random_sample(sz, a_min1, a_max1)
+    sample_cubic, sample_trigonal, sample_tetragonal = generate_gaussian_sample_separate(y_study, freq, 
+                                         std_dev_cubic = [0.0001],
+                                         std_dev_trigonal = [0.002, 0.3], 
+                                         std_dev_tetragonal = [0.002, 0.002],
+                                         do_print = do_print)
     sample_cubic      = _remove_out_of_box("cubic", sample_cubic, cubic_bounding_box, None)
-    sample_trigonal   = generate_trigonal_random_sample(sz, a_min2, a_max2, alpha_min, alpha_max)
     sample_trigonal   = _remove_out_of_box("trigonal", sample_trigonal, trigonal_bounding_box, alpha_diff_trigonal)
-    sample_tetragonal = generate_tetragonal_random_sample(sz, a_min2, a_max2, c_min, c_max)
     sample_tetragonal = _remove_out_of_box("tetragonal", sample_tetragonal, tetragonal_bounding_box, ac_diff_tetragonal)
 
-    return sample_cubic, sample_trigonal, sample_tetragonal
+    return sample_cubic[rank::size][:], sample_trigonal[rank::size][:], sample_tetragonal[rank::size][:]
 
 def _sim_impl(rank, size, sym, conffile_name, sample):
     start = time.time()
@@ -235,10 +265,12 @@ def _sim_impl(rank, size, sym, conffile_name, sample):
 def main():
 
     start = time.time()
-    if ( len ( sys.argv ) != 6 ) :
+    if ( len ( sys.argv ) != 8 ) :
         print(sys.argv)
-        sys.stderr.write("Usage: python simulation_sample.py num_sample_total "
-                         "global_seed conf_name_cubic conf_name_trigonal conf_name_tetragonal\n")
+        sys.stderr.write("Usage: python simulation_resample.py "
+                         "global_seed conf_name_cubic cubic_studyset "
+                         "conf_name_trigonal trigonal_studyset "
+                         "conf_name_tetragonal tetragonal_studyset\n")
         sys.exit(0)
 
     comm = MPI.COMM_WORLD
@@ -246,13 +278,14 @@ def main():
     rank = comm.Get_rank()
     print("Rank = {} out of size = {}".format(rank, size))
 
-    num_sample_total = int(sys.argv[1])
-    global_seed = int(sys.argv[2])
-    conf_name_cubic = sys.argv[3]
+    global_seed = int(sys.argv[1])
+    conf_name_cubic = sys.argv[2]
+    cubic_studyset = str(sys.argv[3])
     conf_name_trigonal = sys.argv[4]
-    conf_name_tetragonal = sys.argv[5]
+    trigonal_studyset = str(sys.argv[5])
+    conf_name_tetragonal = sys.argv[6]
+    tetragonal_studyset = str(sys.argv[7])
 
-#FIXME
     a_min1 = 2.5
     a_max1 = 5.5
     a_min2 = 3.5
@@ -268,17 +301,36 @@ def main():
     alpha_diff_trigonal = 0.2
     ac_diff_tetragonal = 0.001
 
-    sample_cubic, sample_trigonal, sample_tetragonal = create_all_samples(rank, size,
-                       num_sample_total, global_seed,
-                       a_min1, a_max1, 
-                       a_min2, a_max2, alpha_min, alpha_max, 
-                       c_min, c_max, 
+    with h5py.File(cubic_studyset, 'r') as f:
+        dparams = f['parameters']
+        y_study_cubic = dparams[:]
+        y_shape_cubic = y_study_cubic.shape
+    print("y_shape_cubic = ", y_shape_cubic)
+
+    with h5py.File(trigonal_studyset, 'r') as f:
+        dparams = f['parameters']
+        y_study_trigonal = dparams[:]
+        y_shape_trigonal = y_study_trigonal.shape
+    print("y_shape_trigonal = ", y_shape_trigonal)
+
+    with h5py.File(tetragonal_studyset, 'r') as f:
+        dparams = f['parameters']
+        y_study_tetragonal = dparams[:]
+        y_shape_tetragonal = y_study_tetragonal.shape
+    print("y_shape_tetragonal = ", y_shape_tetragonal)
+
+    y_study = np.concatenate([y_study_cubic, y_study_trigonal, y_study_tetragonal], axis=0)
+
+    freq = np.load('AL-freq.npy')
+    
+    sample_cubic, sample_trigonal, sample_tetragonal = create_all_samples(rank, size, global_seed,
+                       y_study, freq,  
                        cubic_bounding_box, 
                        trigonal_bounding_box, alpha_diff_trigonal,
                        tetragonal_bounding_box, ac_diff_tetragonal)
-    print("sample_cubic = ", sample_cubic)
-    print("sample_trigonal = ", sample_trigonal)
-    print("sample_tetragonal = ", sample_tetragonal)
+    print(sample_cubic)
+    print(sample_trigonal)
+    print(sample_tetragonal)
 
     _sim_impl(rank, size, "cubic", conf_name_cubic, sample_cubic)
     _sim_impl(rank, size, "trigonal", conf_name_trigonal, sample_trigonal)
