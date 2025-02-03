@@ -9,7 +9,7 @@ ROSE leverages [**RADICAL-Cybertools**](https://radical-cybertools.github.io), a
 
 ## Why ROSE? 🚀🚀🚀
 ROSE allows you to enable, scale, and accelerate your active learning workflows across thousands of CPU cores and GPUs effectively and efficiently with just a few lines of code.
-ROSE is built on the [**RADICAL-Pilot**](https://github.com/radical-cybertools/radical.pilot) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, funtions and containers effortlessly.
+ROSE is built on the [**RADICAL-Pilot**](https://github.com/radical-cybertools/radical.pilot) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, functions and containers effortlessly.
 
 ## Key Features ⭐⭐⭐
 

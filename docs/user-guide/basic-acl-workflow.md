@@ -7,7 +7,7 @@ from rose.engine import Task, ResourceEngine
 ```
 
 
-Define your resource engine, as we descreibed in our previous [Target Resources](target-resources.md) step:
+Define your resource engine, as we described in our previous [Target Resources](target-resources.md) step:
 ```python
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
@@ -16,7 +16,7 @@ acl = ActiveLearner(engine)
 
 Now our resource engine is defined, lets define our main ACL workflow components:
 !!! note
-    The Task object is based on the [Radical.Pilot.TaskDescription](https://radicalpilot.readthedocs.io/en/stable/apidoc.html#radical.pilot.TaskDescription), meaning that users can pass any args and kwargs that the `Radical.Pilot.TaskDescription` can accept to the Task object.
+    The Task object is based on the [Radical.Pilot.TaskDescription](https://radicalpilot.readthedocs.io/en/stable/apidoc.html#radical.pilot.TaskDescription), meaning that users can pass any `args` and `kwargs` that the `Radical.Pilot.TaskDescription` can accept to the Task object.
 
 ```python
 @acl.simulation_task
@@ -32,7 +32,7 @@ def active_learn(*args):
     return Task(executable=f'python3 active.py')
 ```
 
-Optionally, you can specifiy a metric to monitor and act as a condition to terminate once your resuls reach the spcified value:
+Optionally, you can specify a metric to monitor and act as a condition to terminate once your results reach the specified value:
 !!! tip
     
     Specifying both `@acl.as_stop_criterion` and `max_iter` will cause ROSE to follow whichever constraint is satisfied first.
@@ -58,7 +58,7 @@ def check_mse(*args):
 Finally invoke the tasks and register them with the active learner as a workflow.
 !!! note
 
-    In the Sequential Learner, the invokation order of the tasks does not matter as ROSE,
+    In the Sequential Learner, the invocation order of the tasks does not matter as ROSE,
     sequential learner has a predefined order of tasks as follows: `simulation` --> `training` --> `active_learn`.
 
 ```python
