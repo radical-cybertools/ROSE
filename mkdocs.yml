@@ -5,7 +5,7 @@ repo_url: 'https://github.com/radical-cybertools/ROSE'
 edit_uri: ""
 
 theme:
-  name: readthedocs
+  name: material
   features:
     - navigation.tabs
     - navigation.sections
