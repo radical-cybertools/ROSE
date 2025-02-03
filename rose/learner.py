@@ -502,5 +502,7 @@ class AlgorithmSelector(ActiveLearner):
                   f"with {self.best_pipeline_stats['iterations']} iteration(s) "
                   f"and final metric result {self.best_pipeline_stats['last_result']}")
         else:
-            excp = "No pipeline stats found! Please make sure that at least one active learning algorithm is used, and the status of each active learning pipeline to make sure that at least one of them is running successfully!"
+            excp = "No pipeline stats found! Please make sure that at least one active learning algorithm "
+            excp += "is used, and the status of each active learning pipeline to make sure that at least "
+            excp += "one of them is running successfully!"
             raise ValueError(excp)
