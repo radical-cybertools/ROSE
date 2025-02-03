@@ -79,10 +79,9 @@ markdown_extensions:
 nav:
   #- ROSE Toolkit: index.md
   - Getting Started:
-      - 1.Introduction: getting-started/introduction.md
-      - 2.Installation: getting-started/installation.md
-      - 3.Dry Run: getting-started/dry-run.md
-      - 4.FAQ: getting-started/faq.md
+      - 1.Installation: getting-started/installation.md
+      - 2.Dry Run: getting-started/dry-run.md
+      - 3.FAQ: getting-started/faq.md
   - User Guide:
       - 1.Target Resources: user-guide/target-resources.md
       - 2.Basic ACL workflow: user-guide/basic-acl-workflow.md
