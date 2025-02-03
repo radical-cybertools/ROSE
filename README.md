@@ -17,7 +17,7 @@ ROSE uses RADICAL-Cybertools -- middleware building blocks to facilitate the dev
 
 The complete documentation is available [here](https://radical-cybertools.github.io/ROSE/).
 
-For tutorials and walkthrough notebooks please check [here](rose/examples)
+For tutorials and walkthrough notebooks please check [here](examples)
 
 
 
