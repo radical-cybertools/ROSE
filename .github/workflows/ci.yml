@@ -2,7 +2,8 @@ name: ci
 on:
   push:
     branches:
-      -  feature/docs
+      - master
+      - main
 permissions:
   contents: write
 jobs:
