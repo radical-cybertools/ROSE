@@ -1,13 +1,13 @@
 import os
 import sys
 
-from rose.learner import ParallelActiveLearningAlgoSelector
+from rose.learner import AlgorithmSelector
 from rose.engine import Task, ResourceEngine
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
-algo_selector = ParallelActiveLearningAlgoSelector(engine)
+algo_selector = AlgorithmSelector(engine)
 code_path = f'{sys.executable} {os.getcwd()}'
 
 # Define and register the simulation task
@@ -42,5 +42,5 @@ active_2 = active_learn_2()
 stop_cond = check_mse()
 
 # Start the teaching process
-algo_selector.teach(max_iter=4)
+algo_selector.teach_and_select(max_iter=4)
 engine.shutdown()

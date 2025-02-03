@@ -348,16 +348,16 @@ class ParallelActiveLearner(SequentialActiveLearner):
         [learner.result() for learner in submitted_learners]
 
 
-class ParallelActiveLearningAlgoSelector(ActiveLearner):
+class AlgorithmSelector(ActiveLearner):
     """
-    ParallelActiveLearningAlgoSelector is a subclass of ActiveLearner that implements 
+    AlgorithmSelector is a subclass of ActiveLearner that implements 
     multiple active learning pipelines in parallel, each pipeline is a 
     sequential active learning loop, and uses the same simulation and 
     training tasks, but distinct active learning task.
     """
     def __init__(self, engine: ResourceEngine) -> None:
         ''' 
-        Initialize the ParallelActiveLearningAlgoSelector object.
+        Initialize the AlgorithmSelector object.
 
         Args:
             engine: The ResourceEngine object that manages the resources and
@@ -422,10 +422,11 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
             return wrapper
         return decorator
 
-    def teach(self, max_iter:int = 0, skip_pre_loop:bool = False):
+    def teach_and_select(self, max_iter:int = 0, skip_pre_loop:bool = False):
         """
         Run the active learning pipelines in parallel, each using a different AL algorithm,
         for multiple iterations similar to SequentialActiveLearner.
+        After that, select the best active learning algorithm
 
         Args:
             max_iter (int, optional): The maximum number of iterations for each pipeline.
@@ -489,7 +490,7 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
         # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
 
-        print(f'self._pipeline_stats: = \n{self._pipeline_stats:}')
+        print(f'pipeline_stats: = \n{self._pipeline_stats:}')
         if self._pipeline_stats:
             # Sort by (iterations, last_result)
             sorted_pipelines = sorted(
@@ -501,4 +502,5 @@ class ParallelActiveLearningAlgoSelector(ActiveLearner):
                   f"with {self.best_pipeline_stats['iterations']} iteration(s) "
                   f"and final metric result {self.best_pipeline_stats['last_result']}")
         else:
-            print("no pipeline stats found!!!")
+            excp = "No pipeline stats found! Please make sure that at least one active learning algorithm is used, and the status of each active learning pipeline to make sure that at least one of them is running successfully!"
+            raise ValueError(excp)
