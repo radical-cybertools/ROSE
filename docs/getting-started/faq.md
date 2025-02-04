@@ -10,7 +10,7 @@ A dry run allows you to simulate the execution of your tasks locally without mak
 It's a way to verify your setup before applying it.
 
 ## Q3: What if I have an issue?
-If you have any additional questions or an issue, feel free to reach out to our support team by opening a Github ticket [Ticket :fontawesome-solid-paper-plane:](#){ .md-button }
+If you have any additional questions or an issue, feel free to reach out to our support team by opening a Github [ticket](https://github.com/radical-cybertools/ROSE/issues).
 
 ## Q4: How can I participate in the development of ROSE?
 By following these steps:
