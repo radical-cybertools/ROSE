@@ -32,5 +32,5 @@ ROSE is built on the [**RADICAL-Pilot**](https://github.com/radical-cybertools/r
 
 <figure markdown="span" style="position: relative; left: 500px; top: -170px">
   <img src="https://previews.us-east-1.widencdn.net/preview/39958271/assets/asset-view/d96902d1-af98-4bf5-a76e-b7af053ffde3/thumbnail/eyJ3IjoyMDQ4LCJoIjoyMDQ4LCJzY29wZSI6ImFwcCJ9?sig.ver=1&sig.keyId=us-east-1.20240821&sig.expires=1738699200&sig=dxSepylZJAYt9bTrSTCNH5dBV6Jyb2RiLrW8KdPuo2s" alt="Image title" width="95">
-  <figcaption>NSF Funded Project</figcaption>
+  <figcaption>NSF Funded Project (#2212550)</figcaption>
 </figure>
