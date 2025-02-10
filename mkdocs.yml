@@ -84,9 +84,9 @@ nav:
       - 3.FAQ: getting-started/faq.md
   - User Guide:
       - 1.Target Resources: user-guide/target-resources.md
-      - 2.Basic ACL workflow: user-guide/basic-acl-workflow.md
-      - 3.ACL Metric: user-guide/acl-metrics.md
-      - 4.Advanced ACL workflow: user-guide/advanced-acl-workflow.md
+      - 2.Basic AL workflow: user-guide/basic-acl-workflow.md
+      - 3.AL Metric: user-guide/acl-metrics.md
+      - 4.Advanced AL workflow: user-guide/advanced-acl-workflow.md
       - 5.Visualization: user-guide/visualization.md
 
 extra_css:
