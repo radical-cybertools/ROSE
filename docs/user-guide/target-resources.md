@@ -1,8 +1,8 @@
-# Target Machines for Executing ACL Workflows
-ROSE enables the execution of ACL workflows on diverse computing resources. Below, we will show how you can specify your `local computer` and `remote HPC machine` as target resources.
+# Target Machines for Executing AL Workflows
+ROSE enables the execution of AL workflows on diverse computing resources. Below, we will show how you can specify your `local computer` and `remote HPC machine` as target resources.
 
 ## Local Computer
-For local execution, user can use their desktops, laptops, and their own small clusters to execute their ACL workflows as follows:
+For local execution, user can use their desktops, laptops, and their own small clusters to execute their AL workflows as follows:
 ```python
 import os
 
@@ -15,7 +15,7 @@ acl = ActiveLearner(engine)
 ```
 
 ## HPC Resources
-To execute ACL workflows on HPC machines, users must have an active allocation on the target machine and specify their resource requirements, as well as the time needed to execute their workflows. Remember, ROSE is based on RADICAL-Pilot. For more information on how to access, set up, and execute workflows on HPC machines, refer to the following link [RADICAL-Pilot Job Submission](https://radicalpilot.readthedocs.io/en/stable/tutorials/submission.html):
+To execute AL workflows on HPC machines, users must have an active allocation on the target machine and specify their resource requirements, as well as the time needed to execute their workflows. Remember, ROSE is based on RADICAL-Pilot. For more information on how to access, set up, and execute workflows on HPC machines, refer to the following link [RADICAL-Pilot Job Submission](https://radicalpilot.readthedocs.io/en/stable/tutorials/submission.html):
 
 ```python
 import os

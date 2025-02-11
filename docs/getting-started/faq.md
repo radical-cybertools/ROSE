@@ -6,7 +6,7 @@ Refer to the [Installation Guide](installation.md) for detailed instructions bas
 
 ## Q2: What is a dry run?
 
-A dry run allows you to simulate the execution of your tasks locally without making any changes to the behavior of the your ACL workflow.
+A dry run allows you to simulate the execution of your tasks locally without making any changes to the behavior of the your AL workflow.
 It's a way to verify your setup before applying it.
 
 ## Q3: What if I have an issue?

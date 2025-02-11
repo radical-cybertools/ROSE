@@ -14,7 +14,7 @@ engine = ResourceEngine({'runtime': 30,
 acl = ActiveLearner(engine)
 ```
 
-Now our resource engine is defined, lets define our main ACL workflow components:
+Now our resource engine is defined, lets define our main AL workflow components:
 !!! note
     The Task object is based on the [Radical.Pilot.TaskDescription](https://radicalpilot.readthedocs.io/en/stable/apidoc.html#radical.pilot.TaskDescription), meaning that users can pass any `args` and `kwargs` that the `Radical.Pilot.TaskDescription` can accept to the Task object.
 
