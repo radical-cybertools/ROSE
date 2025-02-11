@@ -11,6 +11,13 @@ ROSE leverages [**RADICAL-Cybertools**](https://radical-cybertools.github.io), a
 ROSE allows you to enable, scale, and accelerate your active learning workflows across thousands of CPU cores and GPUs effectively and efficiently with just a few lines of code.
 ROSE is built on the [**RADICAL-Pilot**](https://github.com/radical-cybertools/radical.pilot) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, functions and containers effortlessly.
 
+
+<figure markdown="span" style="position: relative;">
+  <img src="assets/rose_mind_flow.png" alt="">
+  <figcaption>ROSE Mind Map and Flow Diagram</figcaption>
+</figure>
+
+
 ## Key Features ⭐⭐⭐
 
 - **Express, build and run** different Active Learn workflows in minutes.
