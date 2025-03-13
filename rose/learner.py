@@ -171,10 +171,10 @@ class ActiveLearner(WorkflowEngine):
             if self.compare_metric(metric_name, metric_value, threshold, operator):
                 print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
                       '. Breaking the active learning loop')
-                return True
+                return True, metric_value
             else:
                 print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
-                return False
+                return False, metric_value
         else:
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
@@ -270,7 +270,8 @@ class SequentialActiveLearner(ActiveLearner):
                 stop_task = self._register_task(self.criterion_function, deps=acl_task)
                 stop = stop_task.result()
 
-                if self._check_stop_criterion(stop):
+                should_stop, _ = self._check_stop_criterion(stop)
+                if should_stop:
                     break
 
             sim_task = self._register_task(self.simulation_function, deps=acl_task)
@@ -289,23 +290,22 @@ class ParallelActiveLearner(SequentialActiveLearner):
         |                          |                         |
       [Sim]                      [Sim]                     [Sim]
         |                          |                         |
-    [Active Learn]           [Active Learn]            [Active Learn]
-        |                          |                         |
      [Train]                    [Train]                   [Train]
         |                          |                         |
+    [Active Learn]           [Active Learn]            [Active Learn]
+        |                          |                         |
         v                          v                         v
-    -------------------------------------------------------------
+    -----------------------------------------------------------------------
                     Parallel Execution of All Learners
-
                                    |
                                    v
                       (Next Parallel Learner N)
                                    |
                                  [Sim]
                                    |
-                             [Active Learn]
-                                   |
                                 [Train]
+                                   |
+                            [Active Learn]
     '''
     def __init__(self, engine: ResourceEngine) -> None:
         '''
@@ -367,33 +367,10 @@ class AlgorithmSelector(ActiveLearner):
         self.active_learn_functions: Dict[str, Dict] = {}
 
         # A dictionary to store stats for each active learning pipeline
-        # e.g. self._pipeline_stats['algo_1'] = {'iterations': 5, 'last_result': 0.01}
-        self._pipeline_stats: Dict[str, Dict] = {}
+        # e.g. self.algorithm_results['algo_1'] = {'iterations': 5, 'last_result': 0.01}
+        self.algorithm_results: Dict[str, Dict] = {}
         self.best_pipeline_name = None
         self.best_pipeline_stats = None
-
-    def _check_stop_criterion_and_return_value(self, stop_task_result):
-
-        try:
-            metric_value = eval(stop_task_result)
-        except Exception as e:
-            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
-
-        # check if the metric value is a number
-        if isinstance(metric_value, float) or isinstance(metric_value, int):
-            operator = self.criterion_function['operator']
-            threshold = self.criterion_function['threshold']
-            metric_name = self.criterion_function['metric_name']
-
-            if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
-                      '. Breaking the active learning loop')
-                return True, metric_value
-            else:
-                print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
-                return False, metric_value
-        else:
-            raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
     def active_learn_task(self, name: str):
         """
@@ -465,7 +442,7 @@ class AlgorithmSelector(ActiveLearner):
                     stop_task = self._register_task(self.criterion_function, deps=acl_task)
                     stop = stop_task.result()
 
-                    should_stop, stop_value = self._check_stop_criterion_and_return_value(stop)
+                    should_stop, stop_value = self._check_stop_criterion(stop)
                     if should_stop:
                         num_iterations = i + 1
                         break
@@ -476,7 +453,7 @@ class AlgorithmSelector(ActiveLearner):
                 train_task.result()
                 num_iterations = i + 1
             
-            self._pipeline_stats[name] = {
+            self.algorithm_results[name] = {
                 'iterations': num_iterations,
                 'last_result': stop_value
             }
@@ -490,11 +467,11 @@ class AlgorithmSelector(ActiveLearner):
         # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
 
-        print(f'pipeline_stats: = \n{self._pipeline_stats:}')
-        if self._pipeline_stats:
+        print(f'pipeline stats: = \n{self.algorithm_results:}')
+        if self.algorithm_results:
             # Sort by (iterations, last_result)
             sorted_pipelines = sorted(
-                self._pipeline_stats.items(),
+                self.algorithm_results.items(),
                 key=lambda kv: (kv[1]['iterations'], kv[1]['last_result'])
             )
             self.best_pipeline_name, self.best_pipeline_stats = sorted_pipelines[0]
