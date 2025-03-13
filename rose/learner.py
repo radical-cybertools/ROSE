@@ -235,7 +235,7 @@ class SequentialActiveLearner(ActiveLearner):
             active learning loop. If not provided, the value set during initialization
             will be used. Defaults to 0.
         '''
-        # start the initlial step for active learning by
+        # start the initial step for active learning by
         # defining and setting simulation and training tasks
         if not self.simulation_function or \
               not self.training_function or \
@@ -251,13 +251,11 @@ class SequentialActiveLearner(ActiveLearner):
             # step-1 invoke the pre_step only once
             sim_task, train_task = self._start_pre_loop()
 
+        # if no max_iter is provided, run the loop indefinitely
+        # and until the stop criterion is met
         if not max_iter:
             max_iter = itertools.count()
 
-            if not self.criterion_function:
-                #FIXME: TIANLE: No need for this branch, you already checked this above in line 245-246
-                excp = 'Stop criterion function must be provided if max_iter is not specified'
-                raise ValueError(excp)
         else:
             max_iter = range(max_iter)
 
@@ -287,25 +285,25 @@ class ParallelActiveLearner(SequentialActiveLearner):
     a parallel active learning loop.
 
     Parallel Learner 1        Parallel Learner 2        Parallel Learner 3
-        |                          |                         |
-      [Sim]                      [Sim]                     [Sim]
-        |                          |                         |
-     [Train]                    [Train]                   [Train]
-        |                          |                         |
-    [Active Learn]           [Active Learn]            [Active Learn]
-        |                          |                         |
-        v                          v                         v
+            |                         |                         |
+          [Sim]                     [Sim]                     [Sim]
+            |                         |                         |
+         [Train]                   [Train]                   [Train]
+            |                         |                         |
+        [Active Learn]          [Active Learn]            [Active Learn]
+            |                         |                         |
+            v                         v                         v
     -----------------------------------------------------------------------
-                    Parallel Execution of All Learners
-                                   |
-                                   v
-                      (Next Parallel Learner N)
-                                   |
-                                 [Sim]
-                                   |
-                                [Train]
-                                   |
-                            [Active Learn]
+                       Parallel Execution of All Learners
+                                      |
+                                      v
+                         (Next Parallel Learner N)
+                                      |
+                                    [Sim]
+                                      |
+                                   [Train]
+                                      |
+                               [Active Learn]
     '''
     def __init__(self, engine: ResourceEngine) -> None:
         '''
@@ -467,7 +465,6 @@ class AlgorithmSelector(ActiveLearner):
         # block/wait for each pipeline until it finishes
         [learner.result() for learner in submitted_learners]
 
-        print(f'pipeline stats: = \n{self.algorithm_results:}')
         if self.algorithm_results:
             # Sort by (iterations, last_result)
             sorted_pipelines = sorted(
@@ -475,7 +472,7 @@ class AlgorithmSelector(ActiveLearner):
                 key=lambda kv: (kv[1]['iterations'], kv[1]['last_result'])
             )
             self.best_pipeline_name, self.best_pipeline_stats = sorted_pipelines[0]
-            print(f"Best pipeline is '{self.best_pipeline_name}' "
+            print(f"Best algorithm is '{self.best_pipeline_name}' "
                   f"with {self.best_pipeline_stats['iterations']} iteration(s) "
                   f"and final metric result {self.best_pipeline_stats['last_result']}")
         else:
