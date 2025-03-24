@@ -38,8 +38,10 @@ def teach():
         train = training(simul)
         active = active_learn(simul, train)
 
-        if check_accuracy(active):
-            print('Accuracy met the threshold')
+        should_stop, metric_val = check_accuracy(active)
+
+        if should_stop:
+            print(f'Accuracy ({metric_val}) met the threshold, breaking...')
             break
 
 teach()
