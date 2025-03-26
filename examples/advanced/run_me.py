@@ -5,10 +5,12 @@ from rose.metrics import MODEL_ACCURACY
 from rose.engine import Task, ResourceEngine
 
 engine = ResourceEngine({'runtime': 30,
-                         'resource': 'local.localhost'})
+                         'cores': 1024,
+                         'resource': 'ncsa.delta',
+                         'access_schema':'interactive'})
 
 learner = ActiveLearner(engine)
-code_path = f'{sys.executable} {os.getcwd()}'
+code_path = f'{sys.executable} /u/alsaadi1/RADICAL/ROSE/examples/advanced'
 
 # Define and register the simulation task
 @learner.simulation_task
@@ -30,17 +32,32 @@ def active_learn(*args):
 def check_accuracy(*args):
     return Task(executable=f'{code_path}/check_accuracy.py')
 
+
+@learner.as_async
 def teach():
-    # 10 iterations of active learn
-    for acl_iter in range(10):
+    # 3iterations of active learn
+    for acl_iter in range(3):
         print(f'Starting Iteration-{acl_iter}')
         simul = simulation()
         train = training(simul)
         active = active_learn(simul, train)
 
-        if check_accuracy(active):
-            print('Accuracy met the threshold')
+        should_stop, metric_val = check_accuracy(active)
+
+        if should_stop:
+            print('Accuracy met the threshold, breaking...')
             break
 
-teach()
-engine.shutdown()
+flows = []
+try:
+    for i in range(512):
+        tt = teach()
+        flows.append(tt)
+
+    [f.result() for f in flows]
+    print('all done')
+    engine.shutdown()
+
+except:
+    engine.shutdown()
+

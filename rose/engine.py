@@ -1,5 +1,6 @@
 # flake8: noqa
 import queue
+import math
 import time
 import threading
 
@@ -198,7 +199,9 @@ class WorkflowEngine:
         run_thread.start()
 
         self.task_manager.register_callback(self.callbacks)
-        self._conccurent_wf_submitter = ThreadPoolExecutor()
+        self._conccurent_wf_submitter = ThreadPoolExecutor(max_workers=math.inf)
+        self._profiler = ru.Profiler(name='workflow_manager',
+                         ns='rose', path=self.engine._session.path)
 
     def as_async(self, func: Callable):
         """
@@ -221,7 +224,10 @@ class WorkflowEngine:
             task_descriptions['name'] = func.__name__
             task_descriptions['uid'] = self._assign_task_uid()
 
+            self._profiler.prof('detect_deps_start', uid=task_descriptions['uid'])
             task_deps, input_files_deps, output_files_deps = self._detect_dependencies(args)
+            self._profiler.prof('detect_deps_stop', uid=task_descriptions['uid'])
+
 
             task_descriptions['metadata'] = {'dependencies': task_deps,
                                              'input_files': input_files_deps,
@@ -268,8 +274,7 @@ class WorkflowEngine:
         Returns:
             str: The generated unique identifier for the task.
         """
-        uid = ru.generate_id('task.%(item_counter)06d',
-                             ru.ID_CUSTOM, ns=self.engine._session.uid)
+        uid = ru.generate_id('task', ru.ID_SIMPLE)
         return uid
 
     def link_explicit_data_deps(self, task_id, file_name=None):
@@ -393,10 +398,13 @@ class WorkflowEngine:
 
                 if self.tasks[task_uid]['future'].running():
                     continue
-
+                
                 dependencies = self.dependencies[task_uid]
                 # Check if all dependencies have been resolved and are done
                 if all(dep['uid'] in self.resolved and self.tasks[dep['uid']]['future'].done() for dep in dependencies):
+                    
+                    self._profiler.prof('resolve_al_task_start', uid=task_uid)
+                    
                     task_desc = self.tasks[task_uid]['description']
 
                     input_staging = []
@@ -431,6 +439,9 @@ class WorkflowEngine:
                     msg = f"Task '{task_desc.name}' ready to submit;"
                     msg += f" resolved dependencies: {[dep['name'] for dep in dependencies]}"
                     print(msg)
+
+                    self._profiler.prof('resolve_al_task_stop', uid=task_uid)
+
 
             if to_submit:
                 # Submit collected tasks concurrently and track their futures
