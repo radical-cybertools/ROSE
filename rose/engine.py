@@ -435,7 +435,6 @@ class WorkflowEngine:
                     task_desc.input_staging = input_staging
 
                     # Add the task to the submission list
-                    to_submit.append(task_desc)
                     msg = f"Task '{task_desc.name}' ready to submit;"
                     msg += f" resolved dependencies: {[dep['name'] for dep in dependencies]}"
                     print(msg)
@@ -443,15 +442,13 @@ class WorkflowEngine:
                     self._profiler.prof('resolve_al_task_stop', uid=task_uid)
 
 
-            if to_submit:
-                # Submit collected tasks concurrently and track their futures
-                self.queue.put(to_submit)
-                for t in to_submit:
-                    self.tasks[t.uid]['future'].set_running_or_notify_cancel()
-                    self.resolved.add(t.uid)
-                    self.unresolved.remove(t.uid)
+                    # Submit collected tasks concurrently and track their futures
+                    self.queue.put([task_desc])
+                    self.tasks[task_uid]['future'].set_running_or_notify_cancel()
+                    self.resolved.add(task_uid)
+                    self.unresolved.remove(task_uid)
 
-            time.sleep(0.5)  # Small delay to prevent excessive CPU usage in the loop
+            time.sleep(0.05)  # Small delay to prevent excessive CPU usage in the loop
 
     def callbacks(self, task, state):
         """
@@ -499,4 +496,4 @@ class WorkflowEngine:
                 print(f'submitting {[t.name for t in tasks]} for execution')
                 self.task_manager.submit_tasks(tasks)
             except queue.Empty:
-                time.sleep(0.5)
+                time.sleep(0.05)
