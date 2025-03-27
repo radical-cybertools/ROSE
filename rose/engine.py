@@ -2,6 +2,7 @@
 import queue
 import math
 import time
+import logging
 import threading
 
 from functools import wraps
@@ -203,6 +204,9 @@ class WorkflowEngine:
         self._profiler = ru.Profiler(name='workflow_manager',
                          ns='rose', path=self.engine._session.path)
 
+        logging.basicConfig(filename=f'{self.engine._session.path}/workflow_manager.log',
+                            level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
     def as_async(self, func: Callable):
         """
         A decorator to run `blocking` function in a seperate thread.
@@ -244,7 +248,7 @@ class WorkflowEngine:
 
             msg = f"Registered task '{task_descriptions['name']}' and id of {task_fut.id}"
             msg += f" with dependencies: {[dep['name'] for dep in task_deps]}"
-            print(msg)
+            logging.debug(msg)
 
             return task_fut
 
@@ -259,7 +263,7 @@ class WorkflowEngine:
             try:
                 return func(self, *args, **kwargs)
             except Exception as e:
-                print('Internal failure is detected, shutting down the resource engine')
+                logging.debug('Internal failure is detected, shutting down the resource engine')
                 self.engine.shutdown()  # Call shutdown on exception
                 raise e
         return wrapper
@@ -382,7 +386,11 @@ class WorkflowEngine:
 
         while True:
             # Continuously try to resolve dependencies and submit tasks as they become ready
-            self.unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
+            # self.unresolved = set(self.dependencies.keys())  # Start with all tasks unresolved
+            
+            self.unresolved.update(self.dependencies.keys())
+
+            self.unresolved -= self.resolved 
 
             if not self.unresolved:
                 time.sleep(0.1)  # Small delay to prevent excessive CPU usage in the loop
@@ -407,15 +415,21 @@ class WorkflowEngine:
                     
                     task_desc = self.tasks[task_uid]['description']
 
+                    pre_exec = []
                     input_staging = []
 
                     # Gather staging information for input files
                     for dep in dependencies:
                         dep_desc = self.tasks[dep['uid']]['description']
 
+                        logging.debug(f"Unresolved tasks: {self.unresolved}")
+                        logging.debug(f"Task {task_uid} dependencies: {[dep['uid'] for dep in dependencies]}")
+                        logging.debug(f"Checking task {task_uid}: done={self.tasks[task_uid]['future'].done()}, running={self.tasks[task_uid]['future'].running()}")
+
                         # implicit data dependencies
                         if not dep_desc.metadata.get('output_files'):
-                            task_desc.pre_exec.extend(self.link_implicit_data_deps(dep_desc))
+                            logging.debug(f"Implicit linking triggered for dependency {dep['uid']}")
+                            pre_exec.extend(self.link_implicit_data_deps(dep_desc))
 
                         # explicit data dependencies
                         for output_file in dep_desc.metadata['output_files']:
@@ -432,15 +446,15 @@ class WorkflowEngine:
                                                   'target': f"task:///{input_file}",
                                                   'action': rp.TRANSFER})
 
+                    task_desc.pre_exec = pre_exec
                     task_desc.input_staging = input_staging
 
                     # Add the task to the submission list
                     msg = f"Task '{task_desc.name}' ready to submit;"
                     msg += f" resolved dependencies: {[dep['name'] for dep in dependencies]}"
-                    print(msg)
+                    logging.debug(msg)
 
                     self._profiler.prof('resolve_al_task_stop', uid=task_uid)
-
 
                     # Submit collected tasks concurrently and track their futures
                     self.queue.put([task_desc])
@@ -468,11 +482,11 @@ class WorkflowEngine:
         task_fut = self.tasks[task.uid]['future']
 
         if state == rp.DONE:
-            print(f'{task.uid} is DONE')
+            logging.debug(f'{task.uid} is DONE')
             task_fut.set_result(task.stdout)
 
         elif state in [rp.FAILED, rp.CANCELED]:
-            print(f'{task.uid} is FAILED')
+            logging.debug(f'{task.uid} is FAILED')
             task_fut.set_exception(Exception(task.stderr))
 
     @shutdown_on_failure
@@ -493,7 +507,7 @@ class WorkflowEngine:
         while True:
             try:
                 tasks = self.queue.get(timeout=1)
-                print(f'submitting {[t.name for t in tasks]} for execution')
+                logging.debug(f'submitting {[t.name for t in tasks]} for execution')
                 self.task_manager.submit_tasks(tasks)
             except queue.Empty:
                 time.sleep(0.05)
