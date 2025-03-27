@@ -39,6 +39,20 @@ def get_runtime(data, ntasks=None):
                                         {ru.EVENT: 'task_run_stop'}])
     runtime = data['pilot'].duration(event=[{ru.EVENT: 'bootstrap_0_start'},
                                             {ru.EVENT: 'bootstrap_0_stop'}])
+
+    
+    rose_ovh1 = data['tasks'].duration(event=[{ru.EVENT: 'detect_deps_start'},
+                                              {ru.EVENT: 'detect_deps_stop'}])
+
+
+
+    rose_ovh2 = data['tasks'].duration(event=[{ru.EVENT: 'resolve_al_task_start'},
+                                              {ru.EVENT: 'resolve_al_task_stop'}])
+
+
+    print(f'ROSE OVH: {rose_ovh1 + rose_ovh2}s')
+
+    
     print(f'TOTAL RUNTIME: {round(runtime)}s | RCT OVH: {round(runtime - ttx)}s')
     
     if ntasks and ntasks > 1:
@@ -96,7 +110,7 @@ def plot_utilization(data, resources=None, with_metrics=False):
         ['Schedule',      ['exec_queue', 'unschedule'],   '#c994c7'],
         ['Prep',          ['exec_prep', 'exec_rp', 'exec_sh',
                            'term_sh', 'term_rp'],         '#fdbb84'],
-        ['Launch method', ['exec_launch', 'exec_finish'], '#ff9999'],
+        #['Launch method', ['exec_launch', 'exec_finish'], '#ff9999'],
         ['Launch',        ['exec_launch'],                '#ff9999'],
         ['Running',       ['exec_cmd'],                   '#88bb88'],  # color to be updated
         #['Cooldown',      ['drain'],                      '#addd8e']
@@ -392,8 +406,8 @@ def main():
 
         print('===================================Now Plotting Figures====================================\n')
         plot_concurrency(data)
-        plot_utilization_stack(data, resources=['cpu', 'gpu'])
-        plot_utilization(data, resources=['cpu', 'gpu'], with_metrics=False)
+        plot_utilization_stack(data, resources=['cpu'])
+        plot_utilization(data, resources=['cpu'], with_metrics=False)
 
         print('=======================================Done====================================\n')
 

@@ -20,6 +20,8 @@ def process_session(sid):
 def get_runtime(data, ntasks=None):
     ttx = data['tasks'].duration(event=[{ru.EVENT: 'task_run_start'},
                                         {ru.EVENT: 'task_run_stop'}])
+
+
     runtime = data['pilot'].duration(event=[{ru.EVENT: 'bootstrap_0_start'},
                                             {ru.EVENT: 'bootstrap_0_stop'}])
     
@@ -34,7 +36,6 @@ def get_runtime(data, ntasks=None):
 
 
     print(f'ROSE OVH: {rose_ovh1 + rose_ovh2}s')
-    
     print(f'TOTAL RUNTIME: {round(runtime)}s | RCT OVH: {round(runtime - ttx)}s')
     if ntasks and ntasks > 1:
         task_idx = ntasks - 1
