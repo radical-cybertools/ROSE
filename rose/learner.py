@@ -1,10 +1,11 @@
+import asyncio
 import typeguard
 import itertools
+
 from typing import Callable, Dict
 from functools import wraps
 
-from .engine import ResourceEngine
-from .engine import WorkflowEngine
+from radical.flow import ResourceEngine, WorkflowEngine
 from .metrics import ActiveLearningMetrics as metrics
 
 class ActiveLearner(WorkflowEngine):
@@ -397,7 +398,7 @@ class AlgorithmSelector(ActiveLearner):
             return wrapper
         return decorator
 
-    def teach_and_select(self, max_iter:int = 0, skip_pre_loop:bool = False):
+    async def teach_and_select(self, max_iter:int = 0, skip_pre_loop:bool = False):
         """
         Run the active learning pipelines in parallel, each using a different AL algorithm,
         for multiple iterations similar to SequentialActiveLearner.
@@ -418,9 +419,10 @@ class AlgorithmSelector(ActiveLearner):
         if not max_iter and not self.criterion_function:
             raise Exception("Either max_iter or a stop_criterion_function must be provided.")
 
-        def _parallel_active_learn(al_task, name):
+        async def _parallel_active_learn(al_task, name):
             if not skip_pre_loop:
-                sim_task, train_task = self._start_pre_loop()
+                sim_task = await self._register_task(self.simulation_function)
+                train_task = await self._register_task(self.training_function, deps=sim_task)
             else:
                 sim_task, train_task = (), ()
 
@@ -434,36 +436,33 @@ class AlgorithmSelector(ActiveLearner):
 
             for i in iteration_range:
                 print(f'[Pipeline: {al_task["func"].__name__}] Starting Iteration-{i}')
-                acl_task = self._register_task(al_task, deps=(sim_task, train_task))
+                acl_task = await self._register_task(al_task, deps=(sim_task, train_task))
 
                 if self.criterion_function:
-                    stop_task = self._register_task(self.criterion_function, deps=acl_task)
-                    stop = stop_task.result()
+                    stop_task = await self._register_task(self.criterion_function, deps=acl_task)
+                    stop = await stop_task
 
                     should_stop, stop_value = self._check_stop_criterion(stop)
                     if should_stop:
                         num_iterations = i + 1
                         break
 
-                sim_task = self._register_task(self.simulation_function, deps=acl_task)
-                train_task = self._register_task(self.training_function, deps=sim_task)
+                sim_task = await self._register_task(self.simulation_function, deps=acl_task)
+                train_task = await self._register_task(self.training_function, deps=sim_task)
                 # Wait for the training to complete before next iteration
-                train_task.result()
+                await train_task
                 num_iterations = i + 1
-            
+
             self.algorithm_results[name] = {
                 'iterations': num_iterations,
                 'last_result': stop_value
             }
 
-        submitted_learners = []
-        for name, al_task in self.active_learn_functions.items():
-            async_teach = self.as_async(_parallel_active_learn)
-            submitted_learners.append(async_teach(al_task, name))
-            print(f'Pipeline-{name} is submitted for execution')
-
-        # block/wait for each pipeline until it finishes
-        [learner.result() for learner in submitted_learners]
+        # Collect the tasks and their names into the list
+        parallel_learners = [[al_task, name] for name, al_task in self.active_learn_functions.items()]
+        
+        # Run them N concurrent learners
+        await asyncio.gather(*[_parallel_active_learn(al_task, name) for al_task, name in parallel_learners])
 
         if self.algorithm_results:
             # Sort by (iterations, last_result)

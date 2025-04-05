@@ -1,8 +1,8 @@
 import os
 import sys
 
+from radical.flow import ResourceEngine, Task
 from rose.learner import SequentialActiveLearner
-from rose.engine import Task, ResourceEngine
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 engine = ResourceEngine({'runtime': 30,
