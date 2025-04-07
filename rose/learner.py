@@ -146,15 +146,6 @@ class ActiveLearner(WorkflowEngine):
         else:
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
-    def _start_pre_loop(self):
-        """
-        start the initlial step for active learning by 
-        defining and setting simulation and training tasks
-        """
-
-        sim_task = self._register_task(self.simulation_function)
-        train_task = self._register_task(self.training_function, deps=sim_task)
-        return sim_task, train_task
 
     def _check_stop_criterion(self, stop_task_result):
 
@@ -250,7 +241,8 @@ class SequentialActiveLearner(ActiveLearner):
 
         if not skip_pre_loop:
             # step-1 invoke the pre_step only once
-            sim_task, train_task = self._start_pre_loop()
+            sim_task = self._register_task(self.simulation_function)
+            train_task = self._register_task(self.training_function, deps=sim_task)
 
         # if no max_iter is provided, run the loop indefinitely
         # and until the stop criterion is met

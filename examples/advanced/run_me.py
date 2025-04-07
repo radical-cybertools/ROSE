@@ -2,7 +2,7 @@ import os
 import sys
 from rose.learner import ActiveLearner
 from rose.metrics import MODEL_ACCURACY
-from rose.engine import Task, ResourceEngine
+from radical.flow import Task, ResourceEngine
 
 engine = ResourceEngine({'runtime': 30,
                          'resource': 'local.localhost'})
