@@ -179,11 +179,11 @@ class ActiveLearner(WorkflowEngine):
         Get the result of a task(s) by its name, tasks might have
         similar name yet different future and task IDs.
         '''
-        tasks = [t['future'].result() 
-                 for t in self.tasks.values() 
-                 if t['description']['name'] == task_name]
+        task_results = [t['future'].result() 
+                        for t in self.components.values() 
+                        if t['description']['name'] == task_name]
 
-        return tasks
+        return task_results
 
 
 class SequentialActiveLearner(ActiveLearner):
