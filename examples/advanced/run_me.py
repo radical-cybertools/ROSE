@@ -32,13 +32,14 @@ def check_accuracy(*args):
 
 def teach():
     # 10 iterations of active learn
-    for acl_iter in range(10):
+    for acl_iter in range(3):
         print(f'Starting Iteration-{acl_iter}')
         simul = simulation()
         train = training(simul)
         active = active_learn(simul, train)
+        check_result = check_accuracy(active).result()
 
-        should_stop, metric_val = check_accuracy(active)
+        should_stop, metric_val = learner.check_stop_criterion(check_result)
 
         if should_stop:
             print(f'Accuracy ({metric_val}) met the threshold, breaking...')

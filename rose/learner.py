@@ -60,7 +60,7 @@ class ActiveLearner(WorkflowEngine):
             utility_function = {'func':func,
                                 'args':args,
                                 'kwargs':kwargs}
-            
+
             if self.register_and_submit:
                 return self._register_task(utility_function)
         return wrapper
@@ -82,10 +82,9 @@ class ActiveLearner(WorkflowEngine):
                     'operator': operator,
                     'threshold': threshold,
                     'metric_name': metric_name}
-                
+
                 if self.register_and_submit:
-                    res = self._register_task(self.criterion_function).result()
-                    return self._check_stop_criterion(res)
+                    return self._register_task(self.criterion_function)
             return wrapper
         return decorator
 
@@ -124,10 +123,10 @@ class ActiveLearner(WorkflowEngine):
         # check for custom/user defined metric
         if not metrics.is_supported_metric(metric_name):
             if not operator:
-                excp = f'Operator value must be provided for custom metric {metric_name}, '
-                excp += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
-                excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD'
-                raise ValueError(excp)
+                exception_msg = f'Operator value must be provided for custom metric {metric_name}, '
+                exception_msg += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
+                exception_msg += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD'
+                raise ValueError(exception_msg)
 
         # standard metric
         else:
@@ -147,10 +146,11 @@ class ActiveLearner(WorkflowEngine):
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
 
-    def _check_stop_criterion(self, stop_task_result):
+    def check_stop_criterion(self, stop_task_result):
 
         try:
             metric_value = eval(stop_task_result)
+            metric_value = round(metric_value, 2)
         except Exception as e:
             raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
 
@@ -261,7 +261,7 @@ class SequentialActiveLearner(ActiveLearner):
                 stop_task = self._register_task(self.criterion_function, deps=acl_task)
                 stop = stop_task.result()
 
-                should_stop, _ = self._check_stop_criterion(stop)
+                should_stop, _ = self.check_stop_criterion(stop)
                 if should_stop:
                     break
 
@@ -413,8 +413,8 @@ class AlgorithmSelector(ActiveLearner):
 
         async def _parallel_active_learn(al_task, name):
             if not skip_pre_loop:
-                sim_task = await self._register_task(self.simulation_function)
-                train_task = await self._register_task(self.training_function, deps=sim_task)
+                sim_task = self._register_task(self.simulation_function)
+                train_task = self._register_task(self.training_function, deps=sim_task)
             else:
                 sim_task, train_task = (), ()
 
@@ -428,31 +428,29 @@ class AlgorithmSelector(ActiveLearner):
 
             for i in iteration_range:
                 print(f'[Pipeline: {al_task["func"].__name__}] Starting Iteration-{i}')
-                acl_task = await self._register_task(al_task, deps=(sim_task, train_task))
+                acl_task = self._register_task(al_task, deps=(sim_task, train_task))
 
                 if self.criterion_function:
-                    stop_task = await self._register_task(self.criterion_function, deps=acl_task)
-                    stop = await stop_task
+                    stop = await self._register_task(self.criterion_function, deps=acl_task)
 
-                    should_stop, stop_value = self._check_stop_criterion(stop)
+                    should_stop, stop_value = self.check_stop_criterion(stop)
                     if should_stop:
                         num_iterations = i + 1
                         break
 
-                sim_task = await self._register_task(self.simulation_function, deps=acl_task)
-                train_task = await self._register_task(self.training_function, deps=sim_task)
+                sim_task = self._register_task(self.simulation_function, deps=acl_task)
+                train_task = self._register_task(self.training_function, deps=sim_task)
+                
                 # Wait for the training to complete before next iteration
                 await train_task
                 num_iterations = i + 1
 
-            self.algorithm_results[name] = {
-                'iterations': num_iterations,
-                'last_result': stop_value
-            }
+            self.algorithm_results[name] = {'iterations': num_iterations,
+                                            'last_result': stop_value}
 
         # Collect the tasks and their names into the list
         parallel_learners = [[al_task, name] for name, al_task in self.active_learn_functions.items()]
-        
+
         # Run them N concurrent learners
         await asyncio.gather(*[_parallel_active_learn(al_task, name) for al_task, name in parallel_learners])
 
