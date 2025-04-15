@@ -5,13 +5,13 @@ import itertools
 from typing import Callable, Dict
 from functools import wraps
 
-from radical.flow import ResourceEngine, WorkflowEngine
+from radical.flow import RadicalExecutionBackend, WorkflowEngine
 from .metrics import ActiveLearningMetrics as metrics
 
 class ActiveLearner(WorkflowEngine):
 
     @typeguard.typechecked
-    def __init__(self, engine: ResourceEngine, register_and_submit: bool=True) -> None:
+    def __init__(self, engine: RadicalExecutionBackend, register_and_submit: bool=True) -> None:
 
         self.criterion_function = {}
         self.training_function = {}
@@ -208,12 +208,12 @@ class SequentialActiveLearner(ActiveLearner):
                 v
            Iteration N
     '''
-    def __init__(self, engine: ResourceEngine) -> None:
+    def __init__(self, engine: RadicalExecutionBackend) -> None:
         '''
         Initialize the SequentialActiveLearner object.
 
         Args:
-            engine: The ResourceEngine object that manages the resources and
+            engine: The ExecutionBackend object that manages the resources and
             tasks submission to HPC resources during the active learning loop.
         '''
         super().__init__(engine, register_and_submit=False)
@@ -298,12 +298,12 @@ class ParallelActiveLearner(SequentialActiveLearner):
                                       |
                                [Active Learn]
     '''
-    def __init__(self, engine: ResourceEngine) -> None:
+    def __init__(self, engine: RadicalExecutionBackend) -> None:
         '''
         Initialize the ParallelActiveLearner object.
 
         Args:
-            engine: The ResourceEngine object that manages the resources and
+            engine: The ExecutionBackend object that manages the resources and
             tasks submission to HPC resources during the active learning loop.
         '''
         super().__init__(engine)
@@ -346,12 +346,12 @@ class AlgorithmSelector(ActiveLearner):
     sequential active learning loop, and uses the same simulation and 
     training tasks, but distinct active learning task.
     """
-    def __init__(self, engine: ResourceEngine) -> None:
+    def __init__(self, engine: RadicalExecutionBackend) -> None:
         ''' 
         Initialize the AlgorithmSelector object.
 
         Args:
-            engine: The ResourceEngine object that manages the resources and
+            engine: The ExecutionBackend object that manages the resources and
             tasks submission to HPC resources during the active learning loop.
         '''
         super().__init__(engine, register_and_submit=False)
@@ -465,7 +465,7 @@ class AlgorithmSelector(ActiveLearner):
                   f"with {self.best_pipeline_stats['iterations']} iteration(s) "
                   f"and final metric result {self.best_pipeline_stats['last_result']}")
         else:
-            excp = "No pipeline stats found! Please make sure that at least one active learning algorithm "
-            excp += "is used, and the status of each active learning pipeline to make sure that at least "
-            excp += "one of them is running successfully!"
-            raise ValueError(excp)
+            exception_msg = "No pipeline stats found! Please make sure that at least one active learning algorithm "
+            exception_msg += "is used, and the status of each active learning pipeline to make sure that at least "
+            exception_msg += "one of them is running successfully!"
+            raise ValueError(exception_msg)
