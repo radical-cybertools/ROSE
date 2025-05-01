@@ -52,5 +52,5 @@ vim examples/config.sh
 cd $MEMBERWORK/$ACCOUNT/ROSE/examples/frontier_hackathon
 
 . $MEMBERWORK/$ACCOUNT/ve.rp/bin/activate
-python3 run_me_service.py
+python3 run_me_frontier.py
 ```
