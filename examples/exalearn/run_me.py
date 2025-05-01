@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import shutil
 
 verbose  = os.environ.get('RADICAL_PILOT_VERBOSE', 'REPORT')
 os.environ['RADICAL_PILOT_VERBOSE'] = verbose
@@ -11,139 +12,153 @@ import radical.utils as ru
 from rose.learner import ActiveLearner
 from rose.engine import Task, ResourceEngine
 
-seed=20030
-num_sample=4500
-num_sample_val=((num_sample / 2))
-num_sample_test=((num_sample / 2))
-num_sample_study=num_sample
-num_al_sample=((num_sample * 3))
-batch_size=512
-epochs=[400,300,250,200]
+exe = f"{sys.executable}"
 
 NNODES=1
-
 nthread=32
 nthread_tot=( NNODES * nthread )
 
-nthread_study=22
-nthread_study_tot=( NNODES * nthread_study )
-
+#nthread_study=22
+nthread_study=10
 nrank_ml=4
-nrank_ml_tot=( NNODES * nrank_ml )
+ngpus_tot=(NNODES * 4)
 
-ngpus=(NNODES * 4)
+MAX_ITER=4
 
-engine = ResourceEngine({'runtime': 30,
-                         'resource': 'local.localhost'})
+engine = ResourceEngine({'resource': 'anl.polaris', 
+                         'runtime' : 60,
+                         'access_schema':'interactive',
+                         'project' : "RECUP",
+                         'cores'   : nthread_tot, 
+                         'gpus'    : ngpus_tot}) 
+
+
+#num_sample=4500
+num_sample=2000
+num_al_sample=((num_sample * 3))
+batch_size=512
+#epochs_list=[400,300,250,200]
+epochs_list=[200,150,125,100]
+
+work_dir="/lus/eagle/projects/RECUP/twang/exalearn_stage2/"
+exe_dir=f"{work_dir}/executable/"
+
+exp_dir_template="{work_dir}/experiment/seed_{{seed}}/".format(work_dir = work_dir)
+shared_file_dir_template="{exp_dir_template}/sfd/".format(exp_dir_template = exp_dir_template)
+data_dir_template="{work_dir}/data/seed_{{seed}}/".format(work_dir = work_dir)
+
+
 acl = ActiveLearner(engine)
-code_path = f'{sys.executable} {os.getcwd()}'
+pre_exec_list = ["source /home/twang3/useful_script/conda_rose.sh", "export MPICH_GPU_SUPPORT_ENABLED=1"]
 
-data_dir= f'{os.getcwd()}/data/seed_{seed}'
-
-# Define and register the simulation task
-@acl.simulation_task
-def simulation(*args):
-#    return Task(executable=f'{code_path}/simulation_resample.py', arguments=args) 
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args) # this is a replaced task, dont actually run the simulation sample
-
-# Define and register a utility task
 @acl.utility_task
-def merge_preprocess(*args):
-#    return Task(executable=f'{code_path}/merge_preprocess_hdf5.py', arguments=args)
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
+def sample_simulation(*args, arg_list):
+    print("In sample_simulation(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/simulation_sample.py {arg_list}', cores_per_rank=1, pre_exec=pre_exec_list, ranks=nthread)
 
-# Define and register the training task
+@acl.utility_task
+def sweep_simulation(*args, arg_list):
+    print("In sweep_simulation(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/simulation_sweep.py {arg_list}', cores_per_rank=1, pre_exec=pre_exec_list, ranks=nthread_study)
+
+@acl.utility_task
+def merge_preprocess(*args, arg_list):
+    print("In merge_preprocess(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/merge_preprocess_hdf5.py {arg_list}', cores_per_rank=2, pre_exec=pre_exec_list, threading_type = rp.OpenMP)
+
+@acl.utility_task
+def preprocess_study(*args, data_dir):
+    print("In preprocess_study(), with data_dir = ", data_dir)
+    return Task(executable=f'{exe} {exe_dir}/preprocess_study.py --data_dir {data_dir}', cores_per_rank=1, pre_exec=pre_exec_list)
+
 @acl.training_task
-def training(*args):
-#    return Task(executable=f'{code_path}/train.py', arguments=args)
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
+def training(*args, arg_list):
+    print("In training(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/train.py {arg_list}', cores_per_rank=8, gpus_per_rank=1, pre_exec=pre_exec_list+["export OMP_NUM_THREADS=8"], ranks=4)
 
-# Define and register the active learning task
 @acl.active_learn_task
-def active_learn(*args):
-#    return Task(executable=f'{code_path}/active_learning.py', arguments=args)
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
+def active_learn(*args, arg_list):
+    print("In active_learn(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/active_learning.py {arg_list}', cores_per_rank=32, pre_exec=pre_exec_list, threading_type = rp.OpenMP)
 
-# Prepare Data
-# Define the simulation sample task
-@acl.utility_task
-def sample_simulation(*args):
-#    task = Task(executable=f'{code_path}/simulation_sample.py', arguments=args)
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
+@acl.simulation_task
+def simulation(*args, arg_list):
+    print("In simulation(), with arg_list =\n", arg_list)
+    return Task(executable=f'{exe} {exe_dir}/simulation_resample.py {arg_list}', cores_per_rank=1, pre_exec=pre_exec_list, ranks=nthread)
 
-#simulation sweep task
-@acl.utility_task
-def sweep_simulation(*args):
-#    task = Task(executable=f'{code_path}/simulation_sweep.py', arguments=args)
-    return Task(executable=f'{code_path}/replacement_sim.py', arguments=args)
 
-def bootstrap():
-    os.system(f'{code_path}/prepare_data_dir_pm.py --seed {seed}')
+
+def remove_dir(path):
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+        print(f"Removed directory {path!r}")
+    else:
+        print(f"No directory at {path!r}")
+
+def bootstrap(seed):
+    exp_dir = exp_dir_template.format(seed=seed)
+    shared_file_dir = shared_file_dir_template.format(seed=seed)
+    data_dir = data_dir_template.format(seed=seed)
+    print(f"Logging: Start! seed = {seed}")
+    print(f"Logging: \nexp_dir = {exp_dir}\nshared_file_dir = {shared_file_dir}\ndata_dir = {data_dir}")
+    print("Logging: Doing cleaning")
+
+    remove_dir(exp_dir)
+    remove_dir(data_dir)
+    os.makedirs(exp_dir, exist_ok=False)
+    os.system(f'{exe} {work_dir}/prepare_data_dir.py --seed {seed}')
+
+    args_template = '{num_sample} {{specific_seed}} {data_dir}/{{data_type}}/config/config_1001460_cubic.txt {data_dir}/{{data_type}}/config/config_1522004_trigonal.txt {data_dir}/{{data_type}}/config/config_1531431_tetragonal.txt'.format(num_sample=num_sample, data_dir=data_dir)
     
     bootstrap=[]
-    base = sample_simulation(f'{num_sample} {seed} \
-            {data_dir}/base/config/config_1001460_cubic.txt \
-            {data_dir}/base/config/config_1522004_trigonal.txt \
-            {data_dir}/base/config/config_1531431_tetragonal.txt')
-    val = sample_simulation(f'{num_sample} {seed-1} \
-            {data_dir}/validation/config/config_1001460_cubic.txt \
-            {data_dir}/validation/config/config_1522004_trigonal.txt \
-            {data_dir}/validation/config/config_1531431_tetragonal.txt')
-    test = sample_simulation(f'{num_sample} {seed+1} \
-            {data_dir}/test/config/config_1001460_cubic.txt \
-            {data_dir}/test/config/config_1522004_trigonal.txt \
-            {data_dir}/test/config/config_1531431_tetragonal.txt')
-    study = sweep_simulation(f'{num_sample_study} \
-            {data_dir}/study/config/config_1001460_cubic.txt \
-            {data_dir}/study/config/config_1522004_trigonal.txt \
-            {data_dir}/study/config/config_1531431_tetragonal.txt')
+    base  = sample_simulation(arg_list=args_template.format(specific_seed=seed,   data_type="base"))
+    test  = sample_simulation(arg_list=args_template.format(specific_seed=seed+1, data_type="test"))
+    study = sweep_simulation(arg_list =args_template.format(specific_seed='',     data_type="study"))
     bootstrap.append(base)
-    bootstrap.append(val)
     bootstrap.append(test)
     bootstrap.append(study)
     for shape in ['cubic', 'trigonal', 'tetragonal']:
-        merge_base = merge_preprocess(f'{data_dir}/base/data {shape} {nthread_tot}', base)
-        merge_val = merge_preprocess(f'{data_dir}/validation/data {shape} {nthread_tot}', val)
-        merge_test = merge_preprocess(f'{data_dir}/test/data {shape} {nthread_tot}', test)
-        merge_study = merge_preprocess(f'{data_dir}/study/data {shape} {nthread_tot}', study)
+        merge_base  = merge_preprocess(base,  arg_list=f'{data_dir}/base/data {shape} {nthread}')
+        merge_test  = merge_preprocess(test,  arg_list=f'{data_dir}/test/data {shape} {nthread}')
+        merge_study = merge_preprocess(study, arg_list=f'{data_dir}/study/data {shape} {nthread_study}')
         bootstrap.append(merge_base)
-        bootstrap.append(merge_val)
         bootstrap.append(merge_test)
         bootstrap.append(merge_study)
     
     [task.result() for task in bootstrap]
-# invoke the bootstrap() method
-bootstrap()
+    study_preprocess = preprocess_study(data_dir=data_dir)
+    study_preprocess.result()
 
-# Custom training loop using active learning
-def teach():
-    for acl_iter in range(4):
-        print(f'Starting Iteration-{acl_iter}')
-        simulations = []
-        if acl_iter != 0:
-            sim = simulation(f'{seed+2} \
-                {data_dir}/AL_phase_{acl_iter}/config/config_1001460_cubic.txt \
-                {data_dir}/study/data/cubic_1001460_cubic.hdf5 \
-                {data_dir}/AL_phase_{acl_iter}/config/config_1522004_trigonal.txt \
-                {data_dir}/study/data/trigonal_1522004_trigonal.hdf5 \
-                {data_dir}/AL_phase_{acl_iter}/config/config_1531431_tetragonal.txt \
-                {data_dir}/study/data/tetragonal_1531431_tetragonal.hdf5')
-            simulations.append(sim)
+def teach(seed):
+    exp_dir = exp_dir_template.format(seed=seed)
+    shared_file_dir = shared_file_dir_template.format(seed=seed)
+    data_dir = data_dir_template.format(seed=seed)
+    print(f"Logging: Start! seed = {seed}")
+    print(f"Logging: \nexp_dir = {exp_dir}\nshared_file_dir = {shared_file_dir}\ndata_dir = {data_dir}")
+    print("Logging: Doing cleaning")
+
+    train_arg_list_template = "--batch_size {batch_size} --epochs {{epochs}} --seed {seed} --device=gpu --num_threads 8 --phase_idx {{iter_id}} --data_dir {data_dir} --shared_file_dir {shared_file_dir}".format(batch_size=batch_size, seed=seed, data_dir=data_dir, shared_file_dir=shared_file_dir)
+    for iter_id in range(MAX_ITER):
+        print(f'Starting Iteration-{iter_id}')
+        remove_dir(shared_file_dir)
+        os.makedirs(shared_file_dir, exist_ok=False)
+
+        train_arg_list = train_arg_list_template.format(epochs=epochs_list[iter_id], iter_id=iter_id)
+        train = training(arg_list=train_arg_list)
+        train.result()
+
+        if iter_id < MAX_ITER-1:
+            active = active_learn(arg_list = f"--seed {seed+iter_id+1} --num_new_sample {num_al_sample} --policy uncertainty --data_dir {data_dir}")
+
+            sim = simulation(active, arg_list=f'{seed+2+iter_id} {data_dir}/AL_phase_{iter_id+1}/config/config_1001460_cubic.txt {data_dir}/study/data/cubic_1001460_cubic.hdf5 {data_dir}/AL_phase_{iter_id+1}/config/config_1522004_trigonal.txt {data_dir}/study/data/trigonal_1522004_trigonal.hdf5 {data_dir}/AL_phase_{iter_id+1}/config/config_1531431_tetragonal.txt {data_dir}/study/data/tetragonal_1531431_tetragonal.hdf5')
+            sim.result()
+            
+            merge_task = []
             for shape in ['cubic', 'trigonal', 'tetragonal']:
-                merge=merge_preprocess(f'{data_dir}/AL_phase_{acl_iter}/data cubic {nthread_tot}', sim)
-                simulations.append(merge)
-        [sim.result() for sim in simulations]
-        # Now run training and active_learn
-        train = training(f'--batch_size {batch_size} \
-               --epochs {epochs[acl_iter]} \
-               --seed {seed} \
-               --device=cpu \
-               --num_threads {nthread} \
-               --phase_idx {acl_iter} \
-               --data_dir {data_dir} \
-               --shared_file_dir {data_dir}', *simulations)
-        active = active_learn(f'--seed {seed+3} --num_new_sample {num_al_sample} --policy uncertainty', simulations, train)
-        active.result()
-# invoke the custom/user-defined teach() method
-teach()
+                merge=merge_preprocess(arg_list=f'{data_dir}/AL_phase_{iter_id+1}/data {shape} {nthread}')
+                merge_task.append(merge)
+            [merge.result() for merge in merge_task]
+
+bootstrap(seed=20071)
+teach(seed=20071)
 engine.shutdown()
