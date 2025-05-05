@@ -7,8 +7,11 @@ import sys
 from rose.learner import ActiveLearner
 from radical.flow import RadicalExecutionBackend, Task
 
-NODES = 4  # TODO: pick this information from the engine directly
-CORES_PER_NODE = 56  # TODO: pick this information from the engine directly
+# TODO: pick this information (nodes, smt, cores-per-node) from the engine
+NODES = 4
+SMT = 2
+CORES_PER_NODE = 56 * SMT
+
 RANKS_PER_NODE = 8
 RUNTIME = 60  # default value (min)
 

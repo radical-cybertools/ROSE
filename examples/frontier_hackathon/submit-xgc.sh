@@ -49,7 +49,10 @@ sbatch <<EOT
 unset SLURM_EXPORT_ENV
 
 # activate environment with RADICAL tools installed
-# (could be a separate environment from the environment with scientific tools)
+# for example:
+#    module load cray-python
+#    . ve.rp/bin/activate
+# might be a separate environment from the environment with scientific tools
 module load miniforge3
 source activate /lustre/orion/world-shared/phy122/AI-Hackathon_2025/rhager/conda_xgc_pytorch
 
