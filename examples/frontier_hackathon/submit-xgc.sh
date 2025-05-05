@@ -14,13 +14,15 @@ RUN_DIR=$PWD
 RCT_CONFIG_DIR="${RUN_DIR}/.radical/pilot/configs"
 mkdir -p "${RCT_CONFIG_DIR}"
 # by default we use 56 cores per node, 8 cores reserved for system process
+# for other options see https://radicalpilot.readthedocs.io/en/stable/supported/frontier.html
 # TO BE UPDATED IF NEEDED
 cat > "${RCT_CONFIG_DIR}/resource_ornl.json" <<EOT
 {
     "frontier" : {
         "system_architecture" : {
-            "smt"           : 1,
-            "blocked_cores" : [0, 8, 16, 24, 32, 40, 48, 56],
+            "smt"           : 2,
+            "blocked_cores" : [0, 8, 16, 24, 32, 40, 48, 56,
+                               64, 72, 80, 88, 96, 104, 112, 120],
             "options"       : ["nvme"]}
     }
 }
@@ -38,7 +40,7 @@ sbatch <<EOT
 #SBATCH --output           "slurm.rct.out"
 #SBATCH --error            "slurm.rct.err"
 #SBATCH --core-spec        8
-#SBATCH --threads-per-core 1
+#SBATCH --threads-per-core 2
 #SBATCH --constraint       nvme
 #SBATCH --export           NONE
 #SBATCH --network          job_vni

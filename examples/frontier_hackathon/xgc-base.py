@@ -58,7 +58,7 @@ def xgc_base_step(*args):
         arguments=[],
         pre_launch=[
             f'cd {RUN_DIR}',
-            f'sh print_jobinfo.sh ${NODES} {RANKS_PER_NODE} {EXE_BIN}',
+            f'sh print_jobinfo.sh {NODES} {RANKS_PER_NODE} {EXE_BIN}',
             f'sh setup_rundir.sh {RUN_DIR}'
         ],
         pre_exec=[
