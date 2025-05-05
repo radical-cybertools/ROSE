@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
+import sys
 
 from rose.learner import ActiveLearner
 from radical.flow import RadicalExecutionBackend, Task
@@ -8,15 +10,38 @@ from radical.flow import RadicalExecutionBackend, Task
 NODES = 4  # TODO: pick this information from the engine directly
 CORES_PER_NODE = 56  # TODO: pick this information from the engine directly
 RANKS_PER_NODE = 8
+RUNTIME = 60  # default value (min)
 
 EXE_BIN = ('/lustre/orion/proj-shared/phy122/rhager/XGC-Devel/'
            '_build2/bin/xgc-eem-cpp-gpu')
 RUN_DIR = os.getcwd()
 
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        usage='xgc-base.py [<options>]')
+    parser.add_argument(
+        '-p', '--project',
+        dest='project',
+        type=str)
+    parser.add_argument(
+        '-n', '--nodes',
+        dest='nodes',
+        type=int,
+        default=NODES)
+    parser.add_argument(
+        '-t', '--runtime',
+        dest='runtime',
+        type=int,
+        default=RUNTIME)
+    return parser.parse_args(sys.argv[1:])
+
+
+args = get_args()
 engine = RadicalExecutionBackend({'resource': 'ornl.frontier',
-                                  'runtime' : 60,  # minutes
-                                  'nodes'   : NODES,
-                                  'project' : 'phy122:hackathon3'})
+                                  'runtime' : args.runtime,
+                                  'nodes'   : args.nodes,
+                                  'project' : args.project})
 
 acl = ActiveLearner(engine)
 
@@ -40,7 +65,7 @@ def xgc_base_step(*args):
             # Load modules used to build XGC as well as runtime environment
             'source modules.sh',
             'module load miniforge3',
-            'source activate /lustre/orion/proj-shared/phy122/'
+            'source activate /lustre/orion/world-shared/phy122/AI-Hackathon_2025/'
             + 'rhager/conda_xgc_pytorch'
         ],
         ranks=NODES * RANKS_PER_NODE,
