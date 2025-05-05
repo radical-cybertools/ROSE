@@ -41,7 +41,8 @@ args = get_args()
 engine = RadicalExecutionBackend({'resource': 'ornl.frontier',
                                   'runtime' : args.runtime,
                                   'nodes'   : args.nodes,
-                                  'project' : args.project})
+                                  'project' : args.project,
+                                  'sandbox' : os.getenv('RADICAL_PILOT_BASE')})
 
 acl = ActiveLearner(engine)
 
@@ -87,9 +88,13 @@ def run_workflow():
     step_0 = xgc_base_step()
 
     print('Results:')
-    print([s.result() for s in [step_0]])
+    for s in [step_0]:
+        try:
+            print(s.result())
+        except Exception as e:
+            print(f'Exception: {e}')
 
-    print('Workflow completed successfully!')
+    print('Workflow completed!')
 
 
 if __name__ == '__main__':
