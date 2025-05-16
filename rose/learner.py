@@ -194,24 +194,28 @@ class ActiveLearner(WorkflowEngine):
         return tasks
 
 class ReinforcementLearner(WorkflowEngine):
+    '''
+    ReinforcementLearner is a subclass of WorkflowEngine that implements
+    a reinforcement learning loop.
+    Iteration step:
+    [Environment] -> [Policy Update]
+    '''
     @typeguard.typechecked
     def __init__(self, engine: ResourceEngine, register_and_submit: bool=True) -> None:
 
         self.criterion_function = {}
-        self.training_function = {}
-        self.simulation_function = {} # Or environemnt function
-        self.agent_function = {}
-        #self.active_learn_function = {}
+        self.update_function = {}
+        self.environment_function = {} # Or environemnt function
 
         super().__init__(engine)
 
         self.register_and_submit = register_and_submit
 
 
-    def simulation_task(self, func:Callable):
+    def environment_task(self, func:Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            self.simulation_function = {'func':func,
+            self.environment_function = {'func':func,
                                         'args':args,
                                         'kwargs':kwargs}
 
@@ -219,20 +223,10 @@ class ReinforcementLearner(WorkflowEngine):
                 return self._register_task(self.simulation_function)
         return wrapper
 
-    def training_task(self, func:Callable):
+    def update_task(self, func:Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            self.training_function = {'func':func,
-                                      'args':args,
-                                      'kwargs':kwargs}
-            if self.register_and_submit:
-                return self._register_task(self.training_function)
-        return wrapper
-
-    def agent_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.agent_function = {'func':func,
+            self.update_function = {'func':func,
                                           'args':args,
                                           'kwargs':kwargs}
             if self.register_and_submit:
