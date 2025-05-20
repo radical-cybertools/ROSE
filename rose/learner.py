@@ -220,7 +220,7 @@ class ReinforcementLearner(WorkflowEngine):
                                         'kwargs':kwargs}
 
             if self.register_and_submit:
-                return self._register_task(self.simulation_function)
+                return self._register_task(self.environment_function)
         return wrapper
 
     def update_task(self, func:Callable):
@@ -230,7 +230,7 @@ class ReinforcementLearner(WorkflowEngine):
                                           'args':args,
                                           'kwargs':kwargs}
             if self.register_and_submit:
-                return self._register_task(self.agent_function)
+                return self._register_task(self.update_function)
         return wrapper
 
     def utility_task(self, func:Callable):
