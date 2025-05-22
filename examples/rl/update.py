@@ -5,7 +5,11 @@ import torch.optim as optim
 import numpy as np
 import pickle
 import random
+from collections import deque, namedtuple
 from model import QNetwork
+
+Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+
 def update():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

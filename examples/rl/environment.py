@@ -6,6 +6,7 @@ import numpy as np
 from collections import deque, namedtuple
 from model import QNetwork
 
+Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 def episode():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -17,7 +18,6 @@ def episode():
     EPISODES = 10
 
     # ReplayBuffer logic
-    Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
     def load_memory(path, max_size):
         try:
             with open(path, 'rb') as f:
