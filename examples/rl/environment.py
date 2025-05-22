@@ -37,7 +37,11 @@ def episode():
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     model = QNetwork(state_size, action_size, seed=0).to(device)
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    try:
+        model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+        print("Loaded existing model.")
+    except FileNotFoundError:
+        print("No existing model found. Starting fresh.")
     model.eval()
 
     memory = load_memory(MEMORY_PATH, MAX_MEMORY_SIZE)
