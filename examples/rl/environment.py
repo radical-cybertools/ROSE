@@ -47,14 +47,14 @@ def episode():
     memory = load_memory(MEMORY_PATH, MAX_MEMORY_SIZE)
 
     for ep in range(EPISODES):
-        state = env.reset()
+        state, _ = env.reset()
         done = False
         while not done:
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 action = model(state_tensor).argmax().item()
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _, _ = env.step(action)
             memory.append(Experience(state, action, reward, next_state, done))
             state = next_state
 

@@ -25,7 +25,7 @@ def reward():
     episode_rewards = []
 
     for ep in range(EPISODES):
-        state = env.reset()
+        state, _ = env.reset()
         done = False
         total_reward = 0
 
@@ -35,7 +35,7 @@ def reward():
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 action = model(state_tensor).argmax().item()
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _, _ = env.step(action)
             total_reward += reward
             state = next_state
 
