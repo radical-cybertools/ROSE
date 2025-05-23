@@ -3,6 +3,7 @@ import gym
 import torch
 import pickle
 import numpy as np
+import math
 from collections import deque, namedtuple
 from model import QNetwork
 
@@ -50,10 +51,13 @@ def episode():
         state, _ = env.reset()
         done = False
         while not done:
-            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-            with torch.no_grad():
-                action = model(state_tensor).argmax().item()
-
+            if np.random.random() < math.pow(2, -ep / 30):
+                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    action  = model(state_tensor).argmax().item()
+            else:
+                action = env.action_space.sample()
+                    
             next_state, reward, done, _, _ = env.step(action)
             memory.append(Experience(state, action, reward, next_state, done))
             state = next_state
