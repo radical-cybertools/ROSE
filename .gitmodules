@@ -1,0 +1,3 @@
+[submodule "examples/alphazero/alpha_zero"]
+	path = examples/alphazero/alpha_zero
+	url = git@github.com:michaelnny/alpha_zero.git
