@@ -12,8 +12,8 @@ def episode():
 
     # Config
     ENV_NAME = "CartPole-v1"
-    MODEL_PATH = "dqn_model.pth"
-    MEMORY_PATH = "replay_memory.pkl"
+    MODEL_PATH = "/home/andrew/HPC/ROSE/examples/rl/dqn_model.pth"
+    MEMORY_PATH = "/home/andrew/HPC/ROSE/examples/rl/replay_memory.pkl"
     MAX_MEMORY_SIZE = int(1e5)
     EPISODES = 10
 

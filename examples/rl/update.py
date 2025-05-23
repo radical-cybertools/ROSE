@@ -5,6 +5,7 @@ import torch.optim as optim
 import numpy as np
 import pickle
 import random
+import gym
 from collections import deque, namedtuple
 from model import QNetwork
 
@@ -12,10 +13,11 @@ Experience = namedtuple("Experience", field_names=["state", "action", "reward", 
 
 def update():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ENV_NAME = "CartPole-v1"
 
     # Config
-    MODEL_PATH = "dqn_model.pth"
-    MEMORY_PATH = "replay_memory.pkl"
+    MODEL_PATH = "/home/andrew/HPC/ROSE/examples/rl/dqn_model.pth"
+    MEMORY_PATH = "/home/andrew/HPC/ROSE/examples/rl/replay_memory.pkl"
     BATCH_SIZE = 64
     GAMMA = 0.99
     LR = 1e-3
@@ -25,8 +27,9 @@ def update():
     with open(MEMORY_PATH, 'rb') as f:
         memory = pickle.load(f)
 
-    state_size = len(memory[0].state)
-    action_size = max(e.action for e in memory) + 1
+    env = gym.make(ENV_NAME)
+    state_size = env.observation_space.shape[0]
+    action_size = env.action_space.n
 
     # Initialize model
     model = QNetwork(state_size, action_size, seed=0).to(device)
