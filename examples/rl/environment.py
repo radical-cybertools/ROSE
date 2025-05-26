@@ -3,20 +3,21 @@ import gym
 import torch
 import pickle
 import numpy as np
+import sys
 import math
 from collections import deque, namedtuple
 from model import QNetwork
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
-def episode():
+def episode(shard, epsilon=0.1, epochs=20):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Config
     ENV_NAME = "CartPole-v1"
-    MODEL_PATH = "/home/andrew/HPC/ROSE/examples/rl/dqn_model.pth"
-    MEMORY_PATH = "/home/andrew/HPC/ROSE/examples/rl/replay_memory.pkl"
+    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
+    MEMORY_LOAD_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
+    MEMORY_WRITE_PATH = f'/home/andrew/HPC/ROSE/examples/rl/data/replay_memory_{shard}.pkl'
     MAX_MEMORY_SIZE = int(1e5)
-    EPISODES = 10
 
     # ReplayBuffer logic
     def load_memory(path, max_size):
@@ -45,13 +46,13 @@ def episode():
         print("No existing model found. Starting fresh.")
     model.eval()
 
-    memory = load_memory(MEMORY_PATH, MAX_MEMORY_SIZE)
+    memory = load_memory(MEMORY_LOAD_PATH, MAX_MEMORY_SIZE)
 
-    for ep in range(EPISODES):
+    for epoch in range(epochs):
         state, _ = env.reset()
         done = False
         while not done:
-            if np.random.random() < math.pow(2, -ep / 30):
+            if np.random.random() < epsilon:
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
                 with torch.no_grad():
                     action  = model(state_tensor).argmax().item()
@@ -62,10 +63,10 @@ def episode():
             memory.append(Experience(state, action, reward, next_state, done))
             state = next_state
 
-    save_memory(memory, MEMORY_PATH)
+    save_memory(memory, MEMORY_WRITE_PATH)
     print(f"Saved memory with {len(memory)} experiences.")
 
     env.close()
 
 if __name__ == "__main__":
-    episode()
+    episode(sys.argv[1] if len(sys.argv) > 1 else "0")

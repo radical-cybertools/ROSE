@@ -1,4 +1,3 @@
-
 import gym
 import torch
 import numpy as np
@@ -9,7 +8,7 @@ def reward():
 
     # Config
     ENV_NAME = "CartPole-v1"
-    MODEL_PATH = "dqn_model.pth"
+    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
     EPISODES = 10
     RENDER = False
 

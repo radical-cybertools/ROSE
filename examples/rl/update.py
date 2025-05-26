@@ -14,14 +14,14 @@ Experience = namedtuple("Experience", field_names=["state", "action", "reward", 
 def update():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ENV_NAME = "CartPole-v1"
-
+    
     # Config
-    MODEL_PATH = "/home/andrew/HPC/ROSE/examples/rl/dqn_model.pth"
-    MEMORY_PATH = "/home/andrew/HPC/ROSE/examples/rl/replay_memory.pkl"
+    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
+    MEMORY_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
     BATCH_SIZE = 64
     GAMMA = 0.99
     LR = 1e-3
-    EPOCHS = 10
+    EPOCHS = 50
 
     # Load memory
     with open(MEMORY_PATH, 'rb') as f:
