@@ -21,7 +21,7 @@ def update():
     BATCH_SIZE = 64
     GAMMA = 0.99
     LR = 1e-3
-    EPOCHS = 50
+    EPOCHS = 100
 
     # Load memory
     with open(MEMORY_PATH, 'rb') as f:

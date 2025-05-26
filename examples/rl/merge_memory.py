@@ -2,10 +2,9 @@ import pickle
 import glob
 from collections import deque, namedtuple
 
-# Configuration
-MEMORY_FILES_PATTERN = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory_*.pkl'  # Adjust to match your naming scheme
+MEMORY_FILES_PATTERN = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory_*.pkl'
 OUTPUT_FILE = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
-MAX_CAPACITY = int(1e5)  # Adjust as needed
+MAX_CAPACITY = int(1e5)
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 
