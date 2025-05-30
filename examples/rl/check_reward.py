@@ -1,14 +1,16 @@
 import gym
 import torch
 import numpy as np
+import sys
+import os
 from model import QNetwork
 
-def reward():
+def reward(work_dir="."):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Config
     ENV_NAME = "CartPole-v1"
-    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
+    MODEL_PATH = os.path.join(work_dir, "dqn_model.pth")
     EPISODES = 10
     RENDER = False
 
@@ -45,4 +47,5 @@ def reward():
     print(f"{mean_reward:.2f}")
 
 if __name__ == "__main__":
-    reward()
+    work_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    reward(work_dir)

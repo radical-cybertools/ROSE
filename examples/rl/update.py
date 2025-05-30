@@ -6,18 +6,20 @@ import numpy as np
 import pickle
 import random
 import gym
+import os
+import sys
 from collections import deque, namedtuple
 from model import QNetwork
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 
-def update():
+def update(work_dir="."):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ENV_NAME = "CartPole-v1"
     
     # Config
-    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
-    MEMORY_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
+    MODEL_PATH = os.path.join(work_dir, "dqn_model.pth")
+    MEMORY_PATH = os.path.join(work_dir, "replay_memory.pkl")
     BATCH_SIZE = 64
     GAMMA = 0.99
     LR = 1e-3
@@ -66,4 +68,5 @@ def update():
     print("Model saved.")
 
 if __name__ == "__main__":
-    update()
+    work_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    update(work_dir)

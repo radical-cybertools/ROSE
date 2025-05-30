@@ -4,19 +4,21 @@ import torch
 import pickle
 import numpy as np
 import sys
+import os
 import math
 from collections import deque, namedtuple
 from model import QNetwork
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
-def episode(shard, epsilon=0.1, epochs=5):
+
+def episode(shard, work_dir=".", epsilon=0.1, epochs=5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Config
     ENV_NAME = "CartPole-v1"
-    MODEL_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/dqn_model.pth'
-    MEMORY_LOAD_PATH = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
-    MEMORY_WRITE_PATH = f'/home/andrew/HPC/ROSE/examples/rl/data/replay_memory_{shard}.pkl'
+    MODEL_PATH = os.path.join(work_dir, "dqn_model.pth")
+    MEMORY_LOAD_PATH = os.path.join(work_dir, "replay_memory.pkl")
+    MEMORY_WRITE_PATH = os.path.join(work_dir, f"replay_memory_{shard}.pkl")
     MAX_MEMORY_SIZE = int(1e5)
 
     # ReplayBuffer logic
@@ -69,4 +71,6 @@ def episode(shard, epsilon=0.1, epochs=5):
     env.close()
 
 if __name__ == "__main__":
-    episode(sys.argv[1] if len(sys.argv) > 1 else "0")
+    shard = sys.argv[1] if len(sys.argv) > 1 else "0"
+    work_dir = sys.argv[2] if len(sys.argv) > 2 else "."
+    episode(shard, work_dir)

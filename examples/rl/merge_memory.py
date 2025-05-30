@@ -1,9 +1,9 @@
 import pickle
 import glob
+import sys
+import os
 from collections import deque, namedtuple
 
-MEMORY_FILES_PATTERN = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory_*.pkl'
-OUTPUT_FILE = '/home/andrew/HPC/ROSE/examples/rl/data/replay_memory.pkl'
 MAX_CAPACITY = int(1e5)
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
@@ -21,6 +21,9 @@ def merge_memories(memory_files, max_capacity):
     return merged
 
 if __name__ == "__main__":
+    WORK_DIR = sys.argv[1] if len(sys.argv) > 1 else "."
+    MEMORY_FILES_PATTERN = os.path.join(WORK_DIR, "replay_memory_*.pkl")
+    OUTPUT_FILE = os.path.join(WORK_DIR, "replay_memory.pkl")
     memory_files = sorted(glob.glob(MEMORY_FILES_PATTERN))
     if not memory_files:
         print("No memory files found.")
