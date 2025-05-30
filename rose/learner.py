@@ -359,8 +359,8 @@ class ReinforcementLearner(WorkflowEngine):
         else:
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
-    def teach(self, max_iter:int = 0):
-        raise NotImplementedError('This is not supported, please define your teach method and invoke it directly')
+    def learn(self, max_iter:int = 0):
+        raise NotImplementedError('This is not supported, please define your learn method and invoke it directly')
 
 
     def get_result(self, task_name: str):
