@@ -336,7 +336,7 @@ class ReinforcementLearner(WorkflowEngine):
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
                 print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
-                      '. Breaking the active learning loop')
+                      '. Breaking the reinforcement learning loop')
                 return True, metric_value
             else:
                 print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
@@ -727,7 +727,8 @@ class ParallelExperience(ReinforcementLearner):
                     [Test Policy]
     """
     def __init__(self, engine: ResourceEngine) -> None:
-        super().__init__(engine)
+        super().__init__(engine, register_and_submit=False)
+        self.environment_functions: Dict[str, Dict] = {}
         self.merge_function = {}
 
     def environment_task(self, name: str):
@@ -741,13 +742,13 @@ class ParallelExperience(ReinforcementLearner):
             ...
         
         @par_exp.environment_task(name='env_2')
-        def environemnt_2(*args):
+        def environment_2(*args):
             ...
         """
         def decorator(func: Callable):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                self.active_learn_functions[name] = {
+                self.environment_functions[name] = {
                     'func': func,
                     'args': args,
                     'kwargs': kwargs
@@ -768,7 +769,7 @@ class ParallelExperience(ReinforcementLearner):
                 return self._register_task(self.merge_function)
         return wrapper
 
-    def learn(self, parallel_envs:int = 5, max_iter:int = 0):
+    def learn(self, max_iter:int = 0):
         '''
         Run the parallel reinforcement learning loop for a specified number of iterations.
         Args:
@@ -778,12 +779,8 @@ class ParallelExperience(ReinforcementLearner):
             reinforcement learning loop. If not provided, the value set during initialization   
             will be used. Defaults to 0.
         '''
-        if parallel_envs < 2:
-            excp = 'parallel_envs must be greater than 1. '
-            excp += 'Otherwise use SequentialReinforcementLearner'
-            raise ValueError(excp)
         
-        if not self.environment_function or \
+        if not self.environment_functions or \
                 not self.update_function or \
                     not self.test_function:
                 raise Exception("Environment, Update, and Test functions must be set!")
@@ -799,9 +796,9 @@ class ParallelExperience(ReinforcementLearner):
 
             # Collect experiences from parallel environments
             env_tasks = []
-            for env_name in self.environment_function.keys():
-                async_env = self.as_async(self._register_task, self.environment_function[env_name])
-                env_tasks.append(async_env())
+            for name, env_func in self.environment_functions.items():
+                env_task = self._register_task(env_func)
+                env_tasks.append(env_task)
             
             # Wait for all environment tasks to complete
             env_results = [env.result() for env in env_tasks]
