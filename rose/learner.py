@@ -194,18 +194,13 @@ class ActiveLearner(WorkflowEngine):
         return tasks
 
 class ReinforcementLearner(WorkflowEngine):
-    '''
-    ReinforcementLearner is a subclass of WorkflowEngine that implements
-    a reinforcement learning loop.
-    Iteration step:
-    [Environment] -> [Policy Update]
-    '''
+    
     @typeguard.typechecked
     def __init__(self, engine: ResourceEngine, register_and_submit: bool=True) -> None:
 
-        self.criterion_function = {}
+        self.test_function = {}
         self.update_function = {}
-        self.environment_function = {} # Or environemnt function
+        self.environment_function = {}
 
         super().__init__(engine)
 
@@ -255,7 +250,7 @@ class ReinforcementLearner(WorkflowEngine):
             @wraps(func)
             def wrapper(*args, **kwargs):
                 # Store the relevant information in self.criterion_function
-                self.criterion_function = {
+                self.test_function = {
                     'func': func,
                     'args': args,
                     'kwargs': kwargs,
@@ -264,7 +259,7 @@ class ReinforcementLearner(WorkflowEngine):
                     'metric_name': metric_name}
 
                 if self.register_and_submit:
-                    res = self._register_task(self.criterion_function).result()
+                    res = self._register_task(self.test_function).result()
                     return self._check_stop_criterion(res)
             return wrapper
         return decorator
@@ -326,16 +321,6 @@ class ReinforcementLearner(WorkflowEngine):
         else:
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
-    def _start_pre_loop(self):
-        """
-        start the initlial step for active learning by
-        defining and setting simulation and training tasks
-        """
-
-        sim_task = self._register_task(self.simulation_function)
-        train_task = self._register_task(self.training_function, deps=sim_task)
-        return sim_task, train_task
-
     def _check_stop_criterion(self, stop_task_result):
 
         try:
@@ -345,9 +330,9 @@ class ReinforcementLearner(WorkflowEngine):
 
         # check if the metric value is a number
         if isinstance(metric_value, float) or isinstance(metric_value, int):
-            operator = self.criterion_function['operator']
-            threshold = self.criterion_function['threshold']
-            metric_name = self.criterion_function['metric_name']
+            operator = self.test_function['operator']
+            threshold = self.test_function['threshold']
+            metric_name = self.test_function['metric_name']
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
                 print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
@@ -659,3 +644,174 @@ class AlgorithmSelector(ActiveLearner):
             excp += "is used, and the status of each active learning pipeline to make sure that at least "
             excp += "one of them is running successfully!"
             raise ValueError(excp)
+
+
+class SequentialReinforcementLearner(ReinforcementLearner):
+    """
+    SequentialReinforcementLearner is a subclass of ReinforcementLearner that implements
+    a sequential reinforcement learning loop, where the learner interacts with the environment
+    in a series of steps, updating its policy based on the rewards received from the environment.
+    Useful for implementing on-policy(PPO, A2C) and off-policy(DQN) learning algorithms.
+
+           Iteration 1:
+    [Env] -> [Update] -> [Test]
+
+                |
+                v
+            Iteration 2:
+    [Env] -> [Update] -> [Test]
+    
+                |
+                v
+            Iteration 3:
+    [Env] -> [Update] -> [Test]
+    
+                |
+                v
+            Iteration N:
+    [Env] -> [Update] -> [Test]
+    """
+    def __init__(self, engine: ResourceEngine) -> None:
+        super().__init__(engine, register_and_submit=False)
+
+    def learn(self, max_iter:int = 0):
+        '''
+        Run the reinforcement learning loop for a specified number of iterations.
+        Args:
+            max_iter (int, optional): The maximum number of iterations for the
+            reinforcement learning loop. If not provided, the value set during initialization   
+            will be used. Defaults to 0.
+        '''
+        # start the initial step for RL by defining and setting environment and update tasks
+        if not self.environment_function or \
+              not self.update_function:
+            raise Exception("Environment and Update function must be set!")
+        
+        if not self.test_function:
+            raise Exception("Test function must be set!")
+
+        if not max_iter:
+            max_iter = itertools.count()
+        else:
+            max_iter = range(max_iter)
+
+        # form the RL loop and workflow
+        for i in max_iter:
+            print(f'Starting Iteration-{i}')
+            env_task = self._register_task(self.environment_function)
+            update_task = self._register_task(self.update_function, deps=env_task)
+
+            test_task = self._register_task(self.test_function, deps=update_task)
+
+            test_result = test_task.result()
+            should_stop, _ = self._check_stop_criterion(test_result)
+            if should_stop:
+                break
+
+class ParallelExperience(ReinforcementLearner):
+    """
+    ParallelExperience is a subclass of ReinforcementLearner that implements
+    a parallel reinforcement learning loop, where multiple environments are run in parallel
+    to collect experiences, and then a single update step is performed on the collected experiences.
+
+    Environment 1       Environment 2     Environment 3
+        |                   |                 |
+      [Collect]         [Collect]         [Collect]
+        |                   |                 |
+            --->   [Merge Experiences]   <---
+                            |
+                            v
+                    [Update Policy]
+                            |
+                            v
+                    [Test Policy]
+    """
+    def __init__(self, engine: ResourceEngine) -> None:
+        super().__init__(engine)
+        self.merge_function = {}
+
+    def environment_task(self, name: str):
+        """
+        A decorator that registers an environment task under the given name.
+        
+        Usage:
+        
+        @par_exp.environment_task(name='env_1')
+        def environment_1(*args):
+            ...
+        
+        @par_exp.environment_task(name='env_2')
+        def environemnt_2(*args):
+            ...
+        """
+        def decorator(func: Callable):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                self.active_learn_functions[name] = {
+                    'func': func,
+                    'args': args,
+                    'kwargs': kwargs
+                }
+                if self.register_and_submit:
+                    return self._register_task(self.environment_function[name])
+            return wrapper
+        return decorator
+
+    def merge_task(self, func:Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            self.merge_function = {'func': func,
+                                   'args': args,
+                                   'kwargs': kwargs}
+
+            if self.register_and_submit:
+                return self._register_task(self.merge_function)
+        return wrapper
+
+    def learn(self, parallel_envs:int = 5, max_iter:int = 0):
+        '''
+        Run the parallel reinforcement learning loop for a specified number of iterations.
+        Args:
+            parallel_envs (int, optional): The number of parallel environments to run.
+                                            Defaults to 5.
+            max_iter (int, optional): The maximum number of iterations for the
+            reinforcement learning loop. If not provided, the value set during initialization   
+            will be used. Defaults to 0.
+        '''
+        if parallel_envs < 2:
+            excp = 'parallel_envs must be greater than 1. '
+            excp += 'Otherwise use SequentialReinforcementLearner'
+            raise ValueError(excp)
+        
+        if not self.environment_function or \
+                not self.update_function or \
+                    not self.test_function:
+                raise Exception("Environment, Update, and Test functions must be set!")
+
+        if not max_iter:
+            max_iter = itertools.count()
+        else:
+            max_iter = range(max_iter)
+
+        # form the RL loop and workflow
+        for i in max_iter:
+            print(f'Starting Iteration-{i}')
+
+            # Collect experiences from parallel environments
+            env_tasks = []
+            for env_name in self.environment_function.keys():
+                async_env = self.as_async(self._register_task, self.environment_function[env_name])
+                env_tasks.append(async_env())
+            
+            # Wait for all environment tasks to complete
+            env_results = [env.result() for env in env_tasks]
+
+            merge_task = self._register_task(self.merge_function, deps=tuple(env_results))
+            update_task = self._register_task(self.update_function, deps=merge_task)
+            test_task = self._register_task(self.test_function, deps=update_task)
+            test_result = test_task.result()
+
+            should_stop, _ = self._check_stop_criterion(test_result)
+
+            if should_stop:
+                break

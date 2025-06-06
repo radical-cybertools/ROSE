@@ -11,14 +11,13 @@ from model import QNetwork
 
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 
-def episode(shard, work_dir=".", epsilon=0.1, epochs=5):
+def episode(memory_file, work_dir=".", epsilon=0.1, epochs=5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Config
     ENV_NAME = "CartPole-v1"
     MODEL_PATH = os.path.join(work_dir, "dqn_model.pth")
-    MEMORY_LOAD_PATH = os.path.join(work_dir, "replay_memory.pkl")
-    MEMORY_WRITE_PATH = os.path.join(work_dir, f"replay_memory_{shard}.pkl")
+    MEMORY_PATH = os.path.join(work_dir, memory_file)
     MAX_MEMORY_SIZE = int(1e5)
 
     # ReplayBuffer logic
@@ -48,7 +47,7 @@ def episode(shard, work_dir=".", epsilon=0.1, epochs=5):
         print("No existing model found. Starting fresh.")
     model.eval()
 
-    memory = load_memory(MEMORY_LOAD_PATH, MAX_MEMORY_SIZE)
+    memory = load_memory(MEMORY_PATH, MAX_MEMORY_SIZE)
 
     for epoch in range(epochs):
         state, _ = env.reset()
@@ -65,12 +64,12 @@ def episode(shard, work_dir=".", epsilon=0.1, epochs=5):
             memory.append(Experience(state, action, reward, next_state, done))
             state = next_state
 
-    save_memory(memory, MEMORY_WRITE_PATH)
+    save_memory(memory, MEMORY_PATH)
     print(f"Saved memory with {len(memory)} experiences.")
 
     env.close()
 
 if __name__ == "__main__":
-    shard = sys.argv[1] if len(sys.argv) > 1 else "0"
+    memory_file = sys.argv[1] if len(sys.argv) > 1 else "replay_memory.pkl"
     work_dir = sys.argv[2] if len(sys.argv) > 2 else "."
-    episode(shard, work_dir)
+    episode(memory_file, work_dir)

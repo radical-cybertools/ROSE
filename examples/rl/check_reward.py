@@ -11,7 +11,7 @@ def reward(work_dir="."):
     # Config
     ENV_NAME = "CartPole-v1"
     MODEL_PATH = os.path.join(work_dir, "dqn_model.pth")
-    EPISODES = 10
+    EPISODES = 100
     RENDER = False
 
     # Load environment and model
