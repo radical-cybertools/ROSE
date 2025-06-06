@@ -70,6 +70,6 @@ def episode(memory_file, work_dir=".", epsilon=0.1, epochs=5):
     env.close()
 
 if __name__ == "__main__":
-    memory_file = sys.argv[1] if len(sys.argv) > 1 else "replay_memory.pkl"
-    work_dir = sys.argv[2] if len(sys.argv) > 2 else "."
+    work_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    memory_file = sys.argv[2] if len(sys.argv) > 2 else "replay_memory.pkl"
     episode(memory_file, work_dir)
