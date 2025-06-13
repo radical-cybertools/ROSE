@@ -754,7 +754,7 @@ class ParallelExperience(ReinforcementLearner):
                     'kwargs': kwargs
                 }
                 if self.register_and_submit:
-                    return self._register_task(self.environment_function[name])
+                    return self._register_task(self.environment_functions[name])
             return wrapper
         return decorator
 
@@ -769,12 +769,58 @@ class ParallelExperience(ReinforcementLearner):
                 return self._register_task(self.merge_function)
         return wrapper
 
+    @staticmethod
+    def merge_experience_banks(work_dir: str = ".", output_filename: str = "experience_bank.pkl", max_size: Optional[int] = None) -> str:
+        """
+        Merge all experience banks from parallel environments into a single bank.
+        
+        Args:
+            work_dir: Directory containing the experience bank files
+            output_filename: Name of the merged experience bank file
+            max_size: Maximum size for the merged bank (None for unlimited)
+            
+        Returns:
+            str: Path to the merged experience bank file
+        """
+        from .experience import ExperienceBank
+        import os
+        
+        # Find all experience bank files in the directory
+        bank_files = ExperienceBank.list_saved_banks(work_dir)
+        
+        if not bank_files:
+            print("No experience banks found to merge!")
+            return None
+        
+        print(f"Found {len(bank_files)} experience banks to merge:")
+        for bank_file in bank_files:
+            print(f"  - {os.path.basename(bank_file)}")
+        
+        # Create merged bank
+        merged_bank = ExperienceBank(max_size=max_size)
+        total_experiences = 0
+        
+        # Load and merge all banks
+        for bank_file in bank_files:
+            try:
+                bank = ExperienceBank.load(bank_file)
+                merged_bank.merge_inplace(bank)
+                total_experiences += len(bank)
+                print(f"  Merged {len(bank)} experiences from {os.path.basename(bank_file)}")
+            except Exception as e:
+                print(f"  Warning: Could not load {bank_file}: {e}")
+        
+        # Save merged bank
+        output_path = os.path.join(work_dir, output_filename)
+        merged_bank.save(output_path)
+        
+        
+        return output_path
+
     def learn(self, max_iter:int = 0):
         '''
         Run the parallel reinforcement learning loop for a specified number of iterations.
         Args:
-            parallel_envs (int, optional): The number of parallel environments to run.
-                                            Defaults to 5.
             max_iter (int, optional): The maximum number of iterations for the
             reinforcement learning loop. If not provided, the value set during initialization   
             will be used. Defaults to 0.
@@ -803,7 +849,18 @@ class ParallelExperience(ReinforcementLearner):
             # Wait for all environment tasks to complete
             env_results = [env.result() for env in env_tasks]
 
-            merge_task = self._register_task(self.merge_function, deps=tuple(env_results))
+            # If merge_function is defined, use it; otherwise use default merge
+            if self.merge_function:
+                merge_task = self._register_task(self.merge_function, deps=tuple(env_results))
+            else:
+                # Use default merge function
+                default_merge_func = {
+                    'func': self.merge_experience_banks,
+                    'args': (),
+                    'kwargs': {}
+                }
+                merge_task = self._register_task(default_merge_func, deps=tuple(env_results))
+            
             update_task = self._register_task(self.update_function, deps=merge_task)
             test_task = self._register_task(self.test_function, deps=update_task)
             test_result = test_task.result()
