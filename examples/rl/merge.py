@@ -29,6 +29,12 @@ def merge_banks(work_dir="."):
             print(f"  Merged {len(bank)} from {os.path.basename(bank_file)}")
         except:
             print(f"  Failed to load {bank_file}")
+
+    for bank_file in bank_files:
+        try:
+            os.remove(bank_file)
+        except Exception as e:
+            print(f"  Failed to delete {bank_file}: {e}")
     
     # Save merged bank
     output_path = os.path.join(work_dir, "experience_bank.pkl")

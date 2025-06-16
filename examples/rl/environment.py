@@ -10,7 +10,7 @@ from collections import deque, namedtuple
 from model import QNetwork
 from rose.experience import Experience, ExperienceBank, create_experience
 
-def episode(work_dir=".", epsilon=0.1, epochs=5):
+def episode(work_dir=".", filename=None, epsilon=0.1, epochs=5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Config
@@ -56,10 +56,19 @@ def episode(work_dir=".", epsilon=0.1, epochs=5):
         print(f"Epoch {epoch + 1}/{epochs} - Episode reward: {episode_reward}")
 
     # Save memory
-    memory.save()
-    print(f"Saved memory with {len(memory)} experiences.")
+    if filename:
+        memory.save(work_dir, filename)
+        print(f"Saved memory with {len(memory)} experiences to: {filename}")
+    else:
+        saved_path = memory.save(work_dir)
+        print(f"Saved memory with {len(memory)} experiences to: {os.path.basename(saved_path)}")
 
     env.close()
 
 if __name__ == "__main__":
-    episode()
+    work_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    epsilon = float(sys.argv[2]) if len(sys.argv) > 2 else 0.1
+    epochs = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+    filename = sys.argv[4] if len(sys.argv) > 4 else None
+    
+    episode(work_dir, filename, epsilon, epochs)
