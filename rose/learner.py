@@ -770,7 +770,7 @@ class ParallelExperience(ReinforcementLearner):
         return wrapper
 
     @staticmethod
-    def merge_experience_banks(work_dir: str = ".", output_filename: str = "experience_bank.pkl", max_size: Optional[int] = None) -> str:
+    def merge_experience_banks(work_dir: str = ".", output_filename: str = "experience_bank.pkl", max_size: int = 1024) -> str:
         """
         Merge all experience banks from parallel environments into a single bank.
         
