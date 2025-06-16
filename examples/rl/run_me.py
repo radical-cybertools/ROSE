@@ -22,7 +22,7 @@ os.makedirs(data_path, exist_ok=True)
 # Define and register the environment task
 @rl.environment_task
 def environment(*args):
-    return Task(executable=f'{code_path}/environment.py {data_path} replay_memory.pkl', arguments=args)
+    return Task(executable=f'{code_path}/environment.py {data_path} 0.1 5 experience_bank.pkl', arguments=args)
 
 # Define and register the policy update task
 @rl.update_task
@@ -36,5 +36,6 @@ def check_reward(*args):
 env = environment()
 upd = update()
 stop_cond = check_reward()
+
 rl.learn()
 engine.shutdown()
