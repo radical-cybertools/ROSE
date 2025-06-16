@@ -32,7 +32,7 @@ def merge_banks(work_dir="."):
     
     # Save merged bank
     output_path = os.path.join(work_dir, "experience_bank.pkl")
-    merged.save(output_path)
+    merged.save('.', output_path)
     
     print(f"Saved {len(merged)} total experiences to experience_bank.pkl")
 
