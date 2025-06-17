@@ -729,8 +729,8 @@ class ParallelExperience(ReinforcementLearner):
     def __init__(self, engine: ResourceEngine) -> None:
         super().__init__(engine, register_and_submit=False)
         self.environment_functions: Dict[str, Dict] = {}
-        self.merge_function = {}
-
+        self.work_dir = '.'
+        
     def environment_task(self, name: str):
         """
         A decorator that registers an environment task under the given name.
@@ -758,64 +758,41 @@ class ParallelExperience(ReinforcementLearner):
             return wrapper
         return decorator
 
-    def merge_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.merge_function = {'func': func,
-                                   'args': args,
-                                   'kwargs': kwargs}
-
-            if self.register_and_submit:
-                return self._register_task(self.merge_function)
-        return wrapper
-
-    @staticmethod
-    def merge_experience_banks(work_dir: str = ".", output_filename: str = "experience_bank.pkl", max_size: int = 1024) -> str:
-        """
-        Merge all experience banks from parallel environments into a single bank.
-        
-        Args:
-            work_dir: Directory containing the experience bank files
-            output_filename: Name of the merged experience bank file
-            max_size: Maximum size for the merged bank (None for unlimited)
-            
-        Returns:
-            str: Path to the merged experience bank file
-        """
-        from .experience import ExperienceBank
+    def merge_banks(self):
         import os
-        
-        # Find all experience bank files in the directory
-        bank_files = ExperienceBank.list_saved_banks(work_dir)
+        from rose.experience import Experience, ExperienceBank, create_experience
+        bank_files = []
+        for filename in os.listdir(self.work_dir):
+            if filename.startswith("experience_bank_") and filename.endswith(".pkl"):
+                bank_files.append(os.path.join(self.work_dir, filename))
         
         if not bank_files:
-            print("No experience banks found to merge!")
-            return None
+            print("No experience banks found!")
+            return
         
-        print(f"Found {len(bank_files)} experience banks to merge:")
-        for bank_file in bank_files:
-            print(f"  - {os.path.basename(bank_file)}")
+        print(f"Found {len(bank_files)} experience banks")
         
-        # Create merged bank
-        merged_bank = ExperienceBank(max_size=max_size)
-        total_experiences = 0
+        # Create merged bank and load all files
+        merged = ExperienceBank()
+        total = 0
         
-        # Load and merge all banks
         for bank_file in bank_files:
             try:
                 bank = ExperienceBank.load(bank_file)
-                merged_bank.merge_inplace(bank)
-                total_experiences += len(bank)
-                print(f"  Merged {len(bank)} experiences from {os.path.basename(bank_file)}")
+                merged.merge_inplace(bank)
+                total += len(bank)
+                print(f"  Merged {len(bank)} from {os.path.basename(bank_file)}")
+            except:
+                print(f"  Failed to load {bank_file}")
+    
+        for bank_file in bank_files:
+            try:
+                os.remove(bank_file)
             except Exception as e:
-                print(f"  Warning: Could not load {bank_file}: {e}")
+                print(f"  Failed to delete {bank_file}: {e}")
         
         # Save merged bank
-        output_path = os.path.join(work_dir, output_filename)
-        merged_bank.save(output_path)
-        
-        
-        return output_path
+        merged.save(self.work_dir, "experience_bank.pkl")
 
     def learn(self, max_iter:int = 0):
         '''
@@ -848,20 +825,10 @@ class ParallelExperience(ReinforcementLearner):
             
             # Wait for all environment tasks to complete
             env_results = [env.result() for env in env_tasks]
-
-            # If merge_function is defined, use it; otherwise use default merge
-            if self.merge_function:
-                merge_task = self._register_task(self.merge_function, deps=tuple(env_results))
-            else:
-                # Use default merge function
-                default_merge_func = {
-                    'func': self.merge_experience_banks,
-                    'args': (),
-                    'kwargs': {}
-                }
-                merge_task = self._register_task(default_merge_func, deps=tuple(env_results))
             
-            update_task = self._register_task(self.update_function, deps=merge_task)
+            self.merge_banks()
+            
+            update_task = self._register_task(self.update_function)
             test_task = self._register_task(self.test_function, deps=update_task)
             test_result = test_task.result()
 
