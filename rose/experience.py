@@ -104,12 +104,12 @@ class ExperienceBank:
         return filepath
     
     @classmethod
-    def load(cls, filepath: str, max_size: Optional[int] = None) -> 'ExperienceBank':
+    def load(cls, filepath: str, max_size: Optional[int]= None) -> 'ExperienceBank':
     """
     Load an ExperienceBank from a pickle file.
     Args:
         filepath (str): Path to the pickle file containing a list of Experience objects.
-        max_size (Optional[int], optional): Maximum size of the loaded ExperienceBank. 
+        max_size (Optional[int]): Maximum size of the loaded ExperienceBank. 
             If specified, the bank will be initialized with this max size. Defaults to None.
     Returns:
         ExperienceBank: An instance of ExperienceBank populated with experiences loaded from the file.
