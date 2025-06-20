@@ -17,6 +17,28 @@ class Experience:
     info: dict = None
 
 class ExperienceBank:
+    """
+    A memory bank for storing and sampling Experience objects.
+
+    The ExperienceBank supports adding individual or batches of experiences, sampling with or without replacement,
+    merging with other banks, saving/loading to disk, and retrieving recent experiences. It uses a deque for efficient
+    memory management and can be bounded by a maximum size.
+
+    Attributes:
+        max_size (Optional[int]): Maximum number of experiences to store. If None, unlimited.
+        session_id (str): Unique identifier for the bank session.
+
+    Methods:
+        add(experience): Add a single Experience to the bank.
+        add_batch(experiences): Add multiple Experience objects.
+        sample(batch_size, replace): Randomly sample experiences.
+        merge(other): Return a new ExperienceBank merged with another.
+        merge_inplace(other): Merge another bank into this one in-place.
+        clear(): Remove all experiences.
+        get_recent(n): Get the n most recent experiences.
+        save(work_dir, bank_file): Save the bank to disk.
+        load(filepath, max_size): Load a bank from disk.
+    """
     def __init__(self, max_size: Optional[int] = None, session_id: Optional[str] = None):
         self.max_size = max_size
         self._experiences = deque(maxlen=max_size) if max_size else deque()
@@ -48,7 +70,7 @@ class ExperienceBank:
         else:
             return self._rng.sample(list(self._experiences), k=batch_size)
         
-    def merge(self, other: 'ExperienceBank') -> 'ExperienceBank':
+    def merge(self, other: 'ExperienceBank') -> ExperienceBank:
         new_max_size = None
         if self.max_size is not None and other.max_size is not None:
             new_max_size = max(self.max_size, other.max_size)
@@ -83,6 +105,18 @@ class ExperienceBank:
     
     @classmethod
     def load(cls, filepath: str, max_size: Optional[int] = None) -> 'ExperienceBank':
+    """
+    Load an ExperienceBank from a pickle file.
+    Args:
+        filepath (str): Path to the pickle file containing a list of Experience objects.
+        max_size (Optional[int], optional): Maximum size of the loaded ExperienceBank. 
+            If specified, the bank will be initialized with this max size. Defaults to None.
+    Returns:
+        ExperienceBank: An instance of ExperienceBank populated with experiences loaded from the file.
+            If the file does not exist, returns an empty ExperienceBank with the specified max_size.
+    Raises:
+        Any exception raised by pickle.load except FileNotFoundError, which is handled internally.
+    """
         try:
             with open(filepath, 'rb') as f:
                 experiences = pickle.load(f)
@@ -103,8 +137,21 @@ class ExperienceBank:
         if isinstance(index, slice):
             return list(self._experiences)[index]
         return list(self._experiences)[index]
-    
+
 def create_experience(state, action, reward, next_state, done, info=None) -> Experience:
+    """
+    Create an Experience object with the given parameters.
+    Args:
+        state (Any): The current state.
+        action (Any): The action taken.
+        reward (float): The reward received after taking the action.
+        next_state (Any): The resulting state after the action.
+        done (bool): Whether the episode has ended.
+        info (dict, optional): Additional information about the experience. Defaults to None.
+
+    Returns:
+        Experience: An instance of the Experience dataclass containing the provided data.
+    """
     return Experience(
         state=state,
         action=action,
