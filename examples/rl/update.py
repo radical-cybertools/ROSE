@@ -9,7 +9,7 @@ import os
 import sys
 from collections import deque, namedtuple
 from model import QNetwork
-from rose.experience import Experience, ExperienceBank
+from rose.rl.experience import Experience, ExperienceBank
 
 def update(work_dir=".", memory_file="experience_bank.pkl"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

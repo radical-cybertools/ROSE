@@ -70,7 +70,7 @@ class ExperienceBank:
         else:
             return self._rng.sample(list(self._experiences), k=batch_size)
         
-    def merge(self, other: 'ExperienceBank') -> ExperienceBank:
+    def merge(self, other: 'ExperienceBank') -> "ExperienceBank":
         new_max_size = None
         if self.max_size is not None and other.max_size is not None:
             new_max_size = max(self.max_size, other.max_size)
@@ -105,18 +105,18 @@ class ExperienceBank:
     
     @classmethod
     def load(cls, filepath: str, max_size: Optional[int]= None) -> 'ExperienceBank':
-    """
-    Load an ExperienceBank from a pickle file.
-    Args:
-        filepath (str): Path to the pickle file containing a list of Experience objects.
-        max_size (Optional[int]): Maximum size of the loaded ExperienceBank. 
-            If specified, the bank will be initialized with this max size. Defaults to None.
-    Returns:
-        ExperienceBank: An instance of ExperienceBank populated with experiences loaded from the file.
-            If the file does not exist, returns an empty ExperienceBank with the specified max_size.
-    Raises:
-        Any exception raised by pickle.load except FileNotFoundError, which is handled internally.
-    """
+        """
+        Load an ExperienceBank from a pickle file.
+        Args:
+            filepath (str): Path to the pickle file containing a list of Experience objects.
+            max_size (Optional[int]): Maximum size of the loaded ExperienceBank. 
+                If specified, the bank will be initialized with this max size. Defaults to None.
+        Returns:
+            ExperienceBank: An instance of ExperienceBank populated with experiences loaded from the file.
+                If the file does not exist, returns an empty ExperienceBank with the specified max_size.
+        Raises:
+            Any exception raised by pickle.load except FileNotFoundError, which is handled internally.
+        """
         try:
             with open(filepath, 'rb') as f:
                 experiences = pickle.load(f)

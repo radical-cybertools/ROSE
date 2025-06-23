@@ -1,6 +1,6 @@
 import os
 import sys
-from rose.experience import ExperienceBank
+from rose.rl.experience import ExperienceBank
 
 def merge_banks(work_dir="."):
     """Find and merge all experience banks in directory."""

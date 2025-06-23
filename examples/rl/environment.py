@@ -8,7 +8,7 @@ import os
 import math
 from collections import deque, namedtuple
 from model import QNetwork
-from rose.experience import Experience, ExperienceBank, create_experience
+from rose.rl.experience import Experience, ExperienceBank, create_experience
 
 def episode(work_dir=".", filename=None, epsilon=0.1, epochs=5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

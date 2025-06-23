@@ -8,7 +8,7 @@ os.environ['RADICAL_PILOT_VERBOSE'] = verbose
 import radical.pilot as rp
 import radical.utils as ru
 
-from rose.learner import SequentialReinforcementLearner
+from rose.rl.learner import SequentialReinforcementLearner
 from rose.engine import Task, ResourceEngine
 from rose.metrics import GREATER_THAN_THRESHOLD
 
