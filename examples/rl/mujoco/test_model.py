@@ -21,4 +21,4 @@ if __name__ == "__main__":
 
     env = suite.load(domain_name="cartpole", task_name="swingup")
     reward = run_test_episode(env, policy)
-    print(f"REINFORCE policy reward: {reward:.2f}")
+    print(f"{reward:.2f}")
