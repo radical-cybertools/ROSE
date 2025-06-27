@@ -193,7 +193,6 @@ class ActiveLearner(WorkflowEngine):
 
         return tasks
 
-
 class SequentialActiveLearner(ActiveLearner):
     '''
     SequentialActiveLearner is a subclass of ActiveLearner that implements
@@ -345,7 +344,6 @@ class ParallelActiveLearner(SequentialActiveLearner):
         # block/wait for each workflow until it finishes
         [learner.result() for learner in submitted_learners]
 
-
 class AlgorithmSelector(ActiveLearner):
     """
     AlgorithmSelector is a subclass of ActiveLearner that implements 
@@ -480,3 +478,4 @@ class AlgorithmSelector(ActiveLearner):
             excp += "is used, and the status of each active learning pipeline to make sure that at least "
             excp += "one of them is running successfully!"
             raise ValueError(excp)
+
