@@ -1,7 +1,9 @@
 import typeguard
 import itertools
-from typing import Callable, Dict
+from typing import Callable, Dict, Any, Optional, List
 from functools import wraps
+from pydantic import BaseModel
+
 
 from .engine import ResourceEngine
 from .engine import WorkflowEngine
@@ -21,72 +23,71 @@ class ActiveLearner(WorkflowEngine):
 
         self.register_and_submit = register_and_submit
 
+        self.simulation_task = self.register_decorator('simulation')
+        self.training_task = self.register_decorator('training')
+        self.active_learn_task = self.register_decorator('active_learn')
+        self.utility_task = self.register_decorator('utility')
 
-    def simulation_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.simulation_function = {'func':func,
-                                        'args':args,
-                                        'kwargs':kwargs}
-            
-            if self.register_and_submit:
-                return self._register_task(self.simulation_function)
-        return wrapper
 
-    def training_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.training_function = {'func':func,
-                                      'args':args,
-                                      'kwargs':kwargs}
-            if self.register_and_submit:
-                return self._register_task(self.training_function)
-        return wrapper
+    def register_decorator(self, task_attr_name: str):
+        """
+        Generic decorator factory for registering simulation/training/etc. tasks.
+        """
 
-    def active_learn_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            self.active_learn_function = {'func':func,
-                                          'args':args,
-                                          'kwargs':kwargs}
-            if self.register_and_submit:
-                return self._register_task(self.active_learn_function)
-        return wrapper
+        def decorator(func: Callable):
+            # Set the base function reference at decoration time
+            setattr(self, f"{task_attr_name}_function", {
+                'func': func,
+                'args': (),
+                'kwargs': {},
+            })
 
-    def utility_task(self, func:Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            utility_function = {'func':func,
-                                'args':args,
-                                'kwargs':kwargs}
-            
-            if self.register_and_submit:
-                return self._register_task(utility_function)
-        return wrapper
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                task_obj = {
+                    'func': func,
+                    'args': args,
+                    'kwargs': kwargs,
+                }
+                setattr(self, f"{task_attr_name}_function", task_obj)
+
+                if self.register_and_submit:
+                    return self._register_task(task_obj)
+            return wrapper
+
+        return decorator
 
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
                                 threshold: float,
                                 operator: str = ''):
-        # This is the outer function that takes arguments like metric_name and threshold
         @typeguard.typechecked
-        def decorator(func: Callable):  # This is the actual decorator function that takes func
+        def decorator(func: Callable):
+            # Register the function reference immediately
+            self.criterion_function = {
+                'func': func,
+                'args': (),
+                'kwargs': {},
+                'operator': operator,
+                'threshold': threshold,
+                'metric_name': metric_name
+            }
+
             @wraps(func)
             def wrapper(*args, **kwargs):
-                # Store the relevant information in self.criterion_function
-                self.criterion_function = {
-                    'func': func,
+                # Update runtime args/kwargs
+                self.criterion_function.update({
                     'args': args,
-                    'kwargs': kwargs,
-                    'operator': operator,
-                    'threshold': threshold,
-                    'metric_name': metric_name}
-                
+                    'kwargs': kwargs
+                })
+
                 if self.register_and_submit:
                     res = self._register_task(self.criterion_function).result()
                     return self._check_stop_criterion(res)
             return wrapper
+
         return decorator
+
 
     def _register_task(self, task_obj, deps=None):
         func = task_obj['func']
@@ -278,72 +279,78 @@ class SequentialActiveLearner(ActiveLearner):
             # block/wait for each workflow until it finishes
             train_task.result()
 
+class TaskConfig(BaseModel):
+    """Configuration for a single task's arguments"""
+    args: tuple = ()
+    kwargs: dict = {}
 
-class ParallelActiveLearner(SequentialActiveLearner):
-    '''
-    ParallelActiveLearner is a subclass of ActiveLearner that implements
-    a parallel active learning loop.
 
-    Parallel Learner 1        Parallel Learner 2        Parallel Learner 3
-            |                         |                         |
-          [Sim]                     [Sim]                     [Sim]
-            |                         |                         |
-         [Train]                   [Train]                   [Train]
-            |                         |                         |
-        [Active Learn]          [Active Learn]            [Active Learn]
-            |                         |                         |
-            v                         v                         v
-    -----------------------------------------------------------------------
-                       Parallel Execution of All Learners
-                                      |
-                                      v
-                         (Next Parallel Learner N)
-                                      |
-                                    [Sim]
-                                      |
-                                   [Train]
-                                      |
-                               [Active Learn]
-    '''
-    def __init__(self, engine: ResourceEngine) -> None:
-        '''
-        Initialize the ParallelActiveLearner object.
+class ParallelLearnerConfig(BaseModel):
+    """Configuration for one parallel learner's tasks."""
+    simulation: Optional[TaskConfig] = None
+    training: Optional[TaskConfig] = None
+    active_learn: Optional[TaskConfig] = None
+    criterion: Optional[TaskConfig] = None
 
-        Args:
-            engine: The ResourceEngine object that manages the resources and
-            tasks submission to HPC resources during the active learning loop.
-        '''
-        super().__init__(engine)
+    class Config:
+        extra = "forbid"
+        json_encoders = {
+            tuple: list,
+        }
 
-    def teach(self, parallel_learners:int = 2, skip_pre_loop:bool = False):
-        '''
-        Run the active learning loop for a specified number of iterations.
 
-        Args:
-            skip_pre_loop: (bool, optional): Whether to skip the pre-loop step.
-            If True, the pre-loop step will be skipped. Defaults to False.
+class ParallelActiveLearner(ActiveLearner):
+    """
+    Parallel active learner that runs multiple learners concurrently.
+    Configure each learner via `ParallelLearnerConfig`.
+    """
 
-            parallel_learners: (int, optional): The maximum number of active learner workflows
-            to be submitted in parallel. If not provided, the value set during initialization
-            will be used. Defaults to 1.
-        '''
+    def __init__(self, engine: ResourceEngine):
+        super().__init__(engine, register_and_submit=False)
+
+    def teach(
+        self,
+        parallel_learners: int = 2,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        learner_configs: Optional[List[Optional[ParallelLearnerConfig]]] = None,
+    ) -> List[Any]:
         if parallel_learners < 2:
-            excp = 'parallel_learners must be greater than 1. '
-            excp += 'Otherwise use SequentialActiveLearner'
-            raise ValueError(excp)
+            raise ValueError("For single learner, use SequentialActiveLearner")
 
-        def _parallel_active_learn():
-            super(ParallelActiveLearner, self).teach(max_iter=1,
-                                                     skip_pre_loop=skip_pre_loop)
+        learner_configs = learner_configs or [None] * parallel_learners
+        if len(learner_configs) != parallel_learners:
+            raise ValueError("learner_configs length must match parallel_learners")
 
-        submitted_learners = []
-        for learner in range(parallel_learners):
-            async_teach = self.as_async(_parallel_active_learn)
-            submitted_learners.append(async_teach())
-            print(f'Learner-{learner} is submitted for execution')
+        def _run_learner(learner_id: int):
+            learner = SequentialActiveLearner(self.engine)
 
-        # block/wait for each workflow until it finishes
-        [learner.result() for learner in submitted_learners]
+            # All possible task types
+            task_keys = ["simulation", "training", "active_learn", "criterion"]
+
+            # Clone parent task definitions
+            for task_key in task_keys:
+                parent_task = getattr(self, f"{task_key}_function", None)
+                if parent_task:
+                    learner_task = parent_task.copy()
+                else:
+                    learner_task = {"func": None, "args": (), "kwargs": {}}
+
+                # Override args/kwargs from learner config
+                config = learner_configs[learner_id]
+                if config:
+                    task_config = getattr(config, task_key, None)
+                    if task_config:
+                        learner_task["args"] = task_config.args or ()
+                        learner_task["kwargs"] = task_config.kwargs or {}
+
+                setattr(learner, f"{task_key}_function", learner_task)
+
+            print(f"Starting Learner-{learner_id}")
+            return learner.teach(max_iter=max_iter, skip_pre_loop=skip_pre_loop)
+
+        futures = [self.as_async(_run_learner)(i) for i in range(parallel_learners)]
+        return [f.result() for f in futures]
 
 
 class AlgorithmSelector(ActiveLearner):
