@@ -32,26 +32,21 @@ def active_learn(*args, **kwargs):
 def check_mse(*args, **kwargs):
     return Task(executable=f'{code_path}/check_mse.py')
 
-# Run with custom configs
+# Create adaptive simulation config
+adaptive_sim = acl.create_adaptive_schedule('simulation', 
+    lambda i: {
+        'kwargs': {
+            '--n_labeled': str(100 + i * 50),  # Increase labeled data each iteration
+            '--n_features': 2
+        }
+    })
+
 results = acl.teach(
-    parallel_learners=3,
+    parallel_learners=2,
     learner_configs=[
-        # Learner 0: Same config for all iterations (your current pattern)
-        ParallelLearnerConfig(simulation=TaskConfig(kwargs={"--n_labeled": "200",
-                                                            "--n_features": 2})),
-        
-        # Learner 1: Different configs per iteration
-        ParallelLearnerConfig(
-            simulation={
-                0: TaskConfig(kwargs={"--n_labeled": "100", "--n_features": 2}),
-                5: TaskConfig(kwargs={"--n_labeled": "200", "--n_features": 2}),
-                10: TaskConfig(kwargs={"--n_labeled": "400", "--n_features": 2}),
-                -1: TaskConfig(kwargs={"--n_labeled": "500", "--n_features": 2})  # default
-            }
-        ),
-        
-        # Learner 2: No custom config (uses base functions)
-        None
+        ParallelLearnerConfig(simulation=adaptive_sim),
+        ParallelLearnerConfig(simulation=TaskConfig(kwargs={"--n_labeled": "300",
+                                                            "--n_features": 4}))
     ]
 )
 
