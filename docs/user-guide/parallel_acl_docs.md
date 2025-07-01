@@ -66,7 +66,8 @@ def simulation(*args, **kwargs):
 
 @acl.training_task
 def training(*args, **kwargs):
-    return Task(executable=f'{code_path}/train.py')
+    learning_rate = kwargs.get("--learning_rate", 0.1)
+    return Task(executable=f'{code_path}/train.py --learning_rate {learning_rate}')
 
 @acl.active_learn_task
 def active_learn(*args, **kwargs):
