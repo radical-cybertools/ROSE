@@ -57,7 +57,12 @@ code_path = f'{sys.executable} {os.getcwd()}'
 ```python
 @acl.simulation_task
 def simulation(*args, **kwargs):
-    return Task(executable=f'{code_path}/sim.py')
+    n_labeled = kwargs.get("--n_labeled", 100)
+    n_features = kwargs.get("--n_features", 2)
+
+    return Task(
+        executable=f"{code_path}/sim.py --n_labeled {n_labeled} --n_features {n_features}"
+    )
 
 @acl.training_task
 def training(*args, **kwargs):
