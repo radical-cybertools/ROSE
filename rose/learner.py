@@ -337,8 +337,9 @@ class ParallelActiveLearner(ActiveLearner):
     def __init__(self, engine: ResourceEngine):
         super().__init__(engine, register_and_submit=False)
 
-    def _get_iteration_task_config(self, base_task: Dict, config: Optional[ParallelLearnerConfig], 
-                                 task_key: str, iteration: int) -> Dict:
+    def _get_iteration_task_config(self, base_task: Dict,
+                                   config: Optional[ParallelLearnerConfig],
+                                   task_key: str, iteration: int) -> Dict:
         """
         Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
         
@@ -358,9 +359,12 @@ class ParallelActiveLearner(ActiveLearner):
         if config:
             iter_config = config.get_task_config(task_key, iteration)
             if iter_config:
-                task_config["args"] = iter_config.args or task_config.get("args", ())
-                task_config["kwargs"] = iter_config.kwargs or task_config.get("kwargs", {})
-                
+                # Use explicit None checks to allow intentional clearing with empty collections
+                if iter_config.args is not None:
+                    task_config["args"] = iter_config.args
+                if iter_config.kwargs is not None:
+                    task_config["kwargs"] = iter_config.kwargs
+                    
         return task_config
 
     def teach(
