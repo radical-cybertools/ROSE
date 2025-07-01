@@ -15,7 +15,12 @@ code_path = f'{sys.executable} {os.getcwd()}'
 # Define and register the simulation task
 @acl.simulation_task
 def simulation(*args, **kwargs):
-    return Task(executable=f'{code_path}/sim.py')
+    n_labeled = kwargs.get("--n_labeled", 100)
+    n_features = kwargs.get("--n_features", 2)
+
+    return Task(
+        executable=f"{code_path}/sim.py --n_labeled {n_labeled} --n_features {n_features}"
+    )
 
 # Define and register the training task
 @acl.training_task
@@ -39,7 +44,7 @@ results = acl.teach(
         # Learner 0: Same config for all iterations (your current pattern)
         ParallelLearnerConfig(simulation=TaskConfig(kwargs={"--n_labeled": "200",
                                                             "--n_features": 2})),
-        
+
         # Learner 1: Different configs per iteration
         ParallelLearnerConfig(
             simulation={
@@ -49,7 +54,7 @@ results = acl.teach(
                 -1: TaskConfig(kwargs={"--n_labeled": "500", "--n_features": 2})  # default
             }
         ),
-        
+
         # Learner 2: No custom config (uses base functions)
         None
     ]
