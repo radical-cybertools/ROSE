@@ -88,6 +88,9 @@ nav:
       - 3.AL Metric: user-guide/acl-metrics.md
       - 4.Advanced AL workflow: user-guide/advanced-acl-workflow.md
       - 5.Visualization: user-guide/visualization.md
+      - 6.Reinforcement Learning: user-guide/reinforcement-learning.md
+      - 7.Experience Banks: user-guide/experience.md
+      - 8.Advanced RL workflow: user-guide/advanced-rl-workflow.md
 
 extra_css:
   - styles/custom.css
