@@ -86,11 +86,12 @@ nav:
       - 1.Target Resources: user-guide/target-resources.md
       - 2.Basic AL workflow: user-guide/basic-acl-workflow.md
       - 3.AL Metric: user-guide/acl-metrics.md
-      - 4.Advanced AL workflow: user-guide/advanced-acl-workflow.md
-      - 5.Visualization: user-guide/visualization.md
-      - 6.Reinforcement Learning: user-guide/reinforcement-learning.md
-      - 7.Experience Banks: user-guide/experience.md
-      - 8.Advanced RL workflow: user-guide/advanced-rl-workflow.md
+      - 4.Building Parallel Learners: user-guide/parallel_acl_docs.md
+      - 5.Advanced AL workflow: user-guide/advanced-acl-workflow.md
+      - 6.Visualization: user-guide/visualization.md
+      - 7.Reinforcement Learning: user-guide/reinforcement-learning.md
+      - 8.Experience Banks: user-guide/experience.md
+      - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
 
 extra_css:
   - styles/custom.css
