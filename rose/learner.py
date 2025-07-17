@@ -194,7 +194,6 @@ class ActiveLearner(WorkflowEngine):
 
         return tasks
 
-
 class SequentialActiveLearner(ActiveLearner):
     '''
     SequentialActiveLearner is a subclass of ActiveLearner that implements
@@ -513,7 +512,6 @@ class ParallelActiveLearner(ActiveLearner):
             for i in range(max_precompute)
         }
 
-
 class AlgorithmSelector(ActiveLearner):
     """
     AlgorithmSelector is a subclass of ActiveLearner that implements 
@@ -648,3 +646,4 @@ class AlgorithmSelector(ActiveLearner):
             excp += "is used, and the status of each active learning pipeline to make sure that at least "
             excp += "one of them is running successfully!"
             raise ValueError(excp)
+
