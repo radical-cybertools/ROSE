@@ -2,172 +2,64 @@ import typeguard
 import itertools
 from typing import Callable, Dict, Any, Optional, List, Union
 from functools import wraps
-from pydantic import BaseModel
 
 from ..learner import Learner
+from ..learner import TaskConfig
+from ..learner import LearnerConfig
 
 from radical.asyncflow import ThreadExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
 
-
-class TaskConfig(BaseModel):
-    """Configuration for a single task's arguments"""
-    args: tuple = ()
-    kwargs: dict = {}
-
-
-class SequentialLearnerConfig(BaseModel):
-    """Configuration for one sequential learner's tasks with per-iteration support."""
-    simulation: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    training: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    active_learn: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    criterion: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    
-    # Learner-specific metadata
-    learner_id: Optional[int] = None
-    learner_name: Optional[str] = None
-    max_iter_override: Optional[int] = None
-
-    class Config:
-        extra = "forbid"
-        json_encoders = {
-            tuple: list,
-        }
-
-    def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
-        """
-        Get the task configuration for a specific iteration.
-        
-        Args:
-            task_name: Name of the task ('simulation', 'training', 'active_learn', 'criterion')
-            iteration: The iteration number (0-based)
-            
-        Returns:
-            TaskConfig for the specified iteration, or None if not configured
-        """
-        task_config = getattr(self, task_name, None)
-        if task_config is None:
-            return None
-            
-        # If it's a TaskConfig, return it directly (same config for all iterations)
-        if isinstance(task_config, TaskConfig):
-            return task_config
-            
-        # If it's a dict, look for iteration-specific config
-        if isinstance(task_config, dict):
-            # Try exact iteration match first
-            if iteration in task_config:
-                return task_config[iteration]
-            # Fall back to default config (key -1 or 'default')
-            return task_config.get(-1) or task_config.get('default')
-            
-        return None
+from typing import Optional, Union, Dict, List, Any, Callable
 
 
 class SequentialActiveLearner(Learner):
-    '''
-    SequentialActiveLearner is a subclass of Learner that implements
-    a sequential active learning loop with per-iteration configuration support.
+    """
+    Sequential active learner that runs iterations one after another.
+    Configure via `LearnerConfig` with per-iteration support.
+    """
 
-           Iteration 1:
-    [Sim] -> [Active Learn] -> [Train]
+    def __init__(self, engine: Union[ThreadExecutionBackend,
+                                     RadicalExecutionBackend]):
+        super().__init__(engine, register_and_submit=True)
+        self.learner_id = None  # Set by ParallelActiveLearner for logging
 
-                |
-                v
-           Iteration 2:
-    [Sim] -> [Active Learn] -> [Train]
-
-                |
-                v
-           Iteration 3:
-    [Sim] -> [Active Learn] -> [Train]
-
-                |
-                v
-           Iteration N
-    '''
-    def __init__(self, engine: Union[ThreadExecutionBackend, RadicalExecutionBackend], 
-                 config: Optional[SequentialLearnerConfig] = None) -> None:
-        '''
-        Initialize the SequentialActiveLearner object.
-
-        Args:
-            engine: The execution backend that manages the resources and
-            tasks submission to HPC resources during the active learning loop.
-            config: Optional configuration for per-iteration task parameters.
-        '''
-        super().__init__(engine, register_and_submit=False)
-        self.config = config
-
-    def _get_iteration_task_config(self, base_task: Dict, task_key: str, iteration: int) -> Dict:
+    def teach(
+        self,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        learner_config: Optional[LearnerConfig] = None,
+    ) -> Any:
         """
-        Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
+        Run sequential active learning with optional per-iteration configuration.
         
         Args:
-            base_task: Base task configuration from parent
-            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion')
-            iteration: Current iteration number
+            max_iter: Maximum number of iterations (0 for infinite)
+            skip_pre_loop: Whether to skip pre-loop simulation and training
+            learner_config: Configuration for iteration-specific parameters
             
         Returns:
-            Merged task configuration
+            Result of the learning process
         """
-        # Start with base task configuration
-        task_config = base_task.copy() if base_task else {"func": None, "args": (), "kwargs": {}}
-        
-        # Apply iteration-specific overrides if available
-        if self.config:
-            iter_config = self.config.get_task_config(task_key, iteration)
-            if iter_config:
-                # Use explicit None checks to allow intentional clearing with empty collections
-                if iter_config.args is not None:
-                    task_config["args"] = iter_config.args
-                if iter_config.kwargs is not None:
-                    task_config["kwargs"] = iter_config.kwargs
-                    
-        return task_config
-
-    def teach(self, max_iter: int = 0, skip_pre_loop: bool = False, learner_id: int = 0):
-        '''
-        Run the active learning loop for a specified number of iterations.
-
-        Args:
-            max_iter (int, optional): The maximum number of iterations for the
-            active learning loop. If not provided, the value set during initialization
-            will be used. Defaults to 0.
-            skip_pre_loop (bool, optional): If True, skip the initial pre-loop step.
-            learner_id (int, optional): Identifier for this learner instance (used in logging).
-        '''
-        # Check for max_iter override in config
-        if self.config and self.config.max_iter_override is not None:
-            max_iter = self.config.max_iter_override
-        
         # Validate required functions
-        if not self.simulation_function or \
-              not self.training_function or \
-                not self.active_learn_function:
-            raise Exception("Simulation and Training function must be set!")
+        if not self.simulation_function or not self.training_function or not self.active_learn_function:
+            raise Exception("Simulation, Training, and Active Learning functions must be set!")
 
         if not max_iter and not self.criterion_function:
             raise Exception("Either max_iter or stop_criterion_function must be provided.")
 
-        # Generate learner name for logging
-        learner_name = f"Learner-{learner_id}"
-        if self.config and self.config.learner_name:
-            learner_name = self.config.learner_name
-        elif self.config and self.config.learner_id is not None:
-            learner_name = f"Learner-{self.config.learner_id}"
-
-        print(f"Starting {learner_name}")
-
+        print(f"Starting Sequential Active Learning{f' (Learner-{self.learner_id})' if self.learner_id is not None else ''}")
+        
+        # Initialize tasks for pre-loop
         sim_task, train_task = (), ()
-
+        
         if not skip_pre_loop:
             # Pre-loop: use iteration 0 configuration
             sim_config = self._get_iteration_task_config(
-                self.simulation_function, 'simulation', 0
+                self.simulation_function, learner_config, 'simulation', 0
             )
             train_config = self._get_iteration_task_config(
-                self.training_function, 'training', 0
+                self.training_function, learner_config, 'training', 0
             )
             
             sim_task = self._register_task(sim_config)
@@ -179,13 +71,14 @@ class SequentialActiveLearner(Learner):
         else:
             iteration_range = range(max_iter)
 
-        # Main active learning loop with per-iteration configuration
+        # Main learning loop with per-iteration configuration
         for i in iteration_range:
-            print(f'[{learner_name}] Starting Iteration-{i}')
+            learner_prefix = f'[Learner-{self.learner_id}] ' if self.learner_id is not None else ''
+            print(f'{learner_prefix}Starting Iteration-{i}')
             
             # Get iteration-specific configurations
             acl_config = self._get_iteration_task_config(
-                self.active_learn_function, 'active_learn', i
+                self.active_learn_function, learner_config, 'active_learn', i
             )
             
             acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
@@ -193,7 +86,7 @@ class SequentialActiveLearner(Learner):
             # Check stop criterion if configured
             if self.criterion_function:
                 criterion_config = self._get_iteration_task_config(
-                    self.criterion_function, 'criterion', i
+                    self.criterion_function, learner_config, 'criterion', i
                 )
                 stop_task = self._register_task(criterion_config, deps=acl_task)
                 stop = stop_task.result()
@@ -204,10 +97,10 @@ class SequentialActiveLearner(Learner):
 
             # Prepare next iteration tasks with iteration-specific configs
             next_sim_config = self._get_iteration_task_config(
-                self.simulation_function, 'simulation', i + 1
+                self.simulation_function, learner_config, 'simulation', i + 1
             )
             next_train_config = self._get_iteration_task_config(
-                self.training_function, 'training', i + 1
+                self.training_function, learner_config, 'training', i + 1
             )
             
             sim_task = self._register_task(next_sim_config, deps=acl_task)
@@ -216,87 +109,81 @@ class SequentialActiveLearner(Learner):
             # Wait for training to complete
             train_task.result()
 
-        print(f"{learner_name} completed")
-
-    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create iteration-specific configurations.
-        
-        Args:
-            task_name: Name of the task type
-            schedule: Dictionary mapping iteration numbers to args/kwargs
-            
-        Returns:
-            Dictionary mapping iterations to TaskConfig objects
-            
-        Example:
-            schedule = {
-                0: {'args': (param1,), 'kwargs': {'lr': 0.01}},
-                5: {'args': (param2,), 'kwargs': {'lr': 0.005}},
-                -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
-            }
-        """
-        return {
-            iteration: TaskConfig(
-                args=config.get('args', ()),
-                kwargs=config.get('kwargs', {})
-            )
-            for iteration, config in schedule.items()
-        }
-
-    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create adaptive iteration schedules using a function.
-        
-        Args:
-            task_name: Name of the task type
-            param_schedule: Function that takes iteration number and returns config dict
-            
-        Returns:
-            Dictionary with computed TaskConfig for each iteration
-            
-        Example:
-            def adaptive_lr(iteration):
-                lr = 0.01 * (0.9 ** iteration)
-                return {'kwargs': {'learning_rate': lr}}
-            
-            adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
-        """
-        # For now, we'll pre-compute a reasonable range. In practice, you might
-        # want to compute this dynamically or use a lazy evaluation approach.
-        max_precompute = 100
-        return {
-            i: TaskConfig(
-                args=param_schedule(i).get('args', ()),
-                kwargs=param_schedule(i).get('kwargs', {})
-            )
-            for i in range(max_precompute)
-        }
+        learner_suffix = f' (Learner-{self.learner_id})' if self.learner_id is not None else ''
+        print(f"Sequential Active Learning completed{learner_suffix}")
+        return train_task.result()
 
 
 class ParallelActiveLearner(Learner):
     """
-    Parallel active learner that runs multiple SequentialActiveLearner instances concurrently.
-    Each learner can be configured independently via SequentialLearnerConfig.
+    Parallel active learner that runs multiple SequentialActiveLearners concurrently.
+    Configure each learner via `LearnerConfig` with per-iteration support.
     """
 
-    def __init__(self, engine: Union[ThreadExecutionBackend, RadicalExecutionBackend]):
+    def __init__(self, engine: Union[ThreadExecutionBackend,
+                                     RadicalExecutionBackend]):
         super().__init__(engine, register_and_submit=False)
+
+    def _create_sequential_learner(self, learner_id: int, config: Optional[LearnerConfig]) -> SequentialActiveLearner:
+        """
+        Create a SequentialActiveLearner instance for a parallel learner.
+        
+        Args:
+            learner_id: ID of the learner (for logging/debugging)
+            config: Configuration for this specific learner
+            
+        Returns:
+            Configured SequentialActiveLearner instance
+        """
+        # Create a new sequential learner with the same engine
+        sequential_learner = SequentialActiveLearner(self.engine)
+        
+        # Copy the base functions from the parent learner
+        sequential_learner.simulation_function = self.simulation_function
+        sequential_learner.training_function = self.training_function
+        sequential_learner.active_learn_function = self.active_learn_function
+        sequential_learner.criterion_function = self.criterion_function
+        
+        # Set learner-specific identifier for logging
+        sequential_learner.learner_id = learner_id
+        
+        return sequential_learner
+
+    def _convert_to_sequential_config(self, parallel_config: Optional[LearnerConfig]) -> Optional[LearnerConfig]:
+        """
+        Convert a LearnerConfig to a LearnerConfig.
+        
+        Args:
+            parallel_config: Configuration for parallel learner
+            
+        Returns:
+            Equivalent LearnerConfig
+        """
+        if parallel_config is None:
+            return None
+            
+        # Create LearnerConfig with same parameters
+        return LearnerConfig(
+            simulation=parallel_config.simulation,
+            training=parallel_config.training,
+            active_learn=parallel_config.active_learn,
+            criterion=parallel_config.criterion
+        )
 
     def teach(
         self,
         parallel_learners: int = 2,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[List[Optional[SequentialLearnerConfig]]] = None,
+        learner_configs: Optional[List[Optional[LearnerConfig]]] = None,
     ) -> List[Any]:
         """
-        Run multiple sequential active learners in parallel.
+        Run parallel active learning by launching multiple SequentialActiveLearners.
         
         Args:
             parallel_learners: Number of parallel learners to run
-            max_iter: Maximum iterations per learner (can be overridden per learner)
-            skip_pre_loop: Whether to skip the initial simulation+training step
+            max_iter: Maximum number of iterations (0 for infinite)
+            skip_pre_loop: Whether to skip pre-loop simulation and training
             learner_configs: List of configurations for each learner
             
         Returns:
@@ -305,48 +192,53 @@ class ParallelActiveLearner(Learner):
         if parallel_learners < 2:
             raise ValueError("For single learner, use SequentialActiveLearner")
 
+        # Validate base functions are set
+        if not self.simulation_function or not self.training_function or not self.active_learn_function:
+            raise Exception("Simulation, Training, and Active Learning functions must be set!")
+
+        if not max_iter and not self.criterion_function:
+            raise Exception("Either max_iter or stop_criterion_function must be provided.")
+
+        # Prepare learner configurations
         learner_configs = learner_configs or [None] * parallel_learners
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
 
-        def _run_single_learner(learner_id: int):
-            """Run a single sequential learner with its specific configuration."""
-            config = learner_configs[learner_id]
+        print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
-            # Create a SequentialActiveLearner with the specific config
-            sequential_learner = SequentialActiveLearner(self.engine, config)
-
-            # Copy the function references from parent
-            sequential_learner.simulation_function = self.simulation_function
-            sequential_learner.training_function = self.training_function
-            sequential_learner.active_learn_function = self.active_learn_function
-            sequential_learner.criterion_function = self.criterion_function
-
-            # Run the sequential learner
-            return sequential_learner.teach(max_iter, skip_pre_loop, learner_id)
+        def _run_sequential_learner(learner_id: int):
+            """Run a single SequentialActiveLearner."""
+            try:
+                # Create and configure the sequential learner
+                sequential_learner = self._create_sequential_learner(learner_id, learner_configs[learner_id])
+                
+                # Convert parallel config to sequential config
+                sequential_config = self._convert_to_sequential_config(learner_configs[learner_id])
+                
+                print(f"[Parallel-Learner-{learner_id}] Starting sequential learning")
+                
+                # Run the sequential learner
+                result = sequential_learner.teach(
+                    max_iter=max_iter,
+                    skip_pre_loop=skip_pre_loop,
+                    learner_config=sequential_config
+                )
+                
+                print(f"[Parallel-Learner-{learner_id}] Completed")
+                return result
+                
+            except Exception as e:
+                print(f"[Parallel-Learner-{learner_id}] Failed with error: {e}")
+                raise
 
         # Submit all learners asynchronously
-        futures = [self.as_async(_run_single_learner)(i) for i in range(parallel_learners)]
-        return [f.result() for f in futures]
-
-    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create iteration-specific configurations.
-        This is a convenience method that delegates to SequentialActiveLearner.
-        """
-        # Create a temporary sequential learner to use its helper method
-        temp_learner = SequentialActiveLearner(self.engine)
-        return temp_learner.create_iteration_schedule(task_name, schedule)
-
-    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create adaptive iteration schedules using a function.
-        This is a convenience method that delegates to SequentialActiveLearner.
-        """
-        # Create a temporary sequential learner to use its helper method
-        temp_learner = SequentialActiveLearner(self.engine)
-        return temp_learner.create_adaptive_schedule(task_name, param_schedule)
-
+        futures = [self.as_async(_run_sequential_learner)(i) for i in range(parallel_learners)]
+        
+        # Wait for all learners to complete and collect results
+        results = [f.result() for f in futures]
+        
+        print("Parallel Active Learning completed")
+        return results
 
 class AlgorithmSelector(Learner):
     """
@@ -425,9 +317,9 @@ class AlgorithmSelector(Learner):
         def _run_algorithm_pipeline(name: str, al_task: Dict):
             """Run a single algorithm pipeline using SequentialActiveLearner."""
             # Create a SequentialActiveLearner for this algorithm
-            config = SequentialLearnerConfig(learner_name=f"Pipeline-{name}")
+            config = LearnerConfig(learner_name=f"Pipeline-{name}")
             sequential_learner = SequentialActiveLearner(self.engine, config)
-            
+
             # Copy the function references from parent
             sequential_learner.simulation_function = self.simulation_function
             sequential_learner.training_function = self.training_function
@@ -441,7 +333,7 @@ class AlgorithmSelector(Learner):
                     self.last_result = float('inf')
                     
             tracker = ResultTracker()
-            
+
             # Wrap the criterion function to track results
             if self.criterion_function:
                 original_criterion = self.criterion_function

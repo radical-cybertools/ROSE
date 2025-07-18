@@ -1,13 +1,127 @@
 import typeguard
 import itertools
+
+from abc import ABC, abstractmethod
+
 from typing import Callable, Dict, Any, Optional, List, Union
 from functools import wraps
+from pydantic import BaseModel
 
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import ThreadExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
 
 from .metrics import LearningMetrics as metrics
+
+
+class TaskConfig(BaseModel):
+    """Configuration for a single task."""
+    args: tuple = ()
+    kwargs: dict = {}
+    
+    class Config:
+        extra = "forbid"
+        json_encoders = {
+            tuple: list,
+        }
+
+
+class LearnerConfig(BaseModel, ABC):
+    """Base configuration class for active learners with per-iteration support."""
+    simulation: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    training: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    active_learn: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    criterion: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+
+    class Config:
+        extra = "forbid"
+        json_encoders = {
+            tuple: list,
+        }
+
+    def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
+        """
+        Get the task configuration for a specific iteration.
+        
+        Args:
+            task_name: Name of the task ('simulation', 'training', 'active_learn', 'criterion')
+            iteration: The iteration number (0-based)
+            
+        Returns:
+            TaskConfig for the specified iteration, or None if not configured
+        """
+        task_config = getattr(self, task_name, None)
+        if task_config is None:
+            return None
+            
+        # If it's a TaskConfig, return it directly (same config for all iterations)
+        if isinstance(task_config, TaskConfig):
+            return task_config
+            
+        # If it's a dict, look for iteration-specific config
+        if isinstance(task_config, dict):
+            # Try exact iteration match first
+            if iteration in task_config:
+                return task_config[iteration]
+            # Fall back to default config (key -1 or 'default')
+            return task_config.get(-1) or task_config.get('default')
+            
+        return None
+
+    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict]) -> Dict[int, TaskConfig]:
+        """
+        Helper method to create iteration-specific configurations.
+        
+        Args:
+            task_name: Name of the task type
+            schedule: Dictionary mapping iteration numbers to args/kwargs
+            
+        Returns:
+            Dictionary mapping iterations to TaskConfig objects
+            
+        Example:
+            schedule = {
+                0: {'args': (param1,), 'kwargs': {'lr': 0.01}},
+                5: {'args': (param2,), 'kwargs': {'lr': 0.005}},
+                -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
+            }
+        """
+        return {
+            iteration: TaskConfig(
+                args=config.get('args', ()),
+                kwargs=config.get('kwargs', {})
+            )
+            for iteration, config in schedule.items()
+        }
+
+    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict]) -> Dict[int, TaskConfig]:
+        """
+        Helper method to create adaptive iteration schedules using a function.
+        
+        Args:
+            task_name: Name of the task type
+            param_schedule: Function that takes iteration number and returns config dict
+            
+        Returns:
+            Dictionary with computed TaskConfig for each iteration
+            
+        Example:
+            def adaptive_lr(iteration):
+                lr = 0.01 * (0.9 ** iteration)
+                return {'kwargs': {'learning_rate': lr}}
+            
+            adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
+        """
+        # For now, we'll pre-compute a reasonable range. In practice, you might
+        # want to compute this dynamically or use a lazy evaluation approach.
+        max_precompute = 100
+        return {
+            i: TaskConfig(
+                args=param_schedule(i).get('args', ()),
+                kwargs=param_schedule(i).get('kwargs', {})
+            )
+            for i in range(max_precompute)
+        }
 
 class Learner:
 
@@ -29,6 +143,36 @@ class Learner:
         self.training_task = self.register_decorator('training')
         self.simulation_task = self.register_decorator('simulation')
         self.active_learn_task = self.register_decorator('active_learn')
+
+    def _get_iteration_task_config(self, base_task: Dict,
+                                   config: Optional[LearnerConfig],
+                                   task_key: str, iteration: int) -> Dict:
+        """
+        Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
+        
+        Args:
+            base_task: Base task configuration from parent
+            config: Learner-specific configuration
+            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion')
+            iteration: Current iteration number
+            
+        Returns:
+            Merged task configuration
+        """
+        # Start with base task configuration
+        task_config = base_task.copy() if base_task else {"func": None, "args": (), "kwargs": {}}
+        
+        # Apply iteration-specific overrides if available
+        if config:
+            iter_config = config.get_task_config(task_key, iteration)
+            if iter_config:
+                # Use explicit None checks to allow intentional clearing with empty collections
+                if iter_config.args is not None:
+                    task_config["args"] = iter_config.args
+                if iter_config.kwargs is not None:
+                    task_config["kwargs"] = iter_config.kwargs
+                    
+        return task_config
 
     def register_decorator(self, task_attr_name: str):
         """
