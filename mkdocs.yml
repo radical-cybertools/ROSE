@@ -89,7 +89,7 @@ nav:
       - 4.Building Parallel Learners: user-guide/parallel_acl_docs.md
       - 5.Advanced AL workflow: user-guide/advanced-acl-workflow.md
       - 6.Visualization: user-guide/visualization.md
-      - 7.Reinforcement Learning: user-guide/reinforcement-learning.md
+      - 7.Reinforcement Learning: user-guide/basic-rl-workflow.md
       - 8.Experience Banks: user-guide/experience.md
       - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
 
