@@ -68,6 +68,59 @@ class LearnerConfig(BaseModel, ABC):
             
         return None
 
+class Learner:
+
+    @typeguard.typechecked
+    def __init__(self, engine: Union[ThreadExecutionBackend,
+                                     RadicalExecutionBackend],
+                register_and_submit: bool=True) -> None:
+
+        self.engine = engine
+        self.criterion_function = {}
+        self.training_function = {}
+        self.simulation_function = {}
+        self.active_learn_function = {}
+
+        self.asyncflow = WorkflowEngine(self.engine)
+
+        self.register_and_submit = register_and_submit
+
+        self.utility_task = self.register_decorator('utility')
+        self.training_task = self.register_decorator('training')
+        self.simulation_task = self.register_decorator('simulation')
+        self.active_learn_task = self.register_decorator('active_learn')
+
+    def _get_iteration_task_config(self, base_task: Dict,
+                                   config: Optional[LearnerConfig],
+                                   task_key: str, iteration: int) -> Dict:
+        """
+        Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
+        
+        Args:
+            base_task: Base task configuration from parent
+            config: Learner-specific configuration
+            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion')
+            iteration: Current iteration number
+
+        Returns:
+            Merged task configuration
+        """
+        # Start with base task configuration
+        task_config = base_task.copy() if base_task else {"func": None, "args": (), "kwargs": {}}
+        
+        # Apply iteration-specific overrides if available
+        if config:
+            iter_config = config.get_task_config(task_key, iteration)
+            if iter_config:
+                # Use explicit None checks to allow intentional clearing with empty collections
+                if iter_config.args is not None:
+                    task_config["args"] = iter_config.args
+                if iter_config.kwargs is not None:
+                    task_config["kwargs"] = iter_config.kwargs
+                    
+        return task_config
+
+
     def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict]) -> Dict[int, TaskConfig]:
         """
         Helper method to create iteration-specific configurations.
@@ -122,57 +175,6 @@ class LearnerConfig(BaseModel, ABC):
             )
             for i in range(max_precompute)
         }
-
-class Learner:
-
-    @typeguard.typechecked
-    def __init__(self, engine: Union[ThreadExecutionBackend,
-                                     RadicalExecutionBackend],
-                register_and_submit: bool=True) -> None:
-
-        self.criterion_function = {}
-        self.training_function = {}
-        self.simulation_function = {}
-        self.active_learn_function = {}
-
-        self.asyncflow = WorkflowEngine(engine)
-
-        self.register_and_submit = register_and_submit
-
-        self.utility_task = self.register_decorator('utility')
-        self.training_task = self.register_decorator('training')
-        self.simulation_task = self.register_decorator('simulation')
-        self.active_learn_task = self.register_decorator('active_learn')
-
-    def _get_iteration_task_config(self, base_task: Dict,
-                                   config: Optional[LearnerConfig],
-                                   task_key: str, iteration: int) -> Dict:
-        """
-        Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
-        
-        Args:
-            base_task: Base task configuration from parent
-            config: Learner-specific configuration
-            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion')
-            iteration: Current iteration number
-            
-        Returns:
-            Merged task configuration
-        """
-        # Start with base task configuration
-        task_config = base_task.copy() if base_task else {"func": None, "args": (), "kwargs": {}}
-        
-        # Apply iteration-specific overrides if available
-        if config:
-            iter_config = config.get_task_config(task_key, iteration)
-            if iter_config:
-                # Use explicit None checks to allow intentional clearing with empty collections
-                if iter_config.args is not None:
-                    task_config["args"] = iter_config.args
-                if iter_config.kwargs is not None:
-                    task_config["kwargs"] = iter_config.kwargs
-                    
-        return task_config
 
     def register_decorator(self, task_attr_name: str):
         """
@@ -339,3 +341,7 @@ class Learner:
                  if t['description']['name'] == task_name]
 
         return tasks
+    
+
+    async def shutdown(self, *args, **kwargs):
+        return await self.asyncflow.shutdown(*args, **kwargs)

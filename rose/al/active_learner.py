@@ -1,3 +1,4 @@
+import asyncio
 import typeguard
 import itertools
 from typing import Callable, Dict, Any, Optional, List, Union
@@ -9,8 +10,6 @@ from ..learner import LearnerConfig
 
 from radical.asyncflow import ThreadExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
-
-from typing import Optional, Union, Dict, List, Any, Callable
 
 
 class SequentialActiveLearner(Learner):
@@ -24,7 +23,7 @@ class SequentialActiveLearner(Learner):
         super().__init__(engine, register_and_submit=True)
         self.learner_id = None  # Set by ParallelActiveLearner for logging
 
-    def teach(
+    async def teach(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
@@ -48,7 +47,7 @@ class SequentialActiveLearner(Learner):
         if not max_iter and not self.criterion_function:
             raise Exception("Either max_iter or stop_criterion_function must be provided.")
 
-        print(f"Starting Sequential Active Learning{f' (Learner-{self.learner_id})' if self.learner_id is not None else ''}")
+        print(f"Starting Sequential Active Learner{f' (Learner-{self.learner_id})' if self.learner_id is not None else ''}")
         
         # Initialize tasks for pre-loop
         sim_task, train_task = (), ()
@@ -80,7 +79,7 @@ class SequentialActiveLearner(Learner):
             acl_config = self._get_iteration_task_config(
                 self.active_learn_function, learner_config, 'active_learn', i
             )
-            
+
             acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
 
             # Check stop criterion if configured
@@ -89,7 +88,7 @@ class SequentialActiveLearner(Learner):
                     self.criterion_function, learner_config, 'criterion', i
                 )
                 stop_task = self._register_task(criterion_config, deps=acl_task)
-                stop = stop_task.result()
+                stop = await stop_task
 
                 should_stop, _ = self._check_stop_criterion(stop)
                 if should_stop:
@@ -107,11 +106,7 @@ class SequentialActiveLearner(Learner):
             train_task = self._register_task(next_train_config, deps=sim_task)
 
             # Wait for training to complete
-            train_task.result()
-
-        learner_suffix = f' (Learner-{self.learner_id})' if self.learner_id is not None else ''
-        print(f"Sequential Active Learning completed{learner_suffix}")
-        return train_task.result()
+            await train_task
 
 
 class ParallelActiveLearner(Learner):
@@ -127,41 +122,41 @@ class ParallelActiveLearner(Learner):
     def _create_sequential_learner(self, learner_id: int, config: Optional[LearnerConfig]) -> SequentialActiveLearner:
         """
         Create a SequentialActiveLearner instance for a parallel learner.
-        
+
         Args:
             learner_id: ID of the learner (for logging/debugging)
             config: Configuration for this specific learner
-            
+
         Returns:
             Configured SequentialActiveLearner instance
         """
         # Create a new sequential learner with the same engine
         sequential_learner = SequentialActiveLearner(self.engine)
-        
+
         # Copy the base functions from the parent learner
         sequential_learner.simulation_function = self.simulation_function
         sequential_learner.training_function = self.training_function
         sequential_learner.active_learn_function = self.active_learn_function
         sequential_learner.criterion_function = self.criterion_function
-        
+
         # Set learner-specific identifier for logging
         sequential_learner.learner_id = learner_id
-        
+
         return sequential_learner
 
     def _convert_to_sequential_config(self, parallel_config: Optional[LearnerConfig]) -> Optional[LearnerConfig]:
         """
         Convert a LearnerConfig to a LearnerConfig.
-        
+
         Args:
             parallel_config: Configuration for parallel learner
-            
+
         Returns:
             Equivalent LearnerConfig
         """
         if parallel_config is None:
             return None
-            
+
         # Create LearnerConfig with same parameters
         return LearnerConfig(
             simulation=parallel_config.simulation,
@@ -170,7 +165,7 @@ class ParallelActiveLearner(Learner):
             criterion=parallel_config.criterion
         )
 
-    def teach(
+    async def teach(
         self,
         parallel_learners: int = 2,
         max_iter: int = 0,
@@ -179,13 +174,13 @@ class ParallelActiveLearner(Learner):
     ) -> List[Any]:
         """
         Run parallel active learning by launching multiple SequentialActiveLearners.
-        
+
         Args:
             parallel_learners: Number of parallel learners to run
             max_iter: Maximum number of iterations (0 for infinite)
             skip_pre_loop: Whether to skip pre-loop simulation and training
             learner_configs: List of configurations for each learner
-            
+
         Returns:
             List of results from each learner
         """
@@ -206,7 +201,8 @@ class ParallelActiveLearner(Learner):
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
-        def _run_sequential_learner(learner_id: int):
+        @self.asyncflow.block
+        async def _run_sequential_learner(learner_id: int):
             """Run a single SequentialActiveLearner."""
             try:
                 # Create and configure the sequential learner
@@ -216,29 +212,22 @@ class ParallelActiveLearner(Learner):
                 sequential_config = self._convert_to_sequential_config(learner_configs[learner_id])
                 
                 print(f"[Parallel-Learner-{learner_id}] Starting sequential learning")
-                
+
                 # Run the sequential learner
-                result = sequential_learner.teach(
+                return await sequential_learner.teach(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
                     learner_config=sequential_config
                 )
-                
-                print(f"[Parallel-Learner-{learner_id}] Completed")
-                return result
-                
             except Exception as e:
                 print(f"[Parallel-Learner-{learner_id}] Failed with error: {e}")
                 raise
 
         # Submit all learners asynchronously
-        futures = [self.as_async(_run_sequential_learner)(i) for i in range(parallel_learners)]
-        
+        futures = [_run_sequential_learner(i) for i in range(parallel_learners)]
+
         # Wait for all learners to complete and collect results
-        results = [f.result() for f in futures]
-        
-        print("Parallel Active Learning completed")
-        return results
+        return await asyncio.gather(*[f for f in futures])
 
 class AlgorithmSelector(Learner):
     """
