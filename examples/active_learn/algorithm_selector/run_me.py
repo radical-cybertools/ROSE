@@ -1,46 +1,44 @@
 import os
 import sys
+import asyncio
 
-from rose.learner import AlgorithmSelector
-from rose.engine import Task, ResourceEngine
+from rose.al.selector import AlgorithmSelector
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-engine = ResourceEngine({'runtime': 30,
-                         'resource': 'local.localhost'})
-algo_selector = AlgorithmSelector(engine)
-code_path = f'{sys.executable} {os.getcwd()}'
+from radical.asyncflow import Task, ThreadExecutionBackend
 
-# Define and register the simulation task
-@algo_selector.simulation_task
-def simulation(*args):
-    return Task(executable=f'{code_path}/sim.py')
+async def select_algorithm():
+    engine = ThreadExecutionBackend({})
+    als = AlgorithmSelector(engine)
+    code_path = f'{sys.executable} {os.getcwd()}'
 
-# Define and register the training task
-@algo_selector.training_task
-def training(*args):
-    return Task(executable=f'{code_path}/train.py')
+    # Define and register the simulation task
+    @als.simulation_task
+    async def simulation(*args):
+        return f'{code_path}/sim.py'
 
-# Define and register Multiple AL tasks
-@algo_selector.active_learn_task(name='algo_1')
-def active_learn_1(*args):
-    return Task(executable=f'{code_path}/active_1.py')
+    # Define and register the training task
+    @als.training_task
+    async def training(*args):
+        return f'{code_path}/train.py'
 
-@algo_selector.active_learn_task(name='algo_2')
-def active_learn_2(*args):
-    return Task(executable=f'{code_path}/active_2.py')
+    # Define and register Multiple AL tasks
+    @als.active_learn_task(name='algo_1')
+    async def active_learn_1(*args):
+        return f'{code_path}/active_1.py'
 
-# Defining the stop criterion with a metric (MSE in this case)
-@algo_selector.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.01)
-def check_mse(*args):
-    return Task(executable=f'{code_path}/check_mse.py')
+    @als.active_learn_task(name='algo_2')
+    async def active_learn_2(*args):
+        return f'{code_path}/active_2.py'
 
-# Now, call the tasks and teach
-simul = simulation()
-train = training()
-active_1 = active_learn_1()
-active_2 = active_learn_2()
-stop_cond = check_mse()
+    # Defining the stop criterion with a metric (MSE in this case)
+    @als.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.01)
+    async def check_mse(*args):
+        return f'{code_path}/check_mse.py'
 
-# Start the teaching process
-algo_selector.teach_and_select(max_iter=4)
-engine.shutdown()
+    # Start the teaching process
+    await als.teach_and_select(max_iter=4)
+    await als.shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(select_algorithm())
