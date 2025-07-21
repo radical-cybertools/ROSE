@@ -5,13 +5,15 @@ import asyncio
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 from rose.al.active_learner import SequentialActiveLearner
 
-from radical.asyncflow import Task, ThreadExecutionBackend
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import ThreadExecutionBackend
 
 
 async def rose_al():
 
     engine = ThreadExecutionBackend({})
-    acl = SequentialActiveLearner(engine)
+    asyncflow = WorkflowEngine(engine)
+    acl = SequentialActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 
     # Define and register the simulation task

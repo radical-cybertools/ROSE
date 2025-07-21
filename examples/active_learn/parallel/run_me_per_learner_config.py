@@ -7,11 +7,14 @@ from rose import LearnerConfig
 from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import Task, ThreadExecutionBackend
+
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import ThreadExecutionBackend
 
 async def run_al_parallel():
     engine = ThreadExecutionBackend({})
-    al = ParallelActiveLearner(engine)
+    asyncflow = WorkflowEngine(engine)
+    al = ParallelActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 
     # Define and register the simulation task

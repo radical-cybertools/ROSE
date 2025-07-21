@@ -5,11 +5,14 @@ import asyncio
 from rose.al.selector import AlgorithmSelector
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import Task, ThreadExecutionBackend
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import ThreadExecutionBackend
 
 async def select_algorithm():
     engine = ThreadExecutionBackend({})
-    als = AlgorithmSelector(engine)
+    asyncflow = WorkflowEngine(engine)
+    als = AlgorithmSelector(asyncflow)
+
     code_path = f'{sys.executable} {os.getcwd()}'
 
     # Define and register the simulation task
