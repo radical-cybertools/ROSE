@@ -6,12 +6,12 @@ from rose.learner import Learner
 from rose.metrics import MODEL_ACCURACY
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ThreadExecutionBackend
+from radical.asyncflow import RadicalExecutionBackend
 
 
 async def custom_al():
 
-    engine = ThreadExecutionBackend({})
+    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
     asyncflow = WorkflowEngine(engine)
     learner = Learner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'

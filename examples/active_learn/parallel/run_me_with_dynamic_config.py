@@ -8,11 +8,12 @@ from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ThreadExecutionBackend
+from radical.asyncflow import RadicalExecutionBackend
 
 async def run_al_parallel():
-    engine = ThreadExecutionBackend({})
+    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
     asyncflow = WorkflowEngine(engine)
+
     al = ParallelActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 

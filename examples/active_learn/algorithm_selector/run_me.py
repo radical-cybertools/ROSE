@@ -6,10 +6,10 @@ from rose.al.selector import AlgorithmSelector
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ThreadExecutionBackend
+from radical.asyncflow import RadicalExecutionBackend
 
 async def select_algorithm():
-    engine = ThreadExecutionBackend({})
+    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
     asyncflow = WorkflowEngine(engine)
     als = AlgorithmSelector(asyncflow)
 
