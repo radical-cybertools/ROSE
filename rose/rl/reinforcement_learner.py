@@ -34,11 +34,12 @@ class ReinforcementLearner(Learner):
             register_and_submit (bool, optional): Whether to automatically register and
                 submit tasks. Defaults to True.
         """
+
+        super().__init__(asyncflow, register_and_submit)
+
         self.test_function = {}
         self.update_function = {}
         self.environment_function = {}
-
-        super().__init__(asyncflow, register_and_submit)
 
         self.update_task: Callable = self.register_decorator('update')
         self.environment_task: Callable = self.register_decorator('environment')
@@ -51,7 +52,7 @@ class ReinforcementLearner(Learner):
         @typeguard.typechecked
         def decorator(func: Callable):  # This is the actual decorator function that takes func
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            async def wrapper(*args, **kwargs):
                 # Store the relevant information in self.criterion_function
                 self.test_function = {
                     'func': func,
@@ -61,8 +62,10 @@ class ReinforcementLearner(Learner):
                     'threshold': threshold,
                     'metric_name': metric_name}
 
+                self.criterion_function = self.test_function
+
                 if self.register_and_submit:
-                    res = self._register_task(self.test_function).result()
+                    res = await self._register_task(self.test_function)
                     return self._check_stop_criterion(res)
             return wrapper
         return decorator
@@ -105,11 +108,11 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         Args:
             asyncflow (WorkflowEngine): The workflow engine for managing asynchronous tasks.
         """
-        super().__init__(asyncflow, register_and_submit=False)
+        super().__init__(asyncflow, register_and_submit=True)
 
     async def learn(self, max_iter: int = 0) -> None:
         """Run the sequential reinforcement learning loop.
-        
+
         Executes the reinforcement learning algorithm for a specified number of
         iterations. Each iteration performs environment interaction, policy update,
         and testing in sequence. The loop can be terminated early if stopping
@@ -147,6 +150,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
             # Wait for test completion and check stopping criteria
             test_result = await test_task
+
             should_stop, _ = self._check_stop_criterion(test_result)
 
             if should_stop:

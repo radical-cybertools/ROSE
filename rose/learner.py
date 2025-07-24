@@ -94,7 +94,7 @@ class LearnerConfig(BaseModel, ABC):
                 return task_config[iteration]
             # Fall back to default config (key -1 or 'default')
             return task_config.get(-1) or task_config.get('default')
-            
+
         return None
 
 
@@ -313,11 +313,11 @@ class Learner:
             @wraps(func)
             async def wrapper(*args, **kwargs) -> Tuple[bool, float]:
                 """Wrapper that evaluates the stopping condition.
-                
+
                 Args:
                     *args: Positional arguments for the criterion function.
                     **kwargs: Keyword arguments for the criterion function.
-                    
+
                 Returns:
                     Tuple of (should_stop: bool, metric_value: float).
                 """
@@ -331,7 +331,7 @@ class Learner:
                     # await the result to process it
                     res: Any = await self._register_task(self.criterion_function)
                     return self._check_stop_criterion(res)
-                    
+
             return wrapper
 
         return decorator
@@ -361,7 +361,7 @@ class Learner:
 
     def compare_metric(self, metric_name: str, metric_value: float, threshold: float, operator: str = '') -> bool:
         """Compare a metric value against a threshold using a specified operator.
-        
+
         Args:
             metric_name: Name of the metric to compare.
             metric_value: The value of the metric.
@@ -372,10 +372,10 @@ class Learner:
                 - '==': metric_value == threshold
                 - '<=': metric_value <= threshold
                 - '>=': metric_value >= threshold
-        
+
         Returns:
             The result of the comparison.
-            
+
         Raises:
             ValueError: If operator is not provided for custom metrics or if
                 operator is not recognized.
@@ -407,7 +407,7 @@ class Learner:
 
     def _start_pre_loop(self) -> Tuple[Any, Any]:
         """Start the initial step for active learning by defining and setting simulation and training tasks.
-        
+
         Returns:
             Tuple containing (simulation_task, training_task) futures.
         """
@@ -417,13 +417,13 @@ class Learner:
 
     def _check_stop_criterion(self, stop_task_result: Any) -> Tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
-        
+
         Args:
             stop_task_result: Result from the criterion task, should be convertible to float.
-            
+
         Returns:
             Tuple of (should_stop: bool, metric_value: float).
-            
+
         Raises:
             Exception: If the task result cannot be converted to a numerical value.
             TypeError: If the stop criterion task doesn't produce a numerical value.
