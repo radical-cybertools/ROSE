@@ -32,9 +32,9 @@ async def rose_rl():
     async def check_reward(*args):
         return f'{code_path}/check_reward.py {data_path}'
 
-    env = environment()
-    upd = update()
-    stop_cond = check_reward()
+    env = await environment()
+    upd = await update()
+    stop_cond = await check_reward()
 
     await rl.learn()
     await rl.shutdown()

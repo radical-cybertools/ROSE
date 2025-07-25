@@ -140,6 +140,9 @@ class Learner:
         self.simulation_task: Callable = self.register_decorator('simulation')
         self.active_learn_task: Callable = self.register_decorator('active_learn')
 
+        self.iteration: int = 0
+        self.metric_values_per_iteration: Dict[int, Dict[str, float]] = {}
+
     def _get_iteration_task_config(self, base_task: Dict[str, Any],
                                    config: Optional[LearnerConfig],
                                    task_key: str, iteration: int) -> Dict[str, Any]:
@@ -439,6 +442,9 @@ class Learner:
             threshold: float = self.criterion_function['threshold']
             metric_name: str = self.criterion_function['metric_name']
 
+            self.metric_values_per_iteration[self.iteration] = metric_value
+            self.iteration += 1
+
             if self.compare_metric(metric_name, metric_value, threshold, operator):
                 print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'
                       '. Breaking the active learning loop')
@@ -451,7 +457,7 @@ class Learner:
 
     def teach(self, max_iter: int = 0) -> None:
         """Train the model using active learning.
-        
+
         Args:
             max_iter: Maximum number of iterations to run.
             
@@ -460,9 +466,9 @@ class Learner:
         """
         raise NotImplementedError('This is not supported, please define your teach method and invoke it directly')
 
-    def get_result(self, task_name: str) -> List[Any]:
+    def get_metric_results(self) -> List[float]:
         """Get the result of a task(s) by its name.
-        
+
         Tasks might have similar names yet different future and task IDs.
         
         Args:
@@ -475,11 +481,7 @@ class Learner:
             This method assumes the existence of a 'tasks' attribute that contains
             task information with 'future' and 'description' fields.
         """
-        tasks: List[Any] = [t['future'].result() 
-                           for t in self.tasks.values() 
-                           if t['description']['name'] == task_name]
-
-        return tasks
+        return self.metric_values_per_iteration
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
