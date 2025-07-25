@@ -38,7 +38,7 @@ LESS_THAN_OR_EQUAL_TO_THRESHOLD = "<="
 GREATER_THAN_OR_EQUAL_TO_THRESHOLD = ">="
 
 
-class ActiveLearningMetrics(Enum):
+class LearningMetrics(Enum):
     MODEL_ACCURACY = "model_accuracy"
     QUERY_EFFICIENCY = "query_efficiency"
     LABELING_COST = "labeling_cost"
