@@ -30,8 +30,8 @@ def acl(input_file='train_output.pkl', output_file='acl_output.pkl'):
         y_selected = y_selected.reshape(y_selected.shape[0], -1)
 
     # Add selected uncertain data to labeled set
-    X_labeled = np.vstack([X_labeled, X_selected])
-    y_labeled = np.vstack([y_labeled, y_selected])
+    #X_labeled = np.vstack([X_labeled, X_selected])
+    #y_labeled = np.vstack([y_labeled, y_selected])
 
     # Retrain model with updated labeled data
     model.fit(X_labeled, y_labeled)
