@@ -46,31 +46,35 @@ class AlgorithmSelector(Learner):
 
         self.active_learn_task: Callable[[str], Callable] = self._algorithm_active_learn_task
 
-    def _algorithm_active_learn_task(self, name: str) -> Callable[[Callable], Callable]:
+    def _algorithm_active_learn_task(self, **decor_kwargs) -> Callable[[Callable], Callable]:
         """Create a decorator for registering active learning algorithms.
 
         Args:
-            name: The name identifier for the active learning algorithm.
-
+            **decor_kwargs: Decorator keyword arguments including 'name' and others like 'as_executable'
+        
         Returns:
             A decorator function that registers the algorithm function.
         """
         def decorator(func: Callable) -> Callable:
             """Decorator that registers an active learning function.
-
+            
             Args:
                 func: The active learning function to register.
-
+            
             Returns:
                 The original function unchanged.
             """
-            # immediately register the function itself
+            # Extract name from decor_kwargs
+            name = decor_kwargs.pop('name', func.__name__)
+
+            # Register the function with decorator kwargs
             self.active_learn_functions[name] = {
                 'func': func,
                 'args': (),
-                'kwargs': {}
+                'kwargs': {},
+                'decor_kwargs': decor_kwargs
             }
-            return func  # just return the original
+            return func
         return decorator
 
     def _create_algorithm_learner(self, 
@@ -140,11 +144,11 @@ class AlgorithmSelector(Learner):
         # Initialize algorithm configs if not provided
         algorithm_configs = algorithm_configs or {}
 
-        print(f"Starting Algorithm Selection with {len(self.active_learn_functions)} algorithms: "
+        print(f"Starting algorithm selection with {len(self.active_learn_functions)} algorithms: "
               f"{list(self.active_learn_functions.keys())}")
 
         @self.asyncflow.block
-        async def _run_algorithm_pipeline(algorithm_name: str, algorithm_func: Callable) -> Dict[str, Any]:
+        async def _run_algorithm_pipeline(al_name:str, al_task: Dict) -> Dict[str, Any]:
             """Run a single algorithm pipeline.
 
             Args:
@@ -158,12 +162,16 @@ class AlgorithmSelector(Learner):
                 Exception: If the algorithm pipeline fails during execution.
             """
             try:
+
+                algorithm_name = al_name
+                algorithm_func = al_task['func']
+
                 # Create and configure the sequential learner for this algorithm
                 algorithm_config: Optional[LearnerConfig] = algorithm_configs.get(algorithm_name, None)
                 sequential_learner: SequentialActiveLearner = self._create_algorithm_learner(
                     algorithm_name, algorithm_func, algorithm_config
                 )
-                
+
                 print(f"[Algorithm-{algorithm_name}] Starting pipeline")
 
                 # Track iterations and results for this algorithm
@@ -199,7 +207,7 @@ class AlgorithmSelector(Learner):
 
                     # Get iteration-specific configurations
                     acl_config: TaskConfig = sequential_learner._get_iteration_task_config(
-                        algorithm_func, algorithm_config, 'active_learn', i
+                        al_task, algorithm_config, 'active_learn', i
                     )
 
                     acl_task = sequential_learner._register_task(acl_config, deps=(sim_task, train_task))
@@ -261,14 +269,15 @@ class AlgorithmSelector(Learner):
                 raise
 
         # Submit all algorithm pipelines asynchronously
+        print(self.active_learn_functions)
         futures: List[Any] = [
-            _run_algorithm_pipeline(name, func_info['func']) 
-            for name, func_info in self.active_learn_functions.items()
+            _run_algorithm_pipeline(al_name, al_task) 
+            for al_name, al_task in self.active_learn_functions.items()
         ]
 
         # Wait for all algorithms to complete
         try:
-            results: List[Any] = await asyncio.gather(*futures, return_exceptions=True)
+            results: List[Any] = await asyncio.gather(*futures, return_exceptions=False)
 
             # Process results and handle any exceptions
             for i, (algorithm_name, result) in enumerate(zip(self.active_learn_functions.keys(), results)):

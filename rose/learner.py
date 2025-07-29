@@ -16,17 +16,17 @@ from .metrics import LearningMetrics as metrics
 
 class TaskConfig(BaseModel):
     """Configuration for a single task.
-    
+
     This class represents the configuration needed to execute a task,
     including its arguments and keyword arguments.
-    
+
     Attributes:
         args: Positional arguments for the task.
         kwargs: Keyword arguments for the task.
     """
     args: tuple = ()
     kwargs: dict = {}
-    
+
     class Config:
         """Pydantic configuration for TaskConfig."""
         extra = "forbid"
@@ -144,36 +144,32 @@ class Learner:
         self.metric_values_per_iteration: Dict[int, Dict[str, float]] = {}
 
     def _get_iteration_task_config(self, base_task: Dict[str, Any],
-                                   config: Optional[LearnerConfig],
-                                   task_key: str, iteration: int) -> Dict[str, Any]:
-        """Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
-        
-        Args:
-            base_task: Base task configuration from parent.
-            config: Learner-specific configuration.
-            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion').
-            iteration: Current iteration number.
+                                config: Optional[LearnerConfig],
+                                task_key: str, iteration: int) -> Dict[str, Any]:
+        """Get task configuration for a specific iteration, merging base config with iteration-specific overrides."""
 
-        Returns:
-            Merged task configuration dictionary containing 'func', 'args', and 'kwargs'.
-        """
-        # Start with base task configuration
-        task_config: Dict[str, Any] = base_task.copy() if base_task else {
-            "func": None, 
-            "args": (), 
-            "kwargs": {}
-        }
+        # Start with a copy of the base task (or empty dict if None)
+        task_config = base_task.copy() if base_task else {}
+        
+        # Ensure required keys exist with defaults
+        task_config.setdefault("func", None)
+        task_config.setdefault("args", ())
+        task_config.setdefault("kwargs", {})
+        task_config.setdefault("decor_kwargs", {})
+
+        # Make a deep copy of decor_kwargs to avoid shared references
+        if "decor_kwargs" in task_config and task_config["decor_kwargs"]:
+            task_config["decor_kwargs"] = task_config["decor_kwargs"].copy()
 
         # Apply iteration-specific overrides if available
         if config:
-            iter_config: Optional[TaskConfig] = config.get_task_config(task_key, iteration)
+            iter_config = config.get_task_config(task_key, iteration)
             if iter_config:
-                # Use explicit None checks to allow intentional clearing with empty collections
                 if iter_config.args is not None:
                     task_config["args"] = iter_config.args
                 if iter_config.kwargs is not None:
                     task_config["kwargs"] = iter_config.kwargs
-                    
+
         return task_config
 
     def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict[str, Any]]) -> Dict[int, TaskConfig]:
@@ -230,59 +226,56 @@ class Learner:
         }
 
     def register_decorator(self, task_attr_name: str) -> Callable:
-        """Generic decorator factory for registering simulation/training/etc. tasks.
+        """Decorator factory that registers a task function under a given name."""
         
-        Args:
-            task_attr_name: Name of the task attribute to set (e.g., 'training', 'simulation').
+        def decorator_factory(_func=None, **decor_kwargs) -> Callable:
+            """Actual decorator returned to wrap the function."""
             
-        Returns:
-            Decorator function that can be used to register tasks.
-        """
-        def decorator(func: Callable) -> Callable:
-            """Decorator that registers a task function.
-            
-            Args:
-                func: The function to be decorated and registered.
-                
-            Returns:
-                Wrapped function that can be called with runtime arguments.
-            """
-            # Set the base function reference at decoration time
-            setattr(self, f"{task_attr_name}_function", {
-                'func': func,
-                'args': (),
-                'kwargs': {},
-            })
-
-            @wraps(func)
-            def wrapper(*args, **kwargs) -> Any:
-                """Wrapper function that updates task configuration and optionally submits the task.
-                
-                Args:
-                    *args: Positional arguments for the task.
-                    **kwargs: Keyword arguments for the task.
-                    
-                Returns:
-                    Task result if register_and_submit is True, otherwise None.
-                """
-                task_obj: Dict[str, Any] = {
+            def decorator(func: Callable) -> Callable:
+                # Save initial registration at decoration time
+                initial_config = {
                     'func': func,
-                    'args': args,
-                    'kwargs': kwargs,
+                    'args': (),
+                    'kwargs': {},
+                    'decor_kwargs': decor_kwargs
                 }
-                setattr(self, f"{task_attr_name}_function", task_obj)
+                setattr(self, f"{task_attr_name}_function", initial_config)
 
-                if self.register_and_submit:
-                    return self._register_task(task_obj)
+                @wraps(func)
+                def wrapper(*args, **kwargs) -> Any:
+                    # Get the current stored function config to preserve original decor_kwargs
+                    current_config = getattr(self, f"{task_attr_name}_function", {})
+                    original_decor_kwargs = current_config.get('decor_kwargs', {})
 
-            return wrapper
+                    # Save call-time task object, preserving original decor_kwargs
+                    task_obj: Dict[str, Any] = {
+                        'func': func,
+                        'args': args,
+                        'kwargs': kwargs,
+                        'decor_kwargs': original_decor_kwargs  # Preserve original decorator kwargs
+                    }
+                    setattr(self, f"{task_attr_name}_function", task_obj)
 
-        return decorator
+                    if self.register_and_submit:
+                        return self._register_task(task_obj)
+
+                return wrapper
+
+            # Handle both @decorator and @decorator() cases
+            if _func is not None:
+                # Called as @decorator (without parentheses)
+                return decorator(_func)
+            else:
+                # Called as @decorator(...) (with parentheses)
+                return decorator
+
+        return decorator_factory
 
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
                           threshold: float,
-                          operator: str = '') -> Callable:
+                          operator: str = '',
+                          **decor_kwargs) -> Callable:
         """Create a decorator for stop criterion functions.
         
         Args:
@@ -310,7 +303,8 @@ class Learner:
                 'kwargs': {},
                 'operator': operator,
                 'threshold': threshold,
-                'metric_name': metric_name
+                'metric_name': metric_name,
+                'decor_kwargs': decor_kwargs or {}
             }
 
             @wraps(func)
@@ -341,11 +335,11 @@ class Learner:
 
     def _register_task(self, task_obj: Dict[str, Any], deps: Optional[Union[Any, Tuple[Any, ...]]] = None) -> Any:
         """Register and submit a task for execution.
-        
+
         Args:
             task_obj: Dictionary containing task configuration with 'func', 'args', and 'kwargs'.
             deps: Optional dependencies. Can be a single dependency or tuple of dependencies.
-            
+
         Returns:
             Task future object for the submitted task.
         """
@@ -359,8 +353,13 @@ class Learner:
             args += deps
 
         kwargs: Dict[str, Any] = task_obj['kwargs']
+        decor_kwargs: Dict[Any] = task_obj['decor_kwargs']
+        as_executable: bool = decor_kwargs.pop('as_executable', True)
 
-        return self.asyncflow.executable_task(func)(*args, **kwargs)
+        if as_executable:
+            return self.asyncflow.executable_task(func, **decor_kwargs)(*args, **kwargs)
+        else:
+            return self.asyncflow.function_task(func, **decor_kwargs)(*args, **kwargs)
 
     def compare_metric(self, metric_name: str, metric_value: float, threshold: float, operator: str = '') -> bool:
         """Compare a metric value against a threshold using a specified operator.

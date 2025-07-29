@@ -47,7 +47,8 @@ class ReinforcementLearner(Learner):
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
                                 threshold: float,
-                                operator: str = ''):
+                                operator: str = '',
+                                **decor_kwargs):
         # This is the outer function that takes arguments like metric_name and threshold
         @typeguard.typechecked
         def decorator(func: Callable):  # This is the actual decorator function that takes func
@@ -60,7 +61,8 @@ class ReinforcementLearner(Learner):
                     'kwargs': kwargs,
                     'operator': operator,
                     'threshold': threshold,
-                    'metric_name': metric_name}
+                    'metric_name': metric_name,
+                    'decor_kwargs': decor_kwargs or {}}
 
                 self.criterion_function = self.test_function
 
@@ -69,6 +71,71 @@ class ReinforcementLearner(Learner):
                     return self._check_stop_criterion(res)
             return wrapper
         return decorator
+
+    @typeguard.typechecked
+    def as_stop_criterion(self, metric_name: str,
+                          threshold: float,
+                          operator: str = '',
+                          **decor_kwargs) -> Callable:
+        """Create a decorator for stop criterion functions.
+        
+        Args:
+            metric_name: Name of the metric to evaluate for stopping condition.
+            threshold: Threshold value for comparison.
+            operator: Comparison operator (optional for standard metrics).
+            
+        Returns:
+            Decorator function for stop criterion tasks.
+        """
+        @typeguard.typechecked
+        def decorator(func: Callable) -> Callable:
+            """Decorator that registers a stop criterion function.
+            
+            Args:
+                func: The criterion function to be decorated.
+                
+            Returns:
+                Wrapped async function that evaluates the stopping condition.
+            """
+            # Register the function reference immediately
+            self.test_function = {
+                'func': func,
+                'args': (),
+                'kwargs': {},
+                'operator': operator,
+                'threshold': threshold,
+                'metric_name': metric_name,
+                'decor_kwargs': decor_kwargs or {}
+            }
+
+            @wraps(func)
+            async def wrapper(*args, **kwargs) -> Tuple[bool, float]:
+                """Wrapper that evaluates the stopping condition.
+
+                Args:
+                    *args: Positional arguments for the criterion function.
+                    **kwargs: Keyword arguments for the criterion function.
+
+                Returns:
+                    Tuple of (should_stop: bool, metric_value: float).
+                """
+                # Update runtime args/kwargs
+                self.test_function.update({
+                    'args': args,
+                    'kwargs': kwargs
+                })
+
+                self.criterion_function = self.test_function
+
+                if self.register_and_submit:
+                    # await the result to process it
+                    res: Any = await self._register_task(self.criterion_function)
+                    return self._check_stop_criterion(res)
+
+            return wrapper
+
+        return decorator
+
 
 
 class SequentialReinforcementLearner(ReinforcementLearner):
