@@ -1,6 +1,6 @@
-# Parallel Active Learning Tutorial
+# Learners with Parameterization Tutorial
 
-This tutorial demonstrates how to run multiple active learning pipelines concurrently using `ParallelActiveLearner`. You’ll learn to:
+This tutorial demonstrates how to configure and run multiple learning pipelines concurrently using `ParallelActiveLearner`. You’ll learn how to:
 
 - Set up parallel workflows
 - Configure each learner independently
@@ -8,6 +8,10 @@ This tutorial demonstrates how to run multiple active learning pipelines concurr
 - Run learners concurrently with individual stop criteria
 
 ---
+
+!!! note
+
+This approach can be applied for both Active and Reinforcement learners (Sequential and Parallel).
 
 ## Example Overview
 

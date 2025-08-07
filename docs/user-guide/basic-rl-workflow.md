@@ -2,31 +2,35 @@
 
 Import ROSE main modules:
 ```python
-from rose.rl.learner import SequentialReinforcementLearner
-from rose.engine import Task, ResourceEngine
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import RadicalExecutionBackend
+
+from rose.metrics import GREATER_THAN_THRESHOLD
+from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 ```
 
 Define your resource engine, as we described in our previous [Target Resources](target-resources.md) step:
 ```python
-engine = ResourceEngine({'runtime': 30,
-                         'resource': 'local.localhost'})
-rl = SequentialReinforcementLearner(engine)
+engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+asyncflow = await WorkflowEngine.create(engine)
+
+rl = SequentialReinforcementLearner(asyncflow)
 ```
 
 Now our resource engine is defined, lets define our main RL workflow components:
 
 ```python
 @rl.environment_task
-def environment(*args):
-    return Task(executable=f'python3 environment.py')
+async def environment(*args):
+    return f'python3 environment.py'
 
 @rl.update_task
-def update(*args):
-    return Task(executable=f'python3 update.py')
+async def update(*args):
+    return f'python3 update.py'
 
 @rl.as_stop_criterion(metric_name='MODEL_REWARD', threshold=200, operator=GREATER_THAN_THRESHOLD)
-def check_reward(*args):
-    return Task(executable='python3 check_reward.py')
+async def check_reward(*args):
+    return 'python3 check_reward.py'
 ```
 
 !!! Warning
@@ -35,13 +39,10 @@ def check_reward(*args):
 Finally invoke the tasks and register them with the reinforcement learner as a workflow:
 
 ```python
-env = environment()
-upd = update()
-stop_cond = check_reward()
-
 # Start the RL training loop and break when stop condition is met
-rl.learn()
+await rl.learn()
+
 # You can also specify maximum iterations
-rl.learn(max_iter=10)
-engine.shutdown()
+await rl.learn(max_iter=10)
+await asyncflow.shutdown()
 ```
