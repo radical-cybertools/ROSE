@@ -40,49 +40,63 @@ This tutorial demonstrates how to run multiple active learning pipelines concurr
 
 ## Setup
 
+!!! warning
+
+The entire API of ROSE must be within an `async` context.
+
 ### 1. Imports & Engine
 
 ```python
-import sys, os
-from rose.learner import TaskConfig, ParallelActiveLearner, ParallelLearnerConfig
-from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.engine import Task, ResourceEngine
+import os
+import sys
 
-engine = ResourceEngine({'runtime': 30, 'resource': 'local.localhost'})
-acl = ParallelActiveLearner(engine)
+from rose import TaskConfig
+from rose import LearnerConfig
+
+from rose.al import ParallelActiveLearner
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
+
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import RadicalExecutionBackend
+
+engine = await RadicalExecutionBackend(
+    {'runtime': 30,
+     'resource': 'local.localhost'
+     }
+     )
+asyncflow = await WorkflowEngine.create(engine)
+acl = ParallelActiveLearner(asyncflow)
 code_path = f'{sys.executable} {os.getcwd()}'
 ```
 
 ### 1. Define Workflow Tasks
 ```python
 @acl.simulation_task
-def simulation(*args, **kwargs):
+async def simulation(*args, **kwargs):
     n_labeled = kwargs.get("--n_labeled", 100)
     n_features = kwargs.get("--n_features", 2)
 
-    return Task(
-        executable=f"{code_path}/sim.py --n_labeled {n_labeled} --n_features {n_features}"
-    )
+    return f"{code_path}/sim.py --n_labeled {n_labeled} --n_features {n_features}"
 
 @acl.training_task
-def training(*args, **kwargs):
+async def training(*args, **kwargs):
     learning_rate = kwargs.get("--learning_rate", 0.1)
-    return Task(executable=f'{code_path}/train.py --learning_rate {learning_rate}')
+    return f'{code_path}/train.py --learning_rate {learning_rate}'
 
 @acl.active_learn_task
-def active_learn(*args, **kwargs):
-    return Task(executable=f'{code_path}/active.py')
+async def active_learn(*args, **kwargs):
+    return f'{code_path}/active.py'
 
 @acl.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
-def check_mse(*args, **kwargs):
-    return Task(executable=f'{code_path}/check_mse.py')
+async def check_mse(*args, **kwargs):
+    return executable=f'{code_path}/check_mse.py'
 ```
 
 ## Configuration Approaches
 
 ### Approach 1: Static Configuration
 ```python
-results = acl.teach(
+results = await acl.teach(
     parallel_learners=2,
     max_iter=10,
     learner_configs=[
@@ -100,7 +114,7 @@ results = acl.teach(
 
 ### Approach 2: Per-Iteration Configuration
 ```python
-results = acl.teach(
+results = await acl.teach(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
@@ -148,7 +162,7 @@ adaptive_train = acl.create_adaptive_schedule('training',
         }
     })
 
-results = acl.teach(
+results = await acl.teach(
     parallel_learners=2,
     max_iter=20,
     learner_configs=[
@@ -172,25 +186,25 @@ adaptive_sim = acl.create_adaptive_schedule('simulation',
         }
     })
 
-results = acl.teach(
+results = await acl.teach(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
         ParallelLearnerConfig(simulation=adaptive_sim),  # Adaptive
-        ParallelLearnerConfig(                          # Per-iteration
+        ParallelLearnerConfig(                           # Per-iteration
             simulation={
                 0: TaskConfig(kwargs={"--n_labeled": "150", "--n_features": 3}),
                 7: TaskConfig(kwargs={"--n_labeled": "250", "--n_features": 3}),
                 -1: TaskConfig(kwargs={"--n_labeled": "400", "--n_features": 3})
             }
         ),
-        ParallelLearnerConfig(                          # Static
+        ParallelLearnerConfig(                           # Static
             simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4})
         )
     ]
 )
 
-engine.shutdown()
+await acl.shutdown()
 ```
 
 ### Execution Details
