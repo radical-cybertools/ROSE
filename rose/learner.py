@@ -8,8 +8,9 @@ from functools import wraps
 from pydantic import BaseModel
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ThreadExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend
+
 
 from .metrics import LearningMetrics as metrics
 
@@ -454,12 +455,8 @@ class Learner:
         else:
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
-    def teach(self, max_iter: int = 0) -> None:
-        """Train the model using active learning.
-
-        Args:
-            max_iter: Maximum number of iterations to run.
-            
+    def teach(self) -> None:
+        """Teach method to be implemented by subclasses.            
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
@@ -472,10 +469,10 @@ class Learner:
         
         Args:
             task_name: Name of the task to retrieve results for.
-            
+
         Returns:
             List of results from tasks with the matching name.
-            
+
         Note:
             This method assumes the existence of a 'tasks' attribute that contains
             task information with 'future' and 'description' fields.
@@ -484,11 +481,11 @@ class Learner:
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
-        
+
         Args:
             *args: Positional arguments to pass to asyncflow.shutdown().
             **kwargs: Keyword arguments to pass to asyncflow.shutdown().
-            
+
         Returns:
             Result from asyncflow.shutdown().
         """

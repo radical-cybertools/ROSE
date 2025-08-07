@@ -1,7 +1,7 @@
 import asyncio
 import typeguard
 import itertools
-from typing import Callable, Dict, List, Any, Optional
+from typing import Callable, Dict, Any, Tuple
 from functools import wraps
 
 from rose.learner import Learner
