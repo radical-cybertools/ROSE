@@ -20,7 +20,6 @@ class SequentialActiveLearner(Learner):
     
     Attributes:
         learner_id (Optional[int]): Identifier for the learner, used for logging.
-            Set by ParallelActiveLearner when used in parallel mode.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -30,7 +29,7 @@ class SequentialActiveLearner(Learner):
             asyncflow: The workflow engine instance used to manage async tasks.
         """
         super().__init__(asyncflow, register_and_submit=True)
-        self.learner_id: Optional[int] = None  # Set by ParallelActiveLearner for logging
+        self.learner_id: Optional[int] = None
 
     async def teach(
         self,
@@ -70,8 +69,8 @@ class SequentialActiveLearner(Learner):
             raise Exception("Either max_iter or stop_criterion_function must be provided.")
 
         learner_suffix: str = f' (Learner-{self.learner_id})' if self.learner_id is not None else ''
-        print(f"Starting Sequential Active Learner{learner_suffix}")
-        
+        print(f"Starting Active Learner{learner_suffix}")
+
         # Initialize tasks for pre-loop
         sim_task: Tuple = ()
         train_task: Tuple = ()
@@ -99,7 +98,7 @@ class SequentialActiveLearner(Learner):
         for i in iteration_range:
             learner_prefix: str = f'[Learner-{self.learner_id}] ' if self.learner_id is not None else ''
             print(f'{learner_prefix}Starting Iteration-{i}')
-            
+
             # Get iteration-specific configurations
             acl_config: TaskConfig = self._get_iteration_task_config(
                 self.active_learn_function, learner_config, 'active_learn', i
@@ -148,7 +147,7 @@ class ParallelActiveLearner(Learner):
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the Parallel Active Learner.
-        
+
         Args:
             asyncflow: The workflow engine instance used to manage async tasks
                 across all parallel learners.
@@ -273,8 +272,7 @@ class ParallelActiveLearner(Learner):
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
-        @self.asyncflow.block
-        async def _run_sequential_learner(learner_id: int) -> Any:
+        async def active_learner_workflow(learner_id: int) -> Any:
             """Run a single SequentialActiveLearner.
             
             Internal async function that manages the lifecycle of a single
@@ -300,21 +298,24 @@ class ParallelActiveLearner(Learner):
                 sequential_config: Optional[LearnerConfig] = self._convert_to_sequential_config(
                     learner_configs[learner_id]
                 )
-                
-                print(f"[Parallel-Learner-{learner_id}] Starting sequential learning")
 
                 # Run the sequential learner
-                return await sequential_learner.teach(
+                learner_result = await sequential_learner.teach(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
                     learner_config=sequential_config
                 )
+
+                self.metric_values_per_iteration[f'learner-{learner_id}'] = \
+                     sequential_learner.metric_values_per_iteration
+
+                return learner_result
             except Exception as e:
-                print(f"[Parallel-Learner-{learner_id}] Failed with error: {e}")
+                print(f"ActiveLearner-{learner_id}] failed with error: {e}")
                 raise
 
         # Submit all learners asynchronously
-        futures: List[Any] = [_run_sequential_learner(i) for i in range(parallel_learners)]
+        futures: List[Any] = [active_learner_workflow(i) for i in range(parallel_learners)]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*[f for f in futures])
