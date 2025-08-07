@@ -11,8 +11,8 @@ from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
 async def run_al_parallel():
-    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
-    asyncflow = WorkflowEngine(engine)
+    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    asyncflow = await WorkflowEngine.create(engine)
 
     al = ParallelActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'

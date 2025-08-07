@@ -11,8 +11,9 @@ from radical.asyncflow import RadicalExecutionBackend
 
 async def rose_al():
 
-    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
-    asyncflow = WorkflowEngine(engine)
+    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    asyncflow = await WorkflowEngine.create(engine)
+
     acl = SequentialActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 

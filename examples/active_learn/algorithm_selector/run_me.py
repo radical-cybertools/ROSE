@@ -9,8 +9,8 @@ from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
 async def select_algorithm():
-    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
-    asyncflow = WorkflowEngine(engine)
+    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    asyncflow = await WorkflowEngine.create(engine)
     als = AlgorithmSelector(asyncflow)
 
     code_path = f'{sys.executable} {os.getcwd()}'

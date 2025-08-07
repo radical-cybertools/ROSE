@@ -11,8 +11,8 @@ from radical.asyncflow import RadicalExecutionBackend
 
 async def custom_al():
 
-    engine = RadicalExecutionBackend({'resource': 'local.localhost'})
-    asyncflow = WorkflowEngine(engine)
+    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    asyncflow = await WorkflowEngine.create(engine)
     learner = Learner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 

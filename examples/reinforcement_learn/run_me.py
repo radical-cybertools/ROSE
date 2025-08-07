@@ -2,8 +2,10 @@ import os
 import sys
 import asyncio
 
+from concurrent.futures import ThreadPoolExecutor
+
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ThreadExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend
 
 from rose.metrics import GREATER_THAN_THRESHOLD
 from rose.rl.reinforcement_learner import SequentialReinforcementLearner
@@ -11,8 +13,10 @@ from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 
 async def rose_rl():
 
-    engine = ThreadExecutionBackend({})
-    asyncflow = WorkflowEngine(engine)
+    engine = await ConcurrentExecutionBackend(
+        ThreadPoolExecutor()
+        )
+    asyncflow = await WorkflowEngine.create(engine)
     rl = SequentialReinforcementLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
     data_path = os.path.join(os.getcwd(), 'data')
