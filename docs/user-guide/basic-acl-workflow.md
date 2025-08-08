@@ -37,7 +37,44 @@ async def active_learn(*args):
     return f'python3 active.py'
 ```
 
+!!! tip
+ROSE supports defining tasks with python code instead of executables (i.e., python scripts, shell scripts, etc.). To do that, the user have to
+pass the `as_executable=False` argument to the decorator as follows:
+
+```python
+@acl.simulation_task(as_executable=False)
+async def run_simulation(*args) -> dict:
+    """Simulate a process and return dummy simulation results."""
+    await asyncio.sleep(1)  # Simulate async workload
+    results = {
+        "input": args,
+        "output": [random.random() for _ in range(5)]
+    }
+    return results
+
+@acl.training_task(as_executable=False)
+async def run_training(simulation_results: dict) -> dict:
+    """Train a dummy model using simulation results."""
+    await asyncio.sleep(1)  # Simulate training time
+    model = {
+        "weights": [sum(simulation_results["output"]) * 0.1],
+        "trained_on": simulation_results["input"]
+    }
+    return model
+
+@acl.active_learn_task(as_executable=False)
+async def run_active_learning(model: dict) -> dict:
+    """Perform a dummy active learning step with the trained model."""
+    await asyncio.sleep(1)  # Simulate active learning
+    selected_samples = [random.randint(0, 100) for _ in range(3)]
+    return {
+        "model_weights": model["weights"],
+        "new_samples": selected_samples
+    }
+```
+
 Optionally, you can specify a metric to monitor and act as a condition to terminate once your results reach the specified value:
+
 !!! tip
 
     Specifying both `@acl.as_stop_criterion` and `max_iter` will cause ROSE to follow whichever constraint is satisfied first.

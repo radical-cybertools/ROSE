@@ -6,12 +6,13 @@ from rose.learner import Learner
 from rose.metrics import MODEL_ACCURACY
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend
 
+from concurrent.futures import ThreadPoolExecutor
 
 async def custom_al():
 
-    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
     learner = Learner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
@@ -40,10 +41,11 @@ async def custom_al():
         # 10 iterations of active learn
         for acl_iter in range(10):
             print(f'Starting Iteration-{acl_iter}')
-            sim = simulation()
-            train = await training(sim)
-            active = await active_learn(sim, train)
+            sim = simulation() # <-- this returns a future
+            train = training(sim) # <-- wait for sim task first
+            active = active_learn(sim, train) # <-- wait for sim and train
 
+            # wait for active learn task and obtain result once done
             should_stop, metric_val = await check_accuracy(active)
 
             if should_stop:
@@ -52,8 +54,6 @@ async def custom_al():
 
     await teach()
     await learner.shutdown()
-
-
 
 if __name__ == "__main__":
     asyncio.run(custom_al())

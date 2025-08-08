@@ -93,7 +93,7 @@ async def active_learn(*args, **kwargs):
 
 @acl.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
 async def check_mse(*args, **kwargs):
-    return executable=f'{code_path}/check_mse.py'
+    return f'{code_path}/check_mse.py'
 ```
 
 ## Configuration Approaches

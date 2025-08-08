@@ -1,8 +1,6 @@
 import typeguard
 import itertools
 
-from abc import ABC, abstractmethod
-
 from typing import Callable, Dict, Any, Optional, List, Union, Tuple, Type
 from functools import wraps
 from pydantic import BaseModel
@@ -36,7 +34,7 @@ class TaskConfig(BaseModel):
         }
 
 
-class LearnerConfig(BaseModel, ABC):
+class LearnerConfig(BaseModel):
     """Base configuration class for active learners with per-iteration support.
     
     This class provides configuration management for different types of learning tasks

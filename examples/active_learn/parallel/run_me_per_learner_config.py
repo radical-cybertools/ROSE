@@ -8,10 +8,12 @@ from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend
+
+from concurrent.futures import ThreadPoolExecutor
 
 async def run_al_parallel():
-    engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+    engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
 
     al = ParallelActiveLearner(asyncflow)
@@ -22,7 +24,6 @@ async def run_al_parallel():
     async def simulation(*args, **kwargs):
         n_labeled = kwargs.get("--n_labeled", 100)
         n_features = kwargs.get("--n_features", 2)
-
         return f"{code_path}/sim.py --n_labeled {n_labeled} --n_features {n_features}"
 
     # Define and register the training task

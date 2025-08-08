@@ -24,8 +24,6 @@ For tutorials and walkthrough notebooks please check [here](examples)
 ### Basic usage
 
 ```python
-import os
-import sys
 import asyncio
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
@@ -45,15 +43,15 @@ async def main():
 
     @acl.simulation_task
     async def simulation(*args):
-        return Task(executable=f'python3 sim.py')
+        return f'python3 sim.py'
 
     @acl.training_task
     async def training(*args):
-        return Task(executable=f'python3 train.py')
+        return f'python3 train.py'
 
     @acl.active_learn_task
     async def active_learn(*args):
-        return Task(executable=f'python3 active.py')
+        return f'python3 active.py'
 
     # Start the teaching loop and break if max_iter = 10
     await acl.teach(max_iter=10)

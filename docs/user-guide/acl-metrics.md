@@ -21,8 +21,8 @@ Now define your `@acl.as_stop_criterion` with additional args `operator`:
 # Defining the stop criterion with a metric
 @acl.as_stop_criterion(metric_name='custom_metric',
                        operator=GREATER_THAN_THRESHOLD, threshold=0.8)
-def check_metric(*args):
-    return Task(executable=f'python3 check_custom_metric.py')
+async def check_metric(*args):
+    return f'python3 check_custom_metric.py'
 ```
 
 In this way, ROSE will understand the relation between the custom metric and the target threshold value.
