@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, List, Optional, Union, Iterator
 import pickle
 import random
@@ -43,7 +43,7 @@ class ExperienceBank:
         self.max_size = max_size
         self._experiences = deque(maxlen=max_size) if max_size else deque()
         self._rng = random.Random()
-        
+
         # Generate unique session ID if not provided
         if session_id is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

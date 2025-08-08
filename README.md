@@ -24,32 +24,39 @@ For tutorials and walkthrough notebooks please check [here](examples)
 ### Basic usage
 
 ```python
-import os
+import asyncio
 
-from rose.learner import ActiveLearner
-from rose.engine import Task, ResourceEngine
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
+from rose.al.active_learner import SequentialActiveLearner
 
-engine = ResourceEngine({'runtime': 30,
-                         'resource': 'local.localhost'})
-acl = ActiveLearner(engine)
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import RadicalExecutionBackend
 
-@acl.simulation_task
-def simulation(*args):
-    return Task(executable=f'python3 sim.py')
+async def main():
+    execution_engine = await RadicalExecutionBackend(
+        {'runtime': 30,
+        'resource': 'local.localhost'}
+        )
 
-@acl.training_task
-def training(*args):
-    return Task(executable=f'python3 train.py')
+    asyncflow = await WorkflowEngine.create(execution_engine)
+    acl = SequentialActiveLearner(asyncflow)
 
-@acl.active_learn_task
-def active_learn(*args):
-    return Task(executable=f'python3 active.py')
+    @acl.simulation_task
+    async def simulation(*args):
+        return f'python3 sim.py'
 
-simulation = simulation()
-training = training()
-active_learn = active_learn()
+    @acl.training_task
+    async def training(*args):
+        return f'python3 train.py'
 
-# Start the teaching loop and break if max_iter = 10
-acl.teach(max_iter=10)
-engine.shutdown()
+    @acl.active_learn_task
+    async def active_learn(*args):
+        return f'python3 active.py'
+
+    # Start the teaching loop and break if max_iter = 10
+    await acl.teach(max_iter=10)
+    await asyncflow.shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```

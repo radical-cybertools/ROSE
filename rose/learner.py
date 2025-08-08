@@ -1,68 +1,300 @@
 import typeguard
 import itertools
-from typing import Callable, Dict, Any, Optional, List, Union
+
+from typing import Callable, Dict, Any, Optional, List, Union, Tuple, Type
 from functools import wraps
 from pydantic import BaseModel
 
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow import RadicalExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend
 
-from .engine import ResourceEngine
-from .engine import WorkflowEngine
-from .metrics import ActiveLearningMetrics as metrics
 
-class ActiveLearner(WorkflowEngine):
+from .metrics import LearningMetrics as metrics
+
+
+class TaskConfig(BaseModel):
+    """Configuration for a single task.
+
+    This class represents the configuration needed to execute a task,
+    including its arguments and keyword arguments.
+
+    Attributes:
+        args: Positional arguments for the task.
+        kwargs: Keyword arguments for the task.
+    """
+    args: tuple = ()
+    kwargs: dict = {}
+
+    class Config:
+        """Pydantic configuration for TaskConfig."""
+        extra = "forbid"
+        json_encoders = {
+            tuple: list,
+        }
+
+
+class LearnerConfig(BaseModel):
+    """Base configuration class for active learners with per-iteration support.
+    
+    This class provides configuration management for different types of learning tasks
+    across multiple iterations. Each task type can have either a single configuration
+    applied to all iterations, or iteration-specific configurations.
+    
+    Attributes:
+        simulation: Configuration for simulation tasks. Can be a single TaskConfig
+            or a dictionary mapping iteration numbers to TaskConfig objects.
+        training: Configuration for training tasks. Can be a single TaskConfig
+            or a dictionary mapping iteration numbers to TaskConfig objects.
+        active_learn: Configuration for active learning tasks. Can be a single TaskConfig
+            or a dictionary mapping iteration numbers to TaskConfig objects.
+        criterion: Configuration for criterion tasks. Can be a single TaskConfig
+            or a dictionary mapping iteration numbers to TaskConfig objects.
+    """
+    simulation: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    training: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    active_learn: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    criterion: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+
+    class Config:
+        """Pydantic configuration for LearnerConfig."""
+        extra = "forbid"
+        json_encoders = {
+            tuple: list,
+        }
+
+    def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
+        """Get the task configuration for a specific iteration.
+        
+        Args:
+            task_name: Name of the task ('simulation', 'training', 'active_learn', 'criterion').
+            iteration: The iteration number (0-based).
+            
+        Returns:
+            TaskConfig for the specified iteration, or None if not configured.
+            
+        Note:
+            If a dictionary of configurations is provided, the method will first
+            look for an exact iteration match, then fall back to default configs
+            (key -1 or 'default').
+        """
+        task_config: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = getattr(self, task_name, None)
+        if task_config is None:
+            return None
+            
+        # If it's a TaskConfig, return it directly (same config for all iterations)
+        if isinstance(task_config, TaskConfig):
+            return task_config
+            
+        # If it's a dict, look for iteration-specific config
+        if isinstance(task_config, dict):
+            # Try exact iteration match first
+            if iteration in task_config:
+                return task_config[iteration]
+            # Fall back to default config (key -1 or 'default')
+            return task_config.get(-1) or task_config.get('default')
+
+        return None
+
+
+class Learner:
+    """Base class for active learning implementations.
+    
+    This class provides the foundational functionality for active learning workflows,
+    including task registration, execution management, and configuration handling.
+    
+    Attributes:
+        criterion_function: Configuration for criterion/stopping condition functions.
+        training_function: Configuration for training functions.
+        simulation_function: Configuration for simulation functions.
+        active_learn_function: Configuration for active learning functions.
+        asyncflow: The workflow engine for managing asynchronous task execution.
+        register_and_submit: Whether to automatically register and submit tasks.
+        utility_task: Decorator for utility tasks.
+        training_task: Decorator for training tasks.
+        simulation_task: Decorator for simulation tasks.
+        active_learn_task: Decorator for active learning tasks.
+    """
 
     @typeguard.typechecked
-    def __init__(self, engine: ResourceEngine, register_and_submit: bool=True) -> None:
+    def __init__(self, asyncflow: WorkflowEngine,
+                 register_and_submit: bool = True) -> None:
+        """Initialize the Learner.
 
-        self.criterion_function = {}
-        self.training_function = {}
-        self.simulation_function = {}
-        self.active_learn_function = {}
-
-        super().__init__(engine)
-
-        self.register_and_submit = register_and_submit
-
-        self.simulation_task = self.register_decorator('simulation')
-        self.training_task = self.register_decorator('training')
-        self.active_learn_task = self.register_decorator('active_learn')
-        self.utility_task = self.register_decorator('utility')
-
-
-    def register_decorator(self, task_attr_name: str):
+        Args:
+            asyncflow: The workflow engine instance for managing async tasks.
+            register_and_submit: Whether to automatically register and submit decorated tasks.
         """
-        Generic decorator factory for registering simulation/training/etc. tasks.
+        self.criterion_function: Dict[str, Any] = {}
+        self.training_function: Dict[str, Any] = {}
+        self.simulation_function: Dict[str, Any] = {}
+        self.active_learn_function: Dict[str, Any] = {}
+
+        self.asyncflow: WorkflowEngine = asyncflow
+
+        self.register_and_submit: bool = register_and_submit
+
+        self.utility_task: Callable = self.register_decorator('utility')
+        self.training_task: Callable = self.register_decorator('training')
+        self.simulation_task: Callable = self.register_decorator('simulation')
+        self.active_learn_task: Callable = self.register_decorator('active_learn')
+
+        self.iteration: int = 0
+        self.metric_values_per_iteration: Dict[int, Dict[str, float]] = {}
+
+    def _get_iteration_task_config(self, base_task: Dict[str, Any],
+                                config: Optional[LearnerConfig],
+                                task_key: str, iteration: int) -> Dict[str, Any]:
+        """Get task configuration for a specific iteration, merging base config with iteration-specific overrides."""
+
+        # Start with a copy of the base task (or empty dict if None)
+        task_config = base_task.copy() if base_task else {}
+        
+        # Ensure required keys exist with defaults
+        task_config.setdefault("func", None)
+        task_config.setdefault("args", ())
+        task_config.setdefault("kwargs", {})
+        task_config.setdefault("decor_kwargs", {})
+
+        # Make a deep copy of decor_kwargs to avoid shared references
+        if "decor_kwargs" in task_config and task_config["decor_kwargs"]:
+            task_config["decor_kwargs"] = task_config["decor_kwargs"].copy()
+
+        # Apply iteration-specific overrides if available
+        if config:
+            iter_config = config.get_task_config(task_key, iteration)
+            if iter_config:
+                if iter_config.args is not None:
+                    task_config["args"] = iter_config.args
+                if iter_config.kwargs is not None:
+                    task_config["kwargs"] = iter_config.kwargs
+
+        return task_config
+
+    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict[str, Any]]) -> Dict[int, TaskConfig]:
+        """Helper method to create iteration-specific configurations.
+        
+        Args:
+            task_name: Name of the task type.
+            schedule: Dictionary mapping iteration numbers to args/kwargs configuration.
+            
+        Returns:
+            Dictionary mapping iterations to TaskConfig objects.
+            
+        Example:
+            schedule = {
+                0: {'args': (param1,), 'kwargs': {'lr': 0.01}},
+                5: {'args': (param2,), 'kwargs': {'lr': 0.005}},
+                -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
+            }
         """
+        return {
+            iteration: TaskConfig(
+                args=config.get('args', ()),
+                kwargs=config.get('kwargs', {})
+            )
+            for iteration, config in schedule.items()
+        }
 
-        def decorator(func: Callable):
-            # Set the base function reference at decoration time
-            setattr(self, f"{task_attr_name}_function", {
-                'func': func,
-                'args': (),
-                'kwargs': {},
-            })
+    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict[str, Any]]) -> Dict[int, TaskConfig]:
+        """Helper method to create adaptive iteration schedules using a function.
+        
+        Args:
+            task_name: Name of the task type.
+            param_schedule: Function that takes iteration number and returns config dict.
+            
+        Returns:
+            Dictionary with computed TaskConfig for each iteration.
+            
+        Example:
+            def adaptive_lr(iteration):
+                lr = 0.01 * (0.9 ** iteration)
+                return {'kwargs': {'learning_rate': lr}}
+            
+            adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
+        """
+        # For now, we'll pre-compute a reasonable range. In practice, you might
+        # want to compute this dynamically or use a lazy evaluation approach.
+        max_precompute: int = 100
+        return {
+            i: TaskConfig(
+                args=param_schedule(i).get('args', ()),
+                kwargs=param_schedule(i).get('kwargs', {})
+            )
+            for i in range(max_precompute)
+        }
 
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                task_obj = {
+    def register_decorator(self, task_attr_name: str) -> Callable:
+        """Decorator factory that registers a task function under a given name."""
+        
+        def decorator_factory(_func=None, **decor_kwargs) -> Callable:
+            """Actual decorator returned to wrap the function."""
+            
+            def decorator(func: Callable) -> Callable:
+                # Save initial registration at decoration time
+                initial_config = {
                     'func': func,
-                    'args': args,
-                    'kwargs': kwargs,
+                    'args': (),
+                    'kwargs': {},
+                    'decor_kwargs': decor_kwargs
                 }
-                setattr(self, f"{task_attr_name}_function", task_obj)
+                setattr(self, f"{task_attr_name}_function", initial_config)
 
-                if self.register_and_submit:
-                    return self._register_task(task_obj)
-            return wrapper
+                @wraps(func)
+                def wrapper(*args, **kwargs) -> Any:
+                    # Get the current stored function config to preserve original decor_kwargs
+                    current_config = getattr(self, f"{task_attr_name}_function", {})
+                    original_decor_kwargs = current_config.get('decor_kwargs', {})
 
-        return decorator
+                    # Save call-time task object, preserving original decor_kwargs
+                    task_obj: Dict[str, Any] = {
+                        'func': func,
+                        'args': args,
+                        'kwargs': kwargs,
+                        'decor_kwargs': original_decor_kwargs  # Preserve original decorator kwargs
+                    }
+                    setattr(self, f"{task_attr_name}_function", task_obj)
+
+                    if self.register_and_submit:
+                        return self._register_task(task_obj)
+
+                return wrapper
+
+            # Handle both @decorator and @decorator() cases
+            if _func is not None:
+                # Called as @decorator (without parentheses)
+                return decorator(_func)
+            else:
+                # Called as @decorator(...) (with parentheses)
+                return decorator
+
+        return decorator_factory
 
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
-                                threshold: float,
-                                operator: str = ''):
+                          threshold: float,
+                          operator: str = '',
+                          **decor_kwargs) -> Callable:
+        """Create a decorator for stop criterion functions.
+        
+        Args:
+            metric_name: Name of the metric to evaluate for stopping condition.
+            threshold: Threshold value for comparison.
+            operator: Comparison operator (optional for standard metrics).
+            
+        Returns:
+            Decorator function for stop criterion tasks.
+        """
         @typeguard.typechecked
-        def decorator(func: Callable):
+        def decorator(func: Callable) -> Callable:
+            """Decorator that registers a stop criterion function.
+            
+            Args:
+                func: The criterion function to be decorated.
+                
+            Returns:
+                Wrapped async function that evaluates the stopping condition.
+            """
             # Register the function reference immediately
             self.criterion_function = {
                 'func': func,
@@ -70,11 +302,21 @@ class ActiveLearner(WorkflowEngine):
                 'kwargs': {},
                 'operator': operator,
                 'threshold': threshold,
-                'metric_name': metric_name
+                'metric_name': metric_name,
+                'decor_kwargs': decor_kwargs or {}
             }
 
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            async def wrapper(*args, **kwargs) -> Tuple[bool, float]:
+                """Wrapper that evaluates the stopping condition.
+
+                Args:
+                    *args: Positional arguments for the criterion function.
+                    **kwargs: Keyword arguments for the criterion function.
+
+                Returns:
+                    Tuple of (should_stop: bool, metric_value: float).
+                """
                 # Update runtime args/kwargs
                 self.criterion_function.update({
                     'args': args,
@@ -82,16 +324,26 @@ class ActiveLearner(WorkflowEngine):
                 })
 
                 if self.register_and_submit:
-                    res = self._register_task(self.criterion_function).result()
+                    # await the result to process it
+                    res: Any = await self._register_task(self.criterion_function)
                     return self._check_stop_criterion(res)
+
             return wrapper
 
         return decorator
 
+    def _register_task(self, task_obj: Dict[str, Any], deps: Optional[Union[Any, Tuple[Any, ...]]] = None) -> Any:
+        """Register and submit a task for execution.
 
-    def _register_task(self, task_obj, deps=None):
-        func = task_obj['func']
-        args = task_obj['args']
+        Args:
+            task_obj: Dictionary containing task configuration with 'func', 'args', and 'kwargs'.
+            deps: Optional dependencies. Can be a single dependency or tuple of dependencies.
+
+        Returns:
+            Task future object for the submitted task.
+        """
+        func: Callable = task_obj['func']
+        args: Tuple[Any, ...] = task_obj['args']
 
         # Ensure deps is added as a tuple
         if deps:
@@ -99,32 +351,40 @@ class ActiveLearner(WorkflowEngine):
                 deps = (deps,)  # Wrap deps in a tuple if it's a single Task
             args += deps
 
-        kwargs = task_obj['kwargs']
+        kwargs: Dict[str, Any] = task_obj['kwargs']
+        decor_kwargs: Dict[Any] = task_obj['decor_kwargs']
+        as_executable: bool = decor_kwargs.pop('as_executable', True)
 
-        return super().__call__(func)(*args, **kwargs)
+        if as_executable:
+            return self.asyncflow.executable_task(func, **decor_kwargs)(*args, **kwargs)
+        else:
+            return self.asyncflow.function_task(func, **decor_kwargs)(*args, **kwargs)
 
-    def compare_metric(self, metric_name, metric_value, threshold, operator=''):
-        """
-        Compare a metric value against a threshold using a specified operator.
-        
+    def compare_metric(self, metric_name: str, metric_value: float, threshold: float, operator: str = '') -> bool:
+        """Compare a metric value against a threshold using a specified operator.
+
         Args:
-            metric_name (str): Name of the metric to compare.
-            metric_value (float): The value of the metric.
-            threshold (float): The threshold to compare against.
-            operator (str): The comparison operator. Supported values:
+            metric_name: Name of the metric to compare.
+            metric_value: The value of the metric.
+            threshold: The threshold to compare against.
+            operator: The comparison operator. Supported values:
                 - '<': metric_value < threshold
                 - '>': metric_value > threshold
                 - '==': metric_value == threshold
                 - '<=': metric_value <= threshold
                 - '>=': metric_value >= threshold
-        
+
         Returns:
-            bool: The result of the comparison.
+            The result of the comparison.
+
+        Raises:
+            ValueError: If operator is not provided for custom metrics or if
+                operator is not recognized.
         """
         # check for custom/user defined metric
         if not metrics.is_supported_metric(metric_name):
             if not operator:
-                excp = f'Operator value must be provided for custom metric {metric_name}, '
+                excp: str = f'Operator value must be provided for custom metric {metric_name}, '
                 excp += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
                 excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD'
                 raise ValueError(excp)
@@ -146,31 +406,45 @@ class ActiveLearner(WorkflowEngine):
         else:
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
-    def _start_pre_loop(self):
-        """
-        start the initlial step for active learning by 
-        defining and setting simulation and training tasks
-        """
+    def _start_pre_loop(self) -> Tuple[Any, Any]:
+        """Start the initial step for active learning by defining and setting simulation and training tasks.
 
-        sim_task = self._register_task(self.simulation_function)
-        train_task = self._register_task(self.training_function, deps=sim_task)
+        Returns:
+            Tuple containing (simulation_task, training_task) futures.
+        """
+        sim_task: Any = self._register_task(self.simulation_function)
+        train_task: Any = self._register_task(self.training_function, deps=sim_task)
         return sim_task, train_task
 
-    def _check_stop_criterion(self, stop_task_result):
+    def _check_stop_criterion(self, stop_task_result: Any) -> Tuple[bool, float]:
+        """Check if the stopping criterion is met based on task result.
 
+        Args:
+            stop_task_result: Result from the criterion task, should be convertible to float.
+
+        Returns:
+            Tuple of (should_stop: bool, metric_value: float).
+
+        Raises:
+            Exception: If the task result cannot be converted to a numerical value.
+            TypeError: If the stop criterion task doesn't produce a numerical value.
+        """
         try:
-            metric_value = eval(stop_task_result)
+            metric_value: float = float(stop_task_result)
         except Exception as e:
             raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
 
         # check if the metric value is a number
-        if isinstance(metric_value, float) or isinstance(metric_value, int):
-            operator = self.criterion_function['operator']
-            threshold = self.criterion_function['threshold']
-            metric_name = self.criterion_function['metric_name']
+        if isinstance(metric_value, (float, int)):
+            operator: str = self.criterion_function['operator']
+            threshold: float = self.criterion_function['threshold']
+            metric_name: str = self.criterion_function['metric_name']
+
+            self.metric_values_per_iteration[self.iteration] = metric_value
+            self.iteration += 1
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'\
+                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'
                       '. Breaking the active learning loop')
                 return True, metric_value
             else:
@@ -179,471 +453,38 @@ class ActiveLearner(WorkflowEngine):
         else:
             raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
 
-    def teach(self, max_iter:int = 0):
+    def teach(self) -> None:
+        """Teach method to be implemented by subclasses.            
+        Raises:
+            NotImplementedError: This method must be implemented by subclasses.
+        """
         raise NotImplementedError('This is not supported, please define your teach method and invoke it directly')
 
+    def get_metric_results(self) -> List[float]:
+        """Get the result of a task(s) by its name.
 
-    def get_result(self, task_name: str):
-        '''
-        Get the result of a task(s) by its name, tasks might have
-        similar name yet different future and task IDs.
-        '''
-        tasks = [t['future'].result() 
-                 for t in self.tasks.values() 
-                 if t['description']['name'] == task_name]
-
-        return tasks
-
-class SequentialActiveLearner(ActiveLearner):
-    '''
-    SequentialActiveLearner is a subclass of ActiveLearner that implements
-    a sequential active learning loop.
-
-           Iteration 1:
-    [Sim] -> [Active Learn] -> [Train]
-
-                |
-                v
-           Iteration 2:
-    [Sim] -> [Active Learn] -> [Train]
-
-                |
-                v
-           Iteration 3:
-    [Sim] -> [Active Learn] -> [Train]
-
-                |
-                v
-           Iteration N
-    '''
-    def __init__(self, engine: ResourceEngine) -> None:
-        '''
-        Initialize the SequentialActiveLearner object.
-
-        Args:
-            engine: The ResourceEngine object that manages the resources and
-            tasks submission to HPC resources during the active learning loop.
-        '''
-        super().__init__(engine, register_and_submit=False)
-
-    def teach(self, max_iter:int = 0, skip_pre_loop:bool = False):
-        '''
-        Run the active learning loop for a specified number of iterations.
-
-        Args:
-            max_iter (int, optional): The maximum number of iterations for the
-            active learning loop. If not provided, the value set during initialization
-            will be used. Defaults to 0.
-        '''
-        # start the initial step for active learning by
-        # defining and setting simulation and training tasks
-        if not self.simulation_function or \
-              not self.training_function or \
-                not self.active_learn_function:
-            raise Exception("Simulation and Training function must be set!")
-
-        if not max_iter and not self.criterion_function:
-            raise Exception("Either max_iter or stop_criterion_function must be provided.")
-
-        sim_task, train_task = (), ()
-
-        if not skip_pre_loop:
-            # step-1 invoke the pre_step only once
-            sim_task, train_task = self._start_pre_loop()
-
-        # if no max_iter is provided, run the loop indefinitely
-        # and until the stop criterion is met
-        if not max_iter:
-            max_iter = itertools.count()
-
-        else:
-            max_iter = range(max_iter)
-
-        # step-2 form the ACL loop and workflow
-        for i in max_iter:
-            print(f'Starting Iteration-{i}')
-            acl_task = self._register_task(self.active_learn_function, deps=(sim_task, train_task))
-
-            if self.criterion_function:
-                stop_task = self._register_task(self.criterion_function, deps=acl_task)
-                stop = stop_task.result()
-
-                should_stop, _ = self._check_stop_criterion(stop)
-                if should_stop:
-                    break
-
-            sim_task = self._register_task(self.simulation_function, deps=acl_task)
-            train_task = self._register_task(self.training_function, deps=sim_task)
-
-            # block/wait for each workflow until it finishes
-            train_task.result()
-
-class TaskConfig(BaseModel):
-    """Configuration for a single task's arguments"""
-    args: tuple = ()
-    kwargs: dict = {}
-
-
-class ParallelLearnerConfig(BaseModel):
-    """Configuration for one parallel learner's tasks with per-iteration support."""
-    simulation: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    training: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    active_learn: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    criterion: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-
-    class Config:
-        extra = "forbid"
-        json_encoders = {
-            tuple: list,
-        }
-
-    def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
-        """
-        Get the task configuration for a specific iteration.
+        Tasks might have similar names yet different future and task IDs.
         
         Args:
-            task_name: Name of the task ('simulation', 'training', 'active_learn', 'criterion')
-            iteration: The iteration number (0-based)
-            
+            task_name: Name of the task to retrieve results for.
+
         Returns:
-            TaskConfig for the specified iteration, or None if not configured
+            List of results from tasks with the matching name.
+
+        Note:
+            This method assumes the existence of a 'tasks' attribute that contains
+            task information with 'future' and 'description' fields.
         """
-        task_config = getattr(self, task_name, None)
-        if task_config is None:
-            return None
-            
-        # If it's a TaskConfig, return it directly (same config for all iterations)
-        if isinstance(task_config, TaskConfig):
-            return task_config
-            
-        # If it's a dict, look for iteration-specific config
-        if isinstance(task_config, dict):
-            # Try exact iteration match first
-            if iteration in task_config:
-                return task_config[iteration]
-            # Fall back to default config (key -1 or 'default')
-            return task_config.get(-1) or task_config.get('default')
-            
-        return None
+        return self.metric_values_per_iteration
 
+    async def shutdown(self, *args, **kwargs) -> Any:
+        """Shutdown the asyncflow workflow engine.
 
-class ParallelActiveLearner(ActiveLearner):
-    """
-    Parallel active learner that runs multiple learners concurrently.
-    Configure each learner via `ParallelLearnerConfig` with per-iteration support.
-    """
-
-    def __init__(self, engine: ResourceEngine):
-        super().__init__(engine, register_and_submit=False)
-
-    def _get_iteration_task_config(self, base_task: Dict,
-                                   config: Optional[ParallelLearnerConfig],
-                                   task_key: str, iteration: int) -> Dict:
-        """
-        Get task configuration for a specific iteration, merging base config with iteration-specific overrides.
-        
         Args:
-            base_task: Base task configuration from parent
-            config: Learner-specific configuration
-            task_key: Task type ('simulation', 'training', 'active_learn', 'criterion')
-            iteration: Current iteration number
-            
+            *args: Positional arguments to pass to asyncflow.shutdown().
+            **kwargs: Keyword arguments to pass to asyncflow.shutdown().
+
         Returns:
-            Merged task configuration
+            Result from asyncflow.shutdown().
         """
-        # Start with base task configuration
-        task_config = base_task.copy() if base_task else {"func": None, "args": (), "kwargs": {}}
-        
-        # Apply iteration-specific overrides if available
-        if config:
-            iter_config = config.get_task_config(task_key, iteration)
-            if iter_config:
-                # Use explicit None checks to allow intentional clearing with empty collections
-                if iter_config.args is not None:
-                    task_config["args"] = iter_config.args
-                if iter_config.kwargs is not None:
-                    task_config["kwargs"] = iter_config.kwargs
-                    
-        return task_config
-
-    def teach(
-        self,
-        parallel_learners: int = 2,
-        max_iter: int = 0,
-        skip_pre_loop: bool = False,
-        learner_configs: Optional[List[Optional[ParallelLearnerConfig]]] = None,
-    ) -> List[Any]:
-        if parallel_learners < 2:
-            raise ValueError("For single learner, use SequentialActiveLearner")
-
-        learner_configs = learner_configs or [None] * parallel_learners
-        if len(learner_configs) != parallel_learners:
-            raise ValueError("learner_configs length must match parallel_learners")
-
-        def _run_learner_with_iteration_config(learner_id: int):
-            """Run a single learner with per-iteration configuration support."""
-            config = learner_configs[learner_id]
-            
-            # Validate required functions
-            if not self.simulation_function or not self.training_function or not self.active_learn_function:
-                raise Exception("Simulation, Training, and Active Learning functions must be set!")
-
-            if not max_iter and not self.criterion_function:
-                raise Exception("Either max_iter or stop_criterion_function must be provided.")
-
-            print(f"Starting Learner-{learner_id}")
-            
-            # Initialize tasks for pre-loop
-            sim_task, train_task = (), ()
-            
-            if not skip_pre_loop:
-                # Pre-loop: use iteration 0 configuration
-                sim_config = self._get_iteration_task_config(
-                    self.simulation_function, config, 'simulation', 0
-                )
-                train_config = self._get_iteration_task_config(
-                    self.training_function, config, 'training', 0
-                )
-                
-                sim_task = self._register_task(sim_config)
-                train_task = self._register_task(train_config, deps=sim_task)
-
-            # Determine iteration range
-            if not max_iter:
-                iteration_range = itertools.count()
-            else:
-                iteration_range = range(max_iter)
-
-            # Main learning loop with per-iteration configuration
-            for i in iteration_range:
-                print(f'[Learner-{learner_id}] Starting Iteration-{i}')
-                
-                # Get iteration-specific configurations
-                acl_config = self._get_iteration_task_config(
-                    self.active_learn_function, config, 'active_learn', i
-                )
-                
-                acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
-
-                # Check stop criterion if configured
-                if self.criterion_function:
-                    criterion_config = self._get_iteration_task_config(
-                        self.criterion_function, config, 'criterion', i
-                    )
-                    stop_task = self._register_task(criterion_config, deps=acl_task)
-                    stop = stop_task.result()
-
-                    should_stop, _ = self._check_stop_criterion(stop)
-                    if should_stop:
-                        break
-
-                # Prepare next iteration tasks with iteration-specific configs
-                next_sim_config = self._get_iteration_task_config(
-                    self.simulation_function, config, 'simulation', i + 1
-                )
-                next_train_config = self._get_iteration_task_config(
-                    self.training_function, config, 'training', i + 1
-                )
-                
-                sim_task = self._register_task(next_sim_config, deps=acl_task)
-                train_task = self._register_task(next_train_config, deps=sim_task)
-
-                # Wait for training to complete
-                train_task.result()
-
-            print(f"Learner-{learner_id} completed")
-
-        # Submit all learners asynchronously
-        futures = [self.as_async(_run_learner_with_iteration_config)(i) for i in range(parallel_learners)]
-        return [f.result() for f in futures]
-
-    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create iteration-specific configurations.
-        
-        Args:
-            task_name: Name of the task type
-            schedule: Dictionary mapping iteration numbers to args/kwargs
-            
-        Returns:
-            Dictionary mapping iterations to TaskConfig objects
-            
-        Example:
-            schedule = {
-                0: {'args': (param1,), 'kwargs': {'lr': 0.01}},
-                5: {'args': (param2,), 'kwargs': {'lr': 0.005}},
-                -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
-            }
-        """
-        return {
-            iteration: TaskConfig(
-                args=config.get('args', ()),
-                kwargs=config.get('kwargs', {})
-            )
-            for iteration, config in schedule.items()
-        }
-
-    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict]) -> Dict[int, TaskConfig]:
-        """
-        Helper method to create adaptive iteration schedules using a function.
-        
-        Args:
-            task_name: Name of the task type
-            param_schedule: Function that takes iteration number and returns config dict
-            
-        Returns:
-            Dictionary with computed TaskConfig for each iteration
-            
-        Example:
-            def adaptive_lr(iteration):
-                lr = 0.01 * (0.9 ** iteration)
-                return {'kwargs': {'learning_rate': lr}}
-            
-            adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
-        """
-        # For now, we'll pre-compute a reasonable range. In practice, you might
-        # want to compute this dynamically or use a lazy evaluation approach.
-        max_precompute = 100
-        return {
-            i: TaskConfig(
-                args=param_schedule(i).get('args', ()),
-                kwargs=param_schedule(i).get('kwargs', {})
-            )
-            for i in range(max_precompute)
-        }
-
-class AlgorithmSelector(ActiveLearner):
-    """
-    AlgorithmSelector is a subclass of ActiveLearner that implements 
-    multiple active learning pipelines in parallel, each pipeline is a 
-    sequential active learning loop, and uses the same simulation and 
-    training tasks, but distinct active learning task.
-    """
-    def __init__(self, engine: ResourceEngine) -> None:
-        ''' 
-        Initialize the AlgorithmSelector object.
-
-        Args:
-            engine: The ResourceEngine object that manages the resources and
-            tasks submission to HPC resources during the active learning loop.
-        '''
-        super().__init__(engine, register_and_submit=False)
-        self.active_learn_functions: Dict[str, Dict] = {}
-
-        # A dictionary to store stats for each active learning pipeline
-        # e.g. self.algorithm_results['algo_1'] = {'iterations': 5, 'last_result': 0.01}
-        self.algorithm_results: Dict[str, Dict] = {}
-        self.best_pipeline_name = None
-        self.best_pipeline_stats = None
-
-    def active_learn_task(self, name: str):
-        """
-        A decorator that registers an active learning task under the given name.
-        
-        Usage:
-        
-        @algo_selector.active_learn_task(name='algo_1')
-        def active_learn_1(*args):
-            ...
-        
-        @algo_selector.active_learn_task(name='algo_2')
-        def active_learn_2(*args):
-            ...
-        """
-        def decorator(func: Callable):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                self.active_learn_functions[name] = {
-                    'func': func,
-                    'args': args,
-                    'kwargs': kwargs
-                }
-                if self.register_and_submit:
-                    return self._register_task(self.active_learn_functions[name])
-            return wrapper
-        return decorator
-
-    def teach_and_select(self, max_iter:int = 0, skip_pre_loop:bool = False):
-        """
-        Run the active learning pipelines in parallel, each using a different AL algorithm,
-        for multiple iterations similar to SequentialActiveLearner.
-        After that, select the best active learning algorithm
-
-        Args:
-            max_iter (int, optional): The maximum number of iterations for each pipeline.
-                                      If 0 and a criterion function is provided, it will run
-                                      until the criterion is met.
-            skip_pre_loop (bool, optional): If True, skip the initial pre-loop step
-                                            (simulation+training setup).
-        """
-        if not self.simulation_function or \
-              not self.training_function or \
-                not self.active_learn_functions:
-            raise Exception("Simulation, Training, and at least one AL function must be set!")
-
-        if not max_iter and not self.criterion_function:
-            raise Exception("Either max_iter or a stop_criterion_function must be provided.")
-
-        def _parallel_active_learn(al_task, name):
-            if not skip_pre_loop:
-                sim_task, train_task = self._start_pre_loop()
-            else:
-                sim_task, train_task = (), ()
-
-            if not max_iter:
-                iteration_range = itertools.count()
-            else:
-                iteration_range = range(max_iter)
-
-            stop_value = float('inf')
-            num_iterations = 0
-
-            for i in iteration_range:
-                print(f'[Pipeline: {al_task["func"].__name__}] Starting Iteration-{i}')
-                acl_task = self._register_task(al_task, deps=(sim_task, train_task))
-
-                if self.criterion_function:
-                    stop_task = self._register_task(self.criterion_function, deps=acl_task)
-                    stop = stop_task.result()
-
-                    should_stop, stop_value = self._check_stop_criterion(stop)
-                    if should_stop:
-                        num_iterations = i + 1
-                        break
-
-                sim_task = self._register_task(self.simulation_function, deps=acl_task)
-                train_task = self._register_task(self.training_function, deps=sim_task)
-                # Wait for the training to complete before next iteration
-                train_task.result()
-                num_iterations = i + 1
-            
-            self.algorithm_results[name] = {
-                'iterations': num_iterations,
-                'last_result': stop_value
-            }
-
-        submitted_learners = []
-        for name, al_task in self.active_learn_functions.items():
-            async_teach = self.as_async(_parallel_active_learn)
-            submitted_learners.append(async_teach(al_task, name))
-            print(f'Pipeline-{name} is submitted for execution')
-
-        # block/wait for each pipeline until it finishes
-        [learner.result() for learner in submitted_learners]
-
-        if self.algorithm_results:
-            # Sort by (iterations, last_result)
-            sorted_pipelines = sorted(
-                self.algorithm_results.items(),
-                key=lambda kv: (kv[1]['iterations'], kv[1]['last_result'])
-            )
-            self.best_pipeline_name, self.best_pipeline_stats = sorted_pipelines[0]
-            print(f"Best algorithm is '{self.best_pipeline_name}' "
-                  f"with {self.best_pipeline_stats['iterations']} iteration(s) "
-                  f"and final metric result {self.best_pipeline_stats['last_result']}")
-        else:
-            excp = "No pipeline stats found! Please make sure that at least one active learning algorithm "
-            excp += "is used, and the status of each active learning pipeline to make sure that at least "
-            excp += "one of them is running successfully!"
-            raise ValueError(excp)
-
+        return await self.asyncflow.shutdown(*args, **kwargs)

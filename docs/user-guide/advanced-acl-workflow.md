@@ -32,44 +32,39 @@ code_path = f'{sys.executable} {os.getcwd()}'
 
 # Define and register the simulation task
 @custom_acl.simulation_task
-def simulation(*args):
-    return Task(executable=f'{code_path}/simulation.py')
+async def simulation(*args):
+    return f'{code_path}/simulation.py'
 
 # Define and register the training task
 @custom_acl.training_task
-def training(*args):
-    return Task(executable=f'{code_path}/training.py')
+async def training(*args):
+    return f'{code_path}/training.py'
 
 # Define and register the active learning task
 @custom_acl.active_learn_task
-def active_learn(*args):
-    return Task(executable=f'{code_path}/active_learn.py')
+async def active_learn(*args):
+    return f'{code_path}/active_learn.py'
 
 # Defining the stop criterion with a metric (MSE in this case)
 @custom_acl.as_stop_criterion(metric_name=MODEL_ACCURACY, threshold=0.99)
-def check_accuracy(*args):
-    return Task(executable=f'{code_path}/check_accuracy.py')
+async def check_accuracy(*args):
+    return f'{code_path}/check_accuracy.py'
 
 # Special task that can perform different operation (example post-processing)
 @custom_acl.utility_task()
-def post_process_simulation(*args):
-    return Task(executable=f'{code_path}/post_process_simulation.py')
+async def post_process_simulation(*args):
+    return f'{code_path}/post_process_simulation.py'
 ```
-
 
 Now, lets express the core custom AL policy logic. The example below will:
 
-
-* Submits 5 AL workflows in parallel using `as_async` decorator. (Workflow parallelism)
+* Submits 5 AL workflows in parallel (Workflow parallelism).
 * Each workflow will run for 10 iterations sequentially. 
-* Each iteration will submit 3 simulation tasks in parallel. (task parallelism)
+* Each iteration will submit 3 simulation tasks in parallel (task parallelism).
 
-!!! tip
-    `as_async` allows the `blocking` workflows to be `non-blocking` while keep managing their execution via ROSE in the background.
 
 ```python
-@custom_acl.as_async
-def teach():
+async def teach():
     # 10 iterations of active learning
     for acl_iter in range(10):
         print(f'Starting Iteration-{acl_iter}')
@@ -82,7 +77,7 @@ def teach():
 
         # Now run training and active_learn
         train = training(*simulations)
-        active = active_learn(simulations, train)
+        active = await active_learn(simulations, train)
 
         if check_accuracy(active):
             print('Accuracy met the threshold')
@@ -93,9 +88,5 @@ Now, lets submit 5 AL workflows for execution:
 
 ```python
 # invoke the custom/user-defined teach() method
-al_workflows = []
-for i in range(5):
-    al_workflows.append(teach())
-
-[wf.result() for wf in al_workflows]
+results = await asyncio.gather(*[teach() for _ in range(1024)])
 ```
