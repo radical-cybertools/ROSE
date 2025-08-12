@@ -226,32 +226,39 @@ class Learner:
 
     def register_decorator(self, task_attr_name: str) -> Callable:
         """Decorator factory that registers a task function under a given name."""
-        
+
         def decorator_factory(_func=None, **decor_kwargs) -> Callable:
             """Actual decorator returned to wrap the function."""
-            
+
             def decorator(func: Callable) -> Callable:
+                # Extract as_executable at decoration time and create clean decor_kwargs
+                as_executable = decor_kwargs.pop('as_executable', True)
+                clean_decor_kwargs = decor_kwargs  # Now clean of internal parameters
+
                 # Save initial registration at decoration time
                 initial_config = {
                     'func': func,
                     'args': (),
                     'kwargs': {},
-                    'decor_kwargs': decor_kwargs
+                    'decor_kwargs': clean_decor_kwargs,
+                    'as_executable': as_executable  # Store as separate key
                 }
                 setattr(self, f"{task_attr_name}_function", initial_config)
 
                 @wraps(func)
                 def wrapper(*args, **kwargs) -> Any:
-                    # Get the current stored function config to preserve original decor_kwargs
+                    # Get the current stored function config to preserve original settings
                     current_config = getattr(self, f"{task_attr_name}_function", {})
                     original_decor_kwargs = current_config.get('decor_kwargs', {})
+                    original_as_executable = current_config.get('as_executable', True)
 
-                    # Save call-time task object, preserving original decor_kwargs
+                    # Save call-time task object, preserving original settings
                     task_obj: Dict[str, Any] = {
                         'func': func,
                         'args': args,
                         'kwargs': kwargs,
-                        'decor_kwargs': original_decor_kwargs  # Preserve original decorator kwargs
+                        'decor_kwargs': original_decor_kwargs,  # Clean kwargs for workflow manager
+                        'as_executable': original_as_executable  # Separate internal parameter
                     }
                     setattr(self, f"{task_attr_name}_function", task_obj)
 
@@ -353,7 +360,7 @@ class Learner:
 
         kwargs: Dict[str, Any] = task_obj['kwargs']
         decor_kwargs: Dict[Any] = task_obj['decor_kwargs']
-        as_executable: bool = decor_kwargs.pop('as_executable', True)
+        as_executable: bool = task_obj.get('as_executable', True)
 
         if as_executable:
             return self.asyncflow.executable_task(func, **decor_kwargs)(*args, **kwargs)

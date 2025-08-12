@@ -57,7 +57,7 @@ class ReinforcementLearner(Learner):
                 'args': (),
                 'kwargs': {}
             }
-            
+
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 # Update runtime args/kwargs
@@ -65,7 +65,7 @@ class ReinforcementLearner(Learner):
                     'args': args,
                     'kwargs': kwargs
                 })
-                
+
                 if self.register_and_submit:
                     return await self._register_task(self.environment_function)
             return wrapper
@@ -80,7 +80,7 @@ class ReinforcementLearner(Learner):
                 'args': (),
                 'kwargs': {}
             }
-            
+
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 # Update runtime args/kwargs  
@@ -88,7 +88,7 @@ class ReinforcementLearner(Learner):
                     'args': args,
                     'kwargs': kwargs
                 })
-                
+
                 if self.register_and_submit:
                     return await self._register_task(self.update_function)
             return wrapper
@@ -100,12 +100,12 @@ class ReinforcementLearner(Learner):
                           operator: str = '',
                           **decor_kwargs) -> Callable:
         """Create a decorator for stop criterion functions.
-        
+
         Args:
             metric_name: Name of the metric to evaluate for stopping condition.
             threshold: Threshold value for comparison.
             operator: Comparison operator (optional for standard metrics).
-            
+
         Returns:
             Decorator function for stop criterion tasks.
         """
@@ -115,7 +115,7 @@ class ReinforcementLearner(Learner):
             
             Args:
                 func: The criterion function to be decorated.
-                
+
             Returns:
                 Wrapped async function that evaluates the stopping condition.
             """
