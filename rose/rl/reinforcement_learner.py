@@ -39,125 +39,15 @@ class ReinforcementLearner(Learner):
         """
         super().__init__(asyncflow, register_and_submit)
 
-        self.test_function = {}
+
         self.update_function = {}
         self.environment_function = {}
         self.learner_id: Optional[int] = None
+        self.test_function = self.criterion_function
 
         # Create custom decorators that immediately register functions
-        self.update_task: Callable = self._create_update_decorator()
-        self.environment_task: Callable = self._create_environment_decorator()
-
-    def _create_environment_decorator(self) -> Callable:
-        """Create environment task decorator that immediately registers the function."""
-        def decorator(func: Callable) -> Callable:
-            # Register the function immediately when decorated
-            self.environment_function = {
-                'func': func,
-                'args': (),
-                'kwargs': {}
-            }
-
-            @wraps(func)
-            async def wrapper(*args, **kwargs):
-                # Update runtime args/kwargs
-                self.environment_function.update({
-                    'args': args,
-                    'kwargs': kwargs
-                })
-
-                if self.register_and_submit:
-                    return await self._register_task(self.environment_function)
-            return wrapper
-        return decorator
-
-    def _create_update_decorator(self) -> Callable:
-        """Create update task decorator that immediately registers the function."""
-        def decorator(func: Callable) -> Callable:
-            # Register the function immediately when decorated
-            self.update_function = {
-                'func': func,
-                'args': (),
-                'kwargs': {}
-            }
-
-            @wraps(func)
-            async def wrapper(*args, **kwargs):
-                # Update runtime args/kwargs  
-                self.update_function.update({
-                    'args': args,
-                    'kwargs': kwargs
-                })
-
-                if self.register_and_submit:
-                    return await self._register_task(self.update_function)
-            return wrapper
-        return decorator
-
-    @typeguard.typechecked
-    def as_stop_criterion(self, metric_name: str,
-                          threshold: float,
-                          operator: str = '',
-                          **decor_kwargs) -> Callable:
-        """Create a decorator for stop criterion functions.
-
-        Args:
-            metric_name: Name of the metric to evaluate for stopping condition.
-            threshold: Threshold value for comparison.
-            operator: Comparison operator (optional for standard metrics).
-
-        Returns:
-            Decorator function for stop criterion tasks.
-        """
-        @typeguard.typechecked
-        def decorator(func: Callable) -> Callable:
-            """Decorator that registers a stop criterion function.
-            
-            Args:
-                func: The criterion function to be decorated.
-
-            Returns:
-                Wrapped async function that evaluates the stopping condition.
-            """
-            # Register the function reference immediately when decorated
-            self.test_function = {
-                'func': func,
-                'args': (),
-                'kwargs': {},
-                'operator': operator,
-                'threshold': threshold,
-                'metric_name': metric_name,
-                'decor_kwargs': decor_kwargs or {}
-            }
-            
-            # Also set criterion_function immediately
-            self.criterion_function = self.test_function
-
-            @wraps(func)
-            async def wrapper(*args, **kwargs) -> Tuple[bool, float]:
-                """Wrapper that evaluates the stopping condition.
-
-                Args:
-                    *args: Positional arguments for the criterion function.
-                    **kwargs: Keyword arguments for the criterion function.
-
-                Returns:
-                    Tuple of (should_stop: bool, metric_value: float).
-                """
-                # Update runtime args/kwargs
-                self.test_function.update({
-                    'args': args,
-                    'kwargs': kwargs
-                })
-
-                if self.register_and_submit:
-                    # await the result to process it
-                    res: Any = await self._register_task(self.criterion_function)
-                    return self._check_stop_criterion(res)
-
-            return wrapper
-
-        return decorator
+        self.update_task: Callable = self.register_decorator('update')
+        self.environment_task: Callable = self.register_decorator('environment')
 
 
 class SequentialReinforcementLearner(ReinforcementLearner):
@@ -185,13 +75,13 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                     v
         Iteration N:
         [Env] -> [Update] -> [Test]
-    
+
     Each iteration consists of three sequential steps:
     1. Environment interaction to collect experiences
     2. Policy update based on collected experiences  
     3. Testing/evaluation of the updated policy
     """
-    
+
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the SequentialReinforcementLearner.
         
@@ -210,7 +100,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         iterations. Each iteration performs environment interaction, policy update,
         and testing in sequence. The loop can be terminated early if stopping
         criteria are met. Supports per-iteration parameter customization.
-        
+
         Args:
             max_iter (int, optional): The maximum number of iterations for the
                 reinforcement learning loop. If 0 or not provided, runs indefinitely.
@@ -219,15 +109,16 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 phases before the main learning loop.
             learner_config (Optional[LearnerConfig]): Configuration object containing
                 per-iteration parameters for environment, update, and test functions.
-                
+    
         Returns:
             The result of the learning process. Type depends on the specific
             implementation of the learning functions.
-                
+
         Raises:
             Exception: If environment, update, or test functions are not set.
             Exception: If neither max_iter nor criterion_function is provided.
         """
+        self.test_function = self.criterion_function
         # Validate that required functions are set
         if not self.environment_function or not self.update_function:
             raise Exception("Environment and Update function must be set!")
@@ -253,7 +144,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             update_config: TaskConfig = self._get_iteration_task_config(
                 self.update_function, learner_config, 'update', 0
             )
-            
+
             env_task = self._register_task(env_config)
             update_task = self._register_task(update_config, deps=env_task)
 
@@ -268,7 +159,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         for i in iteration_range:
             learner_prefix: str = f'[Learner-{self.learner_id}] ' if self.learner_id is not None else ''
             print(f'{learner_prefix}Starting Iteration-{i}')
-            
+
             # Get iteration-specific test configuration
             test_config: TaskConfig = self._get_iteration_task_config(
                 self.test_function, learner_config, 'test', i
@@ -296,7 +187,6 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             next_update_config: TaskConfig = self._get_iteration_task_config(
                 self.update_function, learner_config, 'update', i + 1
             )
-
             env_task = self._register_task(next_env_config, deps=test_task)
             update_task = self._register_task(next_update_config, deps=env_task)
 
@@ -336,36 +226,37 @@ class ParallelExperience(ReinforcementLearner):
             to their function configurations.
         work_dir (str): Working directory for saving and loading experience banks.
     """
-    
+
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the ParallelExperience learner.
-        
+
         Args:
             asyncflow (WorkflowEngine): The workflow engine for managing asynchronous tasks.
         """
         super().__init__(asyncflow, register_and_submit=False)
         self.environment_functions: Dict[str, Dict] = {}
         self.work_dir = '.'
-        
+        self.test_function = self.criterion_function
+
     def environment_task(self, name: str) -> Callable:
         """Decorator to register an environment task under a given name.
-        
+
         This decorator allows registering multiple environment functions that will
         be executed in parallel during the learning process. Each environment
         should collect experiences independently.
-        
+
         Args:
             name (str): Unique name identifier for the environment task.
-            
+
         Returns:
             Callable: Decorator function that wraps the environment function.
-            
+
         Example:
             @par_exp.environment_task(name='env_1')
             def environment_1(*args):
                 # Environment 1 logic here
                 pass
-            
+
             @par_exp.environment_task(name='env_2')
             def environment_2(*args):
                 # Environment 2 logic here
@@ -386,14 +277,14 @@ class ParallelExperience(ReinforcementLearner):
 
     def merge_banks(self) -> None:
         """Merge all experience banks from parallel environments.
-        
+
         This method searches for experience bank files in the working directory,
         loads them, merges them into a single consolidated experience bank, and
         then removes the individual bank files to clean up the workspace.
-        
+
         The merged experience bank is saved as "experience_bank.pkl" in the
         working directory.
-        
+
         Note:
             Experience bank files are expected to follow the naming pattern
             "experience_bank_*.pkl" where * can be any string identifier.
@@ -406,17 +297,17 @@ class ParallelExperience(ReinforcementLearner):
         for filename in os.listdir(self.work_dir):
             if filename.startswith("experience_bank_") and filename.endswith(".pkl"):
                 bank_files.append(os.path.join(self.work_dir, filename))
-        
+
         if not bank_files:
             print("No experience banks found!")
             return
 
         print(f"Found {len(bank_files)} experience banks")
-        
+
         # Create merged bank and load all files
         merged = ExperienceBank()
         total = 0
-        
+
         for bank_file in bank_files:
             try:
                 bank = ExperienceBank.load(bank_file)
@@ -425,7 +316,7 @@ class ParallelExperience(ReinforcementLearner):
                 print(f"  Merged {len(bank)} from {os.path.basename(bank_file)}")
             except Exception as e:
                 print(f"  Failed to load {bank_file}: {e}")
-    
+
         # Clean up individual bank files
         for bank_file in bank_files:
             try:
@@ -448,7 +339,7 @@ class ParallelExperience(ReinforcementLearner):
         multiple environments in parallel, merges their experiences, updates
         the policy, and tests performance. Supports per-iteration parameter
         customization.
-        
+
         Args:
             max_iter (int, optional): The maximum number of iterations for the
                 reinforcement learning loop. If 0 or not provided, runs indefinitely.
@@ -457,11 +348,11 @@ class ParallelExperience(ReinforcementLearner):
                 and update phases before the main learning loop.
             learner_config (Optional[LearnerConfig]): Configuration object containing
                 per-iteration parameters for environment, update, and test functions.
-                
+
         Returns:
             The result of the learning process. Type depends on the specific
             implementation of the learning functions.
-                
+
         Raises:
             Exception: If environment functions, update function, or test function
                 are not properly configured.
@@ -481,7 +372,7 @@ class ParallelExperience(ReinforcementLearner):
 
         # Initialize tasks for pre-loop
         update_task: Tuple = ()
-        
+
         if not skip_pre_loop:
             # Pre-loop: collect experiences and update
             env_tasks = []
@@ -700,16 +591,16 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
         async def rl_learner_workflow(learner_id: int) -> Any:
             """Run a single SequentialReinforcementLearner.
-            
+
             Internal async function that manages the lifecycle of a single
             SequentialReinforcementLearner within the parallel learning context.
-            
+
             Args:
                 learner_id: Unique identifier for this learner instance.
                 
             Returns:
                 The result from the sequential learner's learn method.
-                
+
             Raises:
                 Exception: Re-raises any exception from the sequential learner
                     with additional context about which learner failed.
@@ -719,7 +610,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                 sequential_learner: SequentialReinforcementLearner = self._create_sequential_learner(
                     learner_id, learner_configs[learner_id]
                 )
-                
+
                 # Convert parallel config to sequential config
                 sequential_config: Optional[LearnerConfig] = self._convert_to_sequential_config(
                     learner_configs[learner_id]

@@ -279,43 +279,56 @@ class Learner:
 
     @typeguard.typechecked
     def as_stop_criterion(self, metric_name: str,
-                          threshold: float,
-                          operator: str = '',
-                          **decor_kwargs) -> Callable:
+                        threshold: float,
+                        operator: str = '',
+                        as_executable: bool = True,
+                        **decor_kwargs) -> Callable:
         """Create a decorator for stop criterion functions.
-        
+
         Args:
             metric_name: Name of the metric to evaluate for stopping condition.
             threshold: Threshold value for comparison.
             operator: Comparison operator (optional for standard metrics).
-            
+            as_executable: Whether the task should be executable (default: True).
+            **decor_kwargs: Additional decorator keyword arguments.
+
         Returns:
             Decorator function for stop criterion tasks.
         """
+
         @typeguard.typechecked
         def decorator(func: Callable) -> Callable:
             """Decorator that registers a stop criterion function.
-            
+
             Args:
                 func: The criterion function to be decorated.
-                
+
             Returns:
                 Wrapped async function that evaluates the stopping condition.
             """
-            # Register the function reference immediately
-            self.criterion_function = {
+            # Extract as_executable from decor_kwargs, but use the function parameter as default
+            final_as_executable = decor_kwargs.pop('as_executable', as_executable)
+            clean_decor_kwargs = decor_kwargs
+            
+            # Store initial registration at decoration time
+            initial_config = {
                 'func': func,
                 'args': (),
                 'kwargs': {},
+                'decor_kwargs': clean_decor_kwargs,
+                'as_executable': final_as_executable,  # Use the final determined value
+                # Include stop criterion specific fields
                 'operator': operator,
                 'threshold': threshold,
-                'metric_name': metric_name,
-                'decor_kwargs': decor_kwargs or {}
+                'metric_name': metric_name
             }
 
+            # Only set criterion_function
+            setattr(self, 'criterion_function', initial_config)
+
             @wraps(func)
-            async def wrapper(*args, **kwargs) -> Tuple[bool, float]:
-                """Wrapper that evaluates the stopping condition.
+            async def async_wrapper(*args, **kwargs) -> Tuple[bool, float]:
+                """Async wrapper that evaluates the stopping condition.
 
                 Args:
                     *args: Positional arguments for the criterion function.
@@ -324,18 +337,36 @@ class Learner:
                 Returns:
                     Tuple of (should_stop: bool, metric_value: float).
                 """
-                # Update runtime args/kwargs
-                self.criterion_function.update({
+                # Get current config to preserve original settings
+                current_config = getattr(self, 'criterion_function', {})
+                original_decor_kwargs = current_config.get('decor_kwargs', clean_decor_kwargs)
+                original_as_executable = current_config.get('as_executable', final_as_executable)
+
+                # Update task object with runtime values
+                task_obj = {
+                    'func': func,
                     'args': args,
-                    'kwargs': kwargs
-                })
+                    'kwargs': kwargs,
+                    'decor_kwargs': original_decor_kwargs,
+                    'as_executable': original_as_executable,
+                    # Preserve stop criterion specific fields
+                    'operator': operator,
+                    'threshold': threshold,
+                    'metric_name': metric_name
+                }
+
+                # Only update criterion_function
+                setattr(self, 'criterion_function', task_obj)
 
                 if self.register_and_submit:
-                    # await the result to process it
-                    res: Any = await self._register_task(self.criterion_function)
-                    return self._check_stop_criterion(res)
+                    # Register the task and process the result
+                    result = await self._register_task(task_obj)
+                    return self._check_stop_criterion(result)
+                
+                # If not submitting immediately, return default values
+                return False, 0.0
 
-            return wrapper
+            return async_wrapper
 
         return decorator
 
