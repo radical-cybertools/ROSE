@@ -24,6 +24,7 @@ Homepage = "https://github.com/radical-cybertools/ROSE"
 Issues = "https://github.com/radical-cybertools/ROSE/issues"
 Documentation = "https://radical-cybertools.github.io/ROSE/"
 
+[project.optional-dependencies]
 lint = ["ruff"]
 
 # All test deps
