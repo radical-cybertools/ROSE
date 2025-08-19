@@ -1,14 +1,11 @@
-import typeguard
-import itertools
-
-from typing import Callable, Dict, Any, Optional, List, Union, Tuple, Type
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import typeguard
 from pydantic import BaseModel
-
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
-from radical.asyncflow import ConcurrentExecutionBackend
-
+from radical.asyncflow import (
+    WorkflowEngine,
+)
 
 from .metrics import LearningMetrics as metrics
 
@@ -81,11 +78,11 @@ class LearnerConfig(BaseModel):
         task_config: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = getattr(self, task_name, None)
         if task_config is None:
             return None
-            
+
         # If it's a TaskConfig, return it directly (same config for all iterations)
         if isinstance(task_config, TaskConfig):
             return task_config
-            
+
         # If it's a dict, look for iteration-specific config
         if isinstance(task_config, dict):
             # Try exact iteration match first
@@ -149,7 +146,7 @@ class Learner:
 
         # Start with a copy of the base task (or empty dict if None)
         task_config = base_task.copy() if base_task else {}
-        
+
         # Ensure required keys exist with defaults
         task_config.setdefault("func", None)
         task_config.setdefault("args", ())
@@ -303,7 +300,7 @@ class Learner:
                 'threshold': threshold,
                 'metric_name': metric_name,
             }
-            setattr(self, 'criterion_function', base_task_obj)
+            self.criterion_function = base_task_obj
 
             @wraps(func)
             async def async_wrapper(*args, **kwargs) -> Tuple[bool, float]:
@@ -321,7 +318,7 @@ class Learner:
                 }
 
                 # Update so external callers always see "latest state"
-                setattr(self, 'criterion_function', task_obj)
+                self.criterion_function = task_obj
 
                 if self.register_and_submit:
                     # Submit and check the stop criterion

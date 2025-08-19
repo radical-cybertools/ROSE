@@ -1,14 +1,13 @@
 import asyncio
-import typeguard
 import itertools
-from typing import Callable, Dict, Any, Tuple, Optional, List, Union, Iterator
+from collections.abc import Iterator
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from rose.learner import Learner
-from rose.learner import TaskConfig
-from rose.learner import LearnerConfig
-
+import typeguard
 from radical.asyncflow import WorkflowEngine
+
+from rose.learner import Learner, LearnerConfig, TaskConfig
 
 
 class ReinforcementLearner(Learner):
@@ -90,7 +89,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         super().__init__(asyncflow, register_and_submit=True)
 
-    async def learn(self, 
+    async def learn(self,
                    max_iter: int = 0,
                    skip_pre_loop: bool = False,
                    learner_config: Optional[LearnerConfig] = None) -> Any:
@@ -289,6 +288,7 @@ class ParallelExperience(ReinforcementLearner):
             "experience_bank_*.pkl" where * can be any string identifier.
         """
         import os
+
         from .experience import ExperienceBank
 
         # Find all experience bank files
@@ -327,7 +327,7 @@ class ParallelExperience(ReinforcementLearner):
         merged.save(self.work_dir, "experience_bank.pkl")
         print(f"  Saved merged bank with {total} total experiences")
 
-    async def learn(self, 
+    async def learn(self,
                    max_iter: int = 0,
                    skip_pre_loop: bool = False,
                    learner_config: Optional[LearnerConfig] = None) -> Any:
@@ -473,8 +473,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         super().__init__(asyncflow, register_and_submit=False)
 
     def _create_sequential_learner(
-        self, 
-        learner_id: int, 
+        self,
+        learner_id: int,
         config: Optional[LearnerConfig]
     ) -> SequentialReinforcementLearner:
         """Create a SequentialReinforcementLearner instance for a parallel learner.
@@ -508,7 +508,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, 
+        self,
         parallel_config: Optional[LearnerConfig]
     ) -> Optional[LearnerConfig]:
         """Convert a LearnerConfig to a LearnerConfig.

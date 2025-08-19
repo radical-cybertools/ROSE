@@ -1,15 +1,11 @@
-import os
-import pytest
-import tempfile
-import shutil
-
-from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.al.active_learner import ParallelActiveLearner
-
 from concurrent.futures import ThreadPoolExecutor
 
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ConcurrentExecutionBackend
+import pytest
+from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+
+from rose.al.active_learner import ParallelActiveLearner
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
+
 
 @pytest.mark.asyncio
 async def test_active_learning_pipeline_functions():

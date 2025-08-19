@@ -1,12 +1,14 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Any, List, Optional
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
-from rose.al.active_learner import Learner, TaskConfig, LearnerConfig
-from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
+
+from rose.al.active_learner import (
+    SequentialActiveLearner,
+    TaskConfig,
+)
 
 
 class TestSequentialActiveLearner:
@@ -29,7 +31,7 @@ class TestSequentialActiveLearner:
         sequential_learner.training_function = AsyncMock(return_value="train_result")
         sequential_learner.active_learn_function = AsyncMock(return_value="active_result")
         sequential_learner.criterion_function = AsyncMock(return_value=False)
-        
+
         # Mock the parent class methods
         sequential_learner._get_iteration_task_config = MagicMock(
             return_value=MagicMock(spec=TaskConfig)
@@ -130,7 +132,7 @@ class TestSequentialActiveLearner:
     async def test_teach_skip_pre_loop(self, configured_learner):
         """Test teach method behavior when skip_pre_loop is True."""
         # The configured_learner fixture already sets up proper coroutines
-        
+
         # Set up stop criterion to stop immediately
         configured_learner._check_stop_criterion.return_value = (True, None)
 

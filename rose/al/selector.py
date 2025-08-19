@@ -1,13 +1,11 @@
 import asyncio
 import itertools
-from typing import Callable, Dict, Any, Optional, List, Union, Tuple, Iterator
-from functools import wraps
-
-from ..learner import Learner
-from ..learner import TaskConfig
-from ..learner import LearnerConfig
+from collections.abc import Iterator
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from radical.asyncflow import WorkflowEngine
+
+from ..learner import Learner, LearnerConfig, TaskConfig
 
 
 class AlgorithmSelector(Learner):
@@ -77,10 +75,11 @@ class AlgorithmSelector(Learner):
             return func
         return decorator
 
-    def _create_algorithm_learner(self, 
-                                  algorithm_name: str, 
+    def _create_algorithm_learner(self,
+                                  algorithm_name: str,
                                   algorithm_func: Callable,
-                                  config: Optional[LearnerConfig]) -> 'SequentialActiveLearner':
+                                  config: Optional[LearnerConfig]
+                                  ) -> 'SequentialActiveLearner':
         """Create a SequentialActiveLearner instance for a specific algorithm.
 
         Args:
@@ -242,7 +241,7 @@ class AlgorithmSelector(Learner):
 
                     # Wait for training to complete
                     await train_task
-                    
+
                     iteration_count = i + 1
 
                 # Store results for this algorithm
@@ -271,7 +270,7 @@ class AlgorithmSelector(Learner):
         # Submit all algorithm pipelines asynchronously
         print(self.active_learn_functions)
         futures: List[Any] = [
-            _run_algorithm_pipeline(al_name, al_task) 
+            _run_algorithm_pipeline(al_name, al_task)
             for al_name, al_task in self.active_learn_functions.items()
         ]
 
@@ -317,10 +316,10 @@ class AlgorithmSelector(Learner):
 
         # Filter out failed algorithms (those with errors)
         successful_algorithms: Dict[str, Dict[str, Any]] = {
-            name: stats for name, stats in self.algorithm_results.items() 
+            name: stats for name, stats in self.algorithm_results.items()
             if 'error' not in stats and stats['iterations'] > 0
         }
-        
+
         if not successful_algorithms:
             raise ValueError("No algorithms completed successfully!")
 

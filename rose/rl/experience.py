@@ -1,11 +1,13 @@
-from dataclasses import dataclass
-from typing import Any, List, Optional, Union, Iterator
+import datetime
+import os
 import pickle
 import random
 import uuid
-import datetime
-import os
 from collections import deque
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any, List, Optional, Union
+
 
 @dataclass
 class Experience:
@@ -54,22 +56,22 @@ class ExperienceBank:
 
     def add(self, experience: Experience) -> None:
         self._experiences.append(experience)
-    
+
     def add_batch(self, experiences: List[Experience]) -> None:
         self._experiences.extend(experiences)
-    
+
     def sample(self, batch_size: int, replace: bool = True) -> List[Experience]:
         if not self._experiences:
             return []
-        
+
         if not replace and batch_size > len(self._experiences):
             raise ValueError(f"Cannot sample {batch_size} experiences without replacement from bank of size {len(self._experiences)}")
-        
+
         if replace:
             return self._rng.choices(list(self._experiences), k=batch_size)
         else:
             return self._rng.sample(list(self._experiences), k=batch_size)
-        
+
     def merge(self, other: 'ExperienceBank') -> "ExperienceBank":
         new_max_size = None
         if self.max_size is not None and other.max_size is not None:
@@ -78,22 +80,22 @@ class ExperienceBank:
             new_max_size = self.max_size
         elif other.max_size is not None:
             new_max_size = other.max_size
-        
+
         merged_bank = ExperienceBank(max_size=new_max_size)
         merged_bank.add_batch(list(self._experiences))
         merged_bank.add_batch(list(other._experiences))
-        
+
         return merged_bank
-    
+
     def merge_inplace(self, other: 'ExperienceBank') -> None:
         self.add_batch(list(other._experiences))
-    
+
     def clear(self) -> None:
         self._experiences.clear()
-    
+
     def get_recent(self, n: int) -> List[Experience]:
         return list(self._experiences)[-n:] if n <= len(self._experiences) else list(self._experiences)
-    
+
     def save(self, work_dir: str = ".", bank_file: str = None) -> str:
         if bank_file:
             filepath = os.path.join(work_dir, bank_file)
@@ -102,7 +104,7 @@ class ExperienceBank:
         with open(filepath, 'wb') as f:
             pickle.dump(list(self._experiences), f)
         return filepath
-    
+
     @classmethod
     def load(cls, filepath: str, max_size: Optional[int]= None) -> 'ExperienceBank':
         """
@@ -120,19 +122,19 @@ class ExperienceBank:
         try:
             with open(filepath, 'rb') as f:
                 experiences = pickle.load(f)
-            
+
             bank = cls(max_size=max_size)
             bank.add_batch(experiences)
             return bank
         except FileNotFoundError:
             return cls(max_size=max_size)
-    
+
     def __len__(self) -> int:
         return len(self._experiences)
-    
+
     def __iter__(self) -> Iterator[Experience]:
         return iter(self._experiences)
-    
+
     def __getitem__(self, index: Union[int, slice]) -> Union[Experience, List[Experience]]:
         if isinstance(index, slice):
             return list(self._experiences)[index]

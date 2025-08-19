@@ -1,14 +1,11 @@
 import asyncio
-import typeguard
 import itertools
-from typing import Callable, Dict, Any, Optional, List, Union, Tuple, Iterator
-from functools import wraps
-
-from ..learner import Learner
-from ..learner import TaskConfig
-from ..learner import LearnerConfig
+from collections.abc import Iterator
+from typing import Any, List, Optional, Tuple, Union
 
 from radical.asyncflow import WorkflowEngine
+
+from ..learner import Learner, LearnerConfig, TaskConfig
 
 
 class SequentialActiveLearner(Learner):
@@ -74,7 +71,7 @@ class SequentialActiveLearner(Learner):
         # Initialize tasks for pre-loop
         sim_task: Tuple = ()
         train_task: Tuple = ()
-        
+
         if not skip_pre_loop:
             # Pre-loop: use iteration 0 configuration
             sim_config: TaskConfig = self._get_iteration_task_config(
@@ -83,7 +80,7 @@ class SequentialActiveLearner(Learner):
             train_config: TaskConfig = self._get_iteration_task_config(
                 self.training_function, learner_config, 'training', 0
             )
-            
+
             sim_task = self._register_task(sim_config)
             train_task = self._register_task(train_config, deps=sim_task)
 
@@ -126,7 +123,7 @@ class SequentialActiveLearner(Learner):
             next_train_config: TaskConfig = self._get_iteration_task_config(
                 self.training_function, learner_config, 'training', i + 1
             )
-            
+
             sim_task = self._register_task(next_sim_config, deps=acl_task)
             train_task = self._register_task(next_train_config, deps=sim_task)
 
@@ -155,8 +152,8 @@ class ParallelActiveLearner(Learner):
         super().__init__(asyncflow, register_and_submit=False)
 
     def _create_sequential_learner(
-        self, 
-        learner_id: int, 
+        self,
+        learner_id: int,
         config: Optional[LearnerConfig]
     ) -> SequentialActiveLearner:
         """Create a SequentialActiveLearner instance for a parallel learner.
@@ -190,7 +187,7 @@ class ParallelActiveLearner(Learner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, 
+        self,
         parallel_config: Optional[LearnerConfig]
     ) -> Optional[LearnerConfig]:
         """Convert a LearnerConfig to a LearnerConfig.
@@ -293,7 +290,7 @@ class ParallelActiveLearner(Learner):
                 sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
                     learner_id, learner_configs[learner_id]
                 )
-                
+
                 # Convert parallel config to sequential config
                 sequential_config: Optional[LearnerConfig] = self._convert_to_sequential_config(
                     learner_configs[learner_id]

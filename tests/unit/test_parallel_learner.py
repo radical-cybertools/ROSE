@@ -1,12 +1,15 @@
-import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Any, List, Optional
+
+import pytest
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
-from rose.al.active_learner import Learner, TaskConfig, LearnerConfig
-from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
+
+from rose.al.active_learner import (
+    LearnerConfig,
+    ParallelActiveLearner,
+    SequentialActiveLearner,
+)
 
 
 class TestParallelActiveLearner:
@@ -65,7 +68,7 @@ class TestParallelActiveLearner:
 
         with patch('rose.al.active_learner.LearnerConfig') as MockLearnerConfig:
             result = parallel_learner._convert_to_sequential_config(mock_config)
-            
+
             MockLearnerConfig.assert_called_once_with(
                 simulation="sim_params",
                 training="train_params",
@@ -88,7 +91,7 @@ class TestParallelActiveLearner:
         parallel_learner.simulation_function = AsyncMock()
         parallel_learner.training_function = AsyncMock()
         parallel_learner.active_learn_function = AsyncMock()
-        
+
         with pytest.raises(Exception, match="Either max_iter or stop_criterion_function must be provided."):
             await parallel_learner.teach(parallel_learners=2, max_iter=0)
 
@@ -98,8 +101,8 @@ class TestParallelActiveLearner:
 
         with pytest.raises(ValueError, match="learner_configs length must match parallel_learners"):
             await parallel_learner.teach(
-                parallel_learners=2, 
-                max_iter=1, 
+                parallel_learners=2,
+                max_iter=1,
                 learner_configs=learner_configs
             )
 
@@ -111,13 +114,13 @@ class TestParallelActiveLearner:
         mock_sequential.teach = AsyncMock(return_value="learner_result")
         mock_sequential.metric_values_per_iteration = {"metric1": [1, 2, 3]}
 
-        with patch.object(configured_parallel_learner, '_create_sequential_learner', 
+        with patch.object(configured_parallel_learner, '_create_sequential_learner',
                          return_value=mock_sequential):
-            with patch.object(configured_parallel_learner, '_convert_to_sequential_config', 
+            with patch.object(configured_parallel_learner, '_convert_to_sequential_config',
                              return_value=None):
 
                 results = await configured_parallel_learner.teach(
-                    parallel_learners=2, 
+                    parallel_learners=2,
                     max_iter=1
                 )
 
@@ -139,16 +142,16 @@ class TestParallelActiveLearner:
         mock_sequential = MagicMock(spec=SequentialActiveLearner)
         mock_sequential.teach = AsyncMock(side_effect=Exception("Learner failed"))
 
-        with patch.object(configured_parallel_learner, '_create_sequential_learner', 
+        with patch.object(configured_parallel_learner, '_create_sequential_learner',
                          return_value=mock_sequential):
-            with patch.object(configured_parallel_learner, '_convert_to_sequential_config', 
+            with patch.object(configured_parallel_learner, '_convert_to_sequential_config',
                              return_value=None):
                 with patch('builtins.print') as mock_print:  # Mock print to capture error message
 
                     # Should raise exception due to learner failure
                     with pytest.raises(Exception, match="Learner failed"):
                         await configured_parallel_learner.teach(
-                            parallel_learners=2, 
+                            parallel_learners=2,
                             max_iter=1
                         )
 
