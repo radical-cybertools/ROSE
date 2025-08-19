@@ -6,7 +6,7 @@ import uuid
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, List, Optional, Union
+from typing import Any, Optional, Union
 
 
 @dataclass
@@ -22,12 +22,15 @@ class ExperienceBank:
     """
     A memory bank for storing and sampling Experience objects.
 
-    The ExperienceBank supports adding individual or batches of experiences, sampling with or without replacement,
-    merging with other banks, saving/loading to disk, and retrieving recent experiences. It uses a deque for efficient
-    memory management and can be bounded by a maximum size.
+    The ExperienceBank supports adding individual or batches of
+    experiences, sampling with or without replacement, merging with
+    other banks, saving/loading to disk, and retrieving recent
+    experiences. It uses a deque for efficient memory management
+    and can be bounded by a maximum size.
 
     Attributes:
-        max_size (Optional[int]): Maximum number of experiences to store. If None, unlimited.
+        max_size (Optional[int]): Maximum number of experiences to store.
+        If None, unlimited.
         session_id (str): Unique identifier for the bank session.
 
     Methods:
@@ -41,7 +44,8 @@ class ExperienceBank:
         save(work_dir, bank_file): Save the bank to disk.
         load(filepath, max_size): Load a bank from disk.
     """
-    def __init__(self, max_size: Optional[int] = None, session_id: Optional[str] = None):
+    def __init__(
+        self, max_size: Optional[int] = None, session_id: Optional[str] = None):
         self.max_size = max_size
         self._experiences = deque(maxlen=max_size) if max_size else deque()
         self._rng = random.Random()
@@ -57,15 +61,16 @@ class ExperienceBank:
     def add(self, experience: Experience) -> None:
         self._experiences.append(experience)
 
-    def add_batch(self, experiences: List[Experience]) -> None:
+    def add_batch(self, experiences: list[Experience]) -> None:
         self._experiences.extend(experiences)
 
-    def sample(self, batch_size: int, replace: bool = True) -> List[Experience]:
+    def sample(self, batch_size: int, replace: bool = True) -> list[Experience]:
         if not self._experiences:
             return []
 
         if not replace and batch_size > len(self._experiences):
-            raise ValueError(f"Cannot sample {batch_size} experiences without replacement from bank of size {len(self._experiences)}")
+            raise ValueError(f"Cannot sample {batch_size} experiences "
+            f"without replacement from bank of size {len(self._experiences)}")
 
         if replace:
             return self._rng.choices(list(self._experiences), k=batch_size)
@@ -93,8 +98,13 @@ class ExperienceBank:
     def clear(self) -> None:
         self._experiences.clear()
 
-    def get_recent(self, n: int) -> List[Experience]:
-        return list(self._experiences)[-n:] if n <= len(self._experiences) else list(self._experiences)
+    def get_recent(self, n: int) -> list[Experience]:
+        return (
+            list(self._experiences)[-n:]
+            if n <= len(self._experiences)
+            else list(self._experiences)
+        )
+
 
     def save(self, work_dir: str = ".", bank_file: str = None) -> str:
         if bank_file:
@@ -106,18 +116,24 @@ class ExperienceBank:
         return filepath
 
     @classmethod
-    def load(cls, filepath: str, max_size: Optional[int]= None) -> 'ExperienceBank':
+    def load(cls, filepath: str, max_size: Optional[int]= None
+    ) -> 'ExperienceBank':
         """
         Load an ExperienceBank from a pickle file.
         Args:
-            filepath (str): Path to the pickle file containing a list of Experience objects.
-            max_size (Optional[int]): Maximum size of the loaded ExperienceBank. 
-                If specified, the bank will be initialized with this max size. Defaults to None.
+            filepath (str): Path to the pickle file containing
+            a list of Experience objects.
+            max_size (Optional[int]): Maximum size of the loaded ExperienceBank.
+                If specified, the bank will be initialized with this max size.
+                Defaults to None.
         Returns:
-            ExperienceBank: An instance of ExperienceBank populated with experiences loaded from the file.
-                If the file does not exist, returns an empty ExperienceBank with the specified max_size.
+            ExperienceBank: An instance of ExperienceBank populated with experiences
+            loaded from the file.
+            If the file does not exist, returns an empty ExperienceBank with the
+            specified max_size.
         Raises:
-            Any exception raised by pickle.load except FileNotFoundError, which is handled internally.
+            Any exception raised by pickle.load except FileNotFoundError, which
+            is handled internally.
         """
         try:
             with open(filepath, 'rb') as f:
@@ -135,12 +151,14 @@ class ExperienceBank:
     def __iter__(self) -> Iterator[Experience]:
         return iter(self._experiences)
 
-    def __getitem__(self, index: Union[int, slice]) -> Union[Experience, List[Experience]]:
+    def __getitem__(self, index: Union[int, slice]
+    ) -> Union[Experience, list[Experience]]:
         if isinstance(index, slice):
             return list(self._experiences)[index]
         return list(self._experiences)[index]
 
-def create_experience(state, action, reward, next_state, done, info=None) -> Experience:
+def create_experience(state, action, reward, next_state, done, info=None
+) -> Experience:
     """
     Create an Experience object with the given parameters.
     Args:
@@ -149,10 +167,12 @@ def create_experience(state, action, reward, next_state, done, info=None) -> Exp
         reward (float): The reward received after taking the action.
         next_state (Any): The resulting state after the action.
         done (bool): Whether the episode has ended.
-        info (dict, optional): Additional information about the experience. Defaults to None.
+        info (dict, optional): Additional information about the experience.
+        Defaults to None.
 
     Returns:
-        Experience: An instance of the Experience dataclass containing the provided data.
+        Experience: An instance of the Experience dataclass containing
+        the provided data.
     """
     return Experience(
         state=state,

@@ -160,3 +160,4 @@ cython_debug/
 
 # rose specific
 *.pkl
+asyncflow.session.*
