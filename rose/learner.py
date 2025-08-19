@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import typeguard
 from pydantic import BaseModel
@@ -7,7 +7,7 @@ from radical.asyncflow import (
     WorkflowEngine,
 )
 
-from .metrics import LearningMetrics as metrics
+from .metrics import LearningMetrics as Metrics
 
 
 class TaskConfig(BaseModel):
@@ -33,25 +33,26 @@ class TaskConfig(BaseModel):
 
 class LearnerConfig(BaseModel):
     """Base configuration class for active learners with per-iteration support.
-    
+
     This class provides configuration management for different types of learning tasks
     across multiple iterations. Each task type can have either a single configuration
     applied to all iterations, or iteration-specific configurations.
-    
+
     Attributes:
         simulation: Configuration for simulation tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
         training: Configuration for training tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
-        active_learn: Configuration for active learning tasks. Can be a single TaskConfig
-            or a dictionary mapping iteration numbers to TaskConfig objects.
+        active_learn: Configuration for active learning tasks. Can be a single
+            TaskConfig or a dictionary mapping iteration numbers to TaskConfig
+            objects.
         criterion: Configuration for criterion tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
-    simulation: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    training: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    active_learn: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
-    criterion: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = None
+    simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    criterion: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
 
     class Config:
         """Pydantic configuration for LearnerConfig."""
@@ -62,20 +63,22 @@ class LearnerConfig(BaseModel):
 
     def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
         """Get the task configuration for a specific iteration.
-        
+
         Args:
-            task_name: Name of the task ('simulation', 'training', 'active_learn', 'criterion').
+            task_name: Name of the task ('simulation',
+            'training', 'active_learn', 'criterion').
             iteration: The iteration number (0-based).
-            
+
         Returns:
             TaskConfig for the specified iteration, or None if not configured.
-            
+
         Note:
             If a dictionary of configurations is provided, the method will first
             look for an exact iteration match, then fall back to default configs
             (key -1 or 'default').
         """
-        task_config: Optional[Union[TaskConfig, Dict[int, TaskConfig]]] = getattr(self, task_name, None)
+        task_config: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = \
+            getattr(self, task_name, None)
         if task_config is None:
             return None
 
@@ -96,10 +99,10 @@ class LearnerConfig(BaseModel):
 
 class Learner:
     """Base class for active learning implementations.
-    
+
     This class provides the foundational functionality for active learning workflows,
     including task registration, execution management, and configuration handling.
-    
+
     Attributes:
         criterion_function: Configuration for criterion/stopping condition functions.
         training_function: Configuration for training functions.
@@ -120,12 +123,13 @@ class Learner:
 
         Args:
             asyncflow: The workflow engine instance for managing async tasks.
-            register_and_submit: Whether to automatically register and submit decorated tasks.
+            register_and_submit: Whether to automatically register
+            and submit decorated tasks.
         """
-        self.criterion_function: Dict[str, Any] = {}
-        self.training_function: Dict[str, Any] = {}
-        self.simulation_function: Dict[str, Any] = {}
-        self.active_learn_function: Dict[str, Any] = {}
+        self.criterion_function: dict[str, Any] = {}
+        self.training_function: dict[str, Any] = {}
+        self.simulation_function: dict[str, Any] = {}
+        self.active_learn_function: dict[str, Any] = {}
 
         self.asyncflow: WorkflowEngine = asyncflow
 
@@ -137,12 +141,13 @@ class Learner:
         self.active_learn_task: Callable = self.register_decorator('active_learn')
 
         self.iteration: int = 0
-        self.metric_values_per_iteration: Dict[int, Dict[str, float]] = {}
+        self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
 
-    def _get_iteration_task_config(self, base_task: Dict[str, Any],
+    def _get_iteration_task_config(self, base_task: dict[str, Any],
                                 config: Optional[LearnerConfig],
-                                task_key: str, iteration: int) -> Dict[str, Any]:
-        """Get task configuration for a specific iteration, merging base config with iteration-specific overrides."""
+                                task_key: str, iteration: int) -> dict[str, Any]:
+        """Get task configuration for a specific iteration,
+        merging base config with iteration-specific overrides."""
 
         # Start with a copy of the base task (or empty dict if None)
         task_config = base_task.copy() if base_task else {}
@@ -168,16 +173,19 @@ class Learner:
 
         return task_config
 
-    def create_iteration_schedule(self, task_name: str, schedule: Dict[int, Dict[str, Any]]) -> Dict[int, TaskConfig]:
+    def create_iteration_schedule(
+        self, task_name: str,
+        schedule: dict[int, dict[str, Any]]
+        ) -> dict[int, TaskConfig]:
         """Helper method to create iteration-specific configurations.
-        
+
         Args:
             task_name: Name of the task type.
             schedule: Dictionary mapping iteration numbers to args/kwargs configuration.
-            
+
         Returns:
             Dictionary mapping iterations to TaskConfig objects.
-            
+
         Example:
             schedule = {
                 0: {'args': (param1,), 'kwargs': {'lr': 0.01}},
@@ -193,21 +201,25 @@ class Learner:
             for iteration, config in schedule.items()
         }
 
-    def create_adaptive_schedule(self, task_name: str, param_schedule: Callable[[int], Dict[str, Any]]) -> Dict[int, TaskConfig]:
+    def create_adaptive_schedule(
+        self, task_name: str,
+        param_schedule: Callable[[int], dict[str, Any]]
+        ) -> dict[int, TaskConfig]:
         """Helper method to create adaptive iteration schedules using a function.
-        
+
         Args:
             task_name: Name of the task type.
-            param_schedule: Function that takes iteration number and returns config dict.
-            
+            param_schedule: Function that takes iteration number
+            and returns config dict.
+
         Returns:
             Dictionary with computed TaskConfig for each iteration.
-            
+
         Example:
             def adaptive_lr(iteration):
                 lr = 0.01 * (0.9 ** iteration)
                 return {'kwargs': {'learning_rate': lr}}
-            
+
             adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
         """
         # For now, we'll pre-compute a reasonable range. In practice, you might
@@ -233,7 +245,7 @@ class Learner:
                 decoration_decor_kwargs = decor_kwargs.copy()
 
                 # Store initial placeholder (so validation passes)
-                base_task_obj: Dict[str, Any] = {
+                base_task_obj: dict[str, Any] = {
                     'func': func,
                     'args': (),
                     'kwargs': {},
@@ -303,7 +315,7 @@ class Learner:
             self.criterion_function = base_task_obj
 
             @wraps(func)
-            async def async_wrapper(*args, **kwargs) -> Tuple[bool, float]:
+            async def async_wrapper(*args, **kwargs) -> tuple[bool, float]:
                 """Async wrapper that evaluates the stopping condition."""
                 # Build fresh task object with runtime values
                 task_obj = {
@@ -333,18 +345,23 @@ class Learner:
 
         return decorator
 
-    def _register_task(self, task_obj: Dict[str, Any], deps: Optional[Union[Any, Tuple[Any, ...]]] = None) -> Any:
+    def _register_task(
+        self, task_obj: dict[str, Any],
+        deps: Optional[Union[Any, tuple[Any, ...]]] = None
+        ) -> Any:
         """Register and submit a task for execution.
 
         Args:
-            task_obj: Dictionary containing task configuration with 'func', 'args', and 'kwargs'.
-            deps: Optional dependencies. Can be a single dependency or tuple of dependencies.
+            task_obj: Dictionary containing task configuration with
+            'func', 'args', and 'kwargs'.
+            deps: Optional dependencies. Can be a single dependency
+            or tuple of dependencies.
 
         Returns:
             Task future object for the submitted task.
         """
         func: Callable = task_obj['func']
-        args: Tuple[Any, ...] = task_obj['args']
+        args: tuple[Any, ...] = task_obj['args']
 
         # Ensure deps is added as a tuple
         if deps:
@@ -352,8 +369,8 @@ class Learner:
                 deps = (deps,)  # Wrap deps in a tuple if it's a single Task
             args += deps
 
-        kwargs: Dict[str, Any] = task_obj['kwargs']
-        decor_kwargs: Dict[Any] = task_obj['decor_kwargs']
+        kwargs: dict[str, Any] = task_obj['kwargs']
+        decor_kwargs: dict[Any] = task_obj['decor_kwargs']
         as_executable: bool = task_obj.get('as_executable', True)
 
         if as_executable:
@@ -361,7 +378,10 @@ class Learner:
         else:
             return self.asyncflow.function_task(func, **decor_kwargs)(*args, **kwargs)
 
-    def compare_metric(self, metric_name: str, metric_value: float, threshold: float, operator: str = '') -> bool:
+    def compare_metric(
+        self, metric_name: str,
+        metric_value: float, threshold: float, operator: str = ''
+        ) -> bool:
         """Compare a metric value against a threshold using a specified operator.
 
         Args:
@@ -383,16 +403,20 @@ class Learner:
                 operator is not recognized.
         """
         # check for custom/user defined metric
-        if not metrics.is_supported_metric(metric_name):
+        if not Metrics.is_supported_metric(metric_name):
             if not operator:
-                excp: str = f'Operator value must be provided for custom metric {metric_name}, '
-                excp += 'and must be one of the following: LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, '
-                excp += 'EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, GREATER_THAN_OR_EQUAL_TO_THRESHOLD'
-                raise ValueError(excp)
+                raise ValueError(
+                    "Operator value must be provided for "
+                    f"custom metric '{metric_name}', "
+                    "and must be one of the following: "
+                    "LESS_THAN_THRESHOLD, GREATER_THAN_THRESHOLD, "
+                    "EQUAL_TO_THRESHOLD, LESS_THAN_OR_EQUAL_TO_THRESHOLD, "
+                    "GREATER_THAN_OR_EQUAL_TO_THRESHOLD."
+                )
 
         # standard metric
         else:
-            operator = metrics.get_operator(metric_name)
+            operator = Metrics.get_operator(metric_name)
 
         if operator == "<":
             return metric_value < threshold
@@ -407,24 +431,28 @@ class Learner:
         else:
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
-    def _start_pre_loop(self) -> Tuple[Any, Any]:
-        """Start the initial step for active learning by defining and setting simulation and training tasks.
+    def _start_pre_loop(self) -> tuple[Any, Any]:
+        """Start the initial step for active learning by defining and
+           setting simulation and training tasks.
 
         Returns:
-            Tuple containing (simulation_task, training_task) futures.
+            tuple containing (simulation_task, training_task) futures.
         """
         sim_task: Any = self._register_task(self.simulation_function)
-        train_task: Any = self._register_task(self.training_function, deps=sim_task)
+        train_task: Any = self._register_task(self.training_function,
+        deps=sim_task)
         return sim_task, train_task
 
-    def _check_stop_criterion(self, stop_task_result: Any) -> Tuple[bool, float]:
+    def _check_stop_criterion(self, stop_task_result: Any
+    ) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
 
         Args:
-            stop_task_result: Result from the criterion task, should be convertible to float.
+            stop_task_result: Result from the criterion task,
+            should be convertible to float.
 
         Returns:
-            Tuple of (should_stop: bool, metric_value: float).
+            tuple of (should_stop: bool, metric_value: float).
 
         Raises:
             Exception: If the task result cannot be converted to a numerical value.
@@ -433,7 +461,9 @@ class Learner:
         try:
             metric_value: float = float(stop_task_result)
         except Exception as e:
-            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}")
+            raise Exception(
+                f"Failed to obtain a numerical value from criterion task: {e}"
+            ) from e
 
         # check if the metric value is a number
         if isinstance(metric_value, (float, int)):
@@ -445,32 +475,36 @@ class Learner:
             self.iteration += 1
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric: {metric_name} is met with value of: {metric_value}'
-                      '. Breaking the active learning loop')
+                print(f'stop criterion metric: {metric_name} '
+                f'is met with value of: {metric_value} '
+                '. Breaking the active learning loop')
                 return True, metric_value
             else:
-                print(f'stop criterion metric: {metric_name} is not met yet ({metric_value}).')
+                print(f'stop criterion metric: {metric_name} '
+                f'is not met yet ({metric_value}).')
                 return False, metric_value
         else:
-            raise TypeError(f'Stop criterion task must produce a numerical value, got {type(metric_value)} instead')
+            raise TypeError(f'Stop criterion task must produce a '
+            f'numerical value, got {type(metric_value)} instead')
 
     def teach(self) -> None:
-        """Teach method to be implemented by subclasses.            
+        """Teach method to be implemented by subclasses.
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
-        raise NotImplementedError('This is not supported, please define your teach method and invoke it directly')
+        raise NotImplementedError('This is not supported, please define your '
+        'teach method and invoke it directly')
 
-    def get_metric_results(self) -> List[float]:
+    def get_metric_results(self) -> list[float]:
         """Get the result of a task(s) by its name.
 
         Tasks might have similar names yet different future and task IDs.
-        
+
         Args:
             task_name: Name of the task to retrieve results for.
 
         Returns:
-            List of results from tasks with the matching name.
+            list of results from tasks with the matching name.
 
         Note:
             This method assumes the existence of a 'tasks' attribute that contains
