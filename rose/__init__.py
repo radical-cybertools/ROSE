@@ -8,7 +8,6 @@ __all__ = [
     "active_learner",
     "selector",
     "reinforcement_learner",
-
     # Classes / configs
     "Learner",
     "LearnerConfig",

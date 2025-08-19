@@ -18,6 +18,7 @@ class Experience:
     done: bool
     info: dict = None
 
+
 class ExperienceBank:
     """
     A memory bank for storing and sampling Experience objects.
@@ -44,8 +45,10 @@ class ExperienceBank:
         save(work_dir, bank_file): Save the bank to disk.
         load(filepath, max_size): Load a bank from disk.
     """
+
     def __init__(
-        self, max_size: Optional[int] = None, session_id: Optional[str] = None):
+        self, max_size: Optional[int] = None, session_id: Optional[str] = None
+    ):
         self.max_size = max_size
         self._experiences = deque(maxlen=max_size) if max_size else deque()
         self._rng = random.Random()
@@ -69,15 +72,17 @@ class ExperienceBank:
             return []
 
         if not replace and batch_size > len(self._experiences):
-            raise ValueError(f"Cannot sample {batch_size} experiences "
-            f"without replacement from bank of size {len(self._experiences)}")
+            raise ValueError(
+                f"Cannot sample {batch_size} experiences "
+                f"without replacement from bank of size {len(self._experiences)}"
+            )
 
         if replace:
             return self._rng.choices(list(self._experiences), k=batch_size)
         else:
             return self._rng.sample(list(self._experiences), k=batch_size)
 
-    def merge(self, other: 'ExperienceBank') -> "ExperienceBank":
+    def merge(self, other: "ExperienceBank") -> "ExperienceBank":
         new_max_size = None
         if self.max_size is not None and other.max_size is not None:
             new_max_size = max(self.max_size, other.max_size)
@@ -92,7 +97,7 @@ class ExperienceBank:
 
         return merged_bank
 
-    def merge_inplace(self, other: 'ExperienceBank') -> None:
+    def merge_inplace(self, other: "ExperienceBank") -> None:
         self.add_batch(list(other._experiences))
 
     def clear(self) -> None:
@@ -105,19 +110,17 @@ class ExperienceBank:
             else list(self._experiences)
         )
 
-
     def save(self, work_dir: str = ".", bank_file: str = None) -> str:
         if bank_file:
             filepath = os.path.join(work_dir, bank_file)
         else:
             filepath = os.path.join(work_dir, f"{self.session_id}.pkl")
-        with open(filepath, 'wb') as f:
+        with open(filepath, "wb") as f:
             pickle.dump(list(self._experiences), f)
         return filepath
 
     @classmethod
-    def load(cls, filepath: str, max_size: Optional[int]= None
-    ) -> 'ExperienceBank':
+    def load(cls, filepath: str, max_size: Optional[int] = None) -> "ExperienceBank":
         """
         Load an ExperienceBank from a pickle file.
         Args:
@@ -136,7 +139,7 @@ class ExperienceBank:
             is handled internally.
         """
         try:
-            with open(filepath, 'rb') as f:
+            with open(filepath, "rb") as f:
                 experiences = pickle.load(f)
 
             bank = cls(max_size=max_size)
@@ -151,14 +154,15 @@ class ExperienceBank:
     def __iter__(self) -> Iterator[Experience]:
         return iter(self._experiences)
 
-    def __getitem__(self, index: Union[int, slice]
+    def __getitem__(
+        self, index: Union[int, slice]
     ) -> Union[Experience, list[Experience]]:
         if isinstance(index, slice):
             return list(self._experiences)[index]
         return list(self._experiences)[index]
 
-def create_experience(state, action, reward, next_state, done, info=None
-) -> Experience:
+
+def create_experience(state, action, reward, next_state, done, info=None) -> Experience:
     """
     Create an Experience object with the given parameters.
     Args:
@@ -180,5 +184,5 @@ def create_experience(state, action, reward, next_state, done, info=None
         reward=reward,
         next_state=next_state,
         done=done,
-        info=info or {}
+        info=info or {},
     )

@@ -29,8 +29,9 @@ class TestSequentialActiveLearner:
         """Create a fully configured SequentialActiveLearner for testing."""
         sequential_learner.simulation_function = AsyncMock(return_value="sim_result")
         sequential_learner.training_function = AsyncMock(return_value="train_result")
-        sequential_learner.active_learn_function = \
-            AsyncMock(return_value="active_result")
+        sequential_learner.active_learn_function = AsyncMock(
+            return_value="active_result"
+        )
         sequential_learner.criterion_function = AsyncMock(return_value=False)
 
         # Mock the parent class methods
@@ -42,10 +43,10 @@ class TestSequentialActiveLearner:
         async def mock_task_coroutine():
             return "task_result"
 
-        sequential_learner._register_task = \
-            MagicMock(side_effect=lambda *args, **kwargs: mock_task_coroutine())
-        sequential_learner._check_stop_criterion = \
-            MagicMock(return_value=(False, None))
+        sequential_learner._register_task = MagicMock(
+            side_effect=lambda *args, **kwargs: mock_task_coroutine()
+        )
+        sequential_learner._check_stop_criterion = MagicMock(return_value=(False, None))
 
         return sequential_learner
 
@@ -53,20 +54,26 @@ class TestSequentialActiveLearner:
     async def test_teach_missing_required_functions(self, sequential_learner):
         """Test that teach raises exception when required functions are missing."""
         # Test with no functions set
-        with pytest.raises(Exception,
-        match="Simulation, Training, and Active Learning functions must be set!"):
+        with pytest.raises(
+            Exception,
+            match="Simulation, Training, and Active Learning functions must be set!",
+        ):
             await sequential_learner.teach(max_iter=1)
 
         # Test with only simulation function set
         sequential_learner.simulation_function = AsyncMock()
-        with pytest.raises(Exception,
-        match="Simulation, Training, and Active Learning functions must be set!"):
+        with pytest.raises(
+            Exception,
+            match="Simulation, Training, and Active Learning functions must be set!",
+        ):
             await sequential_learner.teach(max_iter=1)
 
         # Test with simulation and training set but no active learning
         sequential_learner.training_function = AsyncMock()
-        with pytest.raises(Exception,
-        match="Simulation, Training, and Active Learning functions must be set!"):
+        with pytest.raises(
+            Exception,
+            match="Simulation, Training, and Active Learning functions must be set!",
+        ):
             await sequential_learner.teach(max_iter=1)
 
     @pytest.mark.asyncio
@@ -76,8 +83,10 @@ class TestSequentialActiveLearner:
         sequential_learner.training_function = AsyncMock()
         sequential_learner.active_learn_function = AsyncMock()
 
-        with pytest.raises(Exception,
-        match="Either max_iter or stop_criterion_function must be provided."):
+        with pytest.raises(
+            Exception,
+            match="Either max_iter or stop_criterion_function must be provided.",
+        ):
             await sequential_learner.teach(max_iter=0)
 
     @pytest.mark.asyncio
@@ -121,7 +130,7 @@ class TestSequentialActiveLearner:
         # Set up criterion to not stop on first iteration, but stop on second
         configured_learner._check_stop_criterion.side_effect = [
             (False, None),  # Don't stop on first iteration
-            (True, None),   # Stop on second iteration
+            (True, None),  # Stop on second iteration
         ]
 
         await configured_learner.teach(max_iter=0, skip_pre_loop=True)
@@ -134,7 +143,6 @@ class TestSequentialActiveLearner:
 
         # Verify _check_stop_criterion was called twice
         assert configured_learner._check_stop_criterion.call_count == 2
-
 
     @pytest.mark.asyncio
     async def test_teach_skip_pre_loop(self, configured_learner):

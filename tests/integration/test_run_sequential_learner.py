@@ -9,10 +9,7 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 @pytest.mark.asyncio
 async def test_active_learning_pipeline_functions():
-
-    engine = await ConcurrentExecutionBackend(
-        ThreadPoolExecutor()
-        )
+    engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
     acl = SequentialActiveLearner(asyncflow)
 
@@ -29,8 +26,8 @@ async def test_active_learning_pipeline_functions():
         return abs(trained_model["mean"] - 2.5)
 
     @acl.as_stop_criterion(
-            metric_name=MEAN_SQUARED_ERROR_MSE,
-            threshold=0.1, as_executable=False)
+        metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1, as_executable=False
+    )
     async def check_mse(val):
         return val < 2.6
 

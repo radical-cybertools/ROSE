@@ -20,11 +20,13 @@ class TaskConfig(BaseModel):
         args: Positional arguments for the task.
         kwargs: Keyword arguments for the task.
     """
+
     args: tuple = ()
     kwargs: dict = {}
 
     class Config:
         """Pydantic configuration for TaskConfig."""
+
         extra = "forbid"
         json_encoders = {
             tuple: list,
@@ -49,6 +51,7 @@ class LearnerConfig(BaseModel):
         criterion: Configuration for criterion tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
+
     simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
@@ -56,6 +59,7 @@ class LearnerConfig(BaseModel):
 
     class Config:
         """Pydantic configuration for LearnerConfig."""
+
         extra = "forbid"
         json_encoders = {
             tuple: list,
@@ -77,8 +81,9 @@ class LearnerConfig(BaseModel):
             look for an exact iteration match, then fall back to default configs
             (key -1 or 'default').
         """
-        task_config: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = \
-            getattr(self, task_name, None)
+        task_config: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = getattr(
+            self, task_name, None
+        )
         if task_config is None:
             return None
 
@@ -92,7 +97,7 @@ class LearnerConfig(BaseModel):
             if iteration in task_config:
                 return task_config[iteration]
             # Fall back to default config (key -1 or 'default')
-            return task_config.get(-1) or task_config.get('default')
+            return task_config.get(-1) or task_config.get("default")
 
         return None
 
@@ -117,8 +122,9 @@ class Learner:
     """
 
     @typeguard.typechecked
-    def __init__(self, asyncflow: WorkflowEngine,
-                 register_and_submit: bool = True) -> None:
+    def __init__(
+        self, asyncflow: WorkflowEngine, register_and_submit: bool = True
+    ) -> None:
         """Initialize the Learner.
 
         Args:
@@ -135,17 +141,21 @@ class Learner:
 
         self.register_and_submit: bool = register_and_submit
 
-        self.utility_task: Callable = self.register_decorator('utility')
-        self.training_task: Callable = self.register_decorator('training')
-        self.simulation_task: Callable = self.register_decorator('simulation')
-        self.active_learn_task: Callable = self.register_decorator('active_learn')
+        self.utility_task: Callable = self.register_decorator("utility")
+        self.training_task: Callable = self.register_decorator("training")
+        self.simulation_task: Callable = self.register_decorator("simulation")
+        self.active_learn_task: Callable = self.register_decorator("active_learn")
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
 
-    def _get_iteration_task_config(self, base_task: dict[str, Any],
-                                config: Optional[LearnerConfig],
-                                task_key: str, iteration: int) -> dict[str, Any]:
+    def _get_iteration_task_config(
+        self,
+        base_task: dict[str, Any],
+        config: Optional[LearnerConfig],
+        task_key: str,
+        iteration: int,
+    ) -> dict[str, Any]:
         """Get task configuration for a specific iteration,
         merging base config with iteration-specific overrides."""
 
@@ -174,9 +184,8 @@ class Learner:
         return task_config
 
     def create_iteration_schedule(
-        self, task_name: str,
-        schedule: dict[int, dict[str, Any]]
-        ) -> dict[int, TaskConfig]:
+        self, task_name: str, schedule: dict[int, dict[str, Any]]
+    ) -> dict[int, TaskConfig]:
         """Helper method to create iteration-specific configurations.
 
         Args:
@@ -195,16 +204,14 @@ class Learner:
         """
         return {
             iteration: TaskConfig(
-                args=config.get('args', ()),
-                kwargs=config.get('kwargs', {})
+                args=config.get("args", ()), kwargs=config.get("kwargs", {})
             )
             for iteration, config in schedule.items()
         }
 
     def create_adaptive_schedule(
-        self, task_name: str,
-        param_schedule: Callable[[int], dict[str, Any]]
-        ) -> dict[int, TaskConfig]:
+        self, task_name: str, param_schedule: Callable[[int], dict[str, Any]]
+    ) -> dict[int, TaskConfig]:
         """Helper method to create adaptive iteration schedules using a function.
 
         Args:
@@ -227,8 +234,8 @@ class Learner:
         max_precompute: int = 100
         return {
             i: TaskConfig(
-                args=param_schedule(i).get('args', ()),
-                kwargs=param_schedule(i).get('kwargs', {})
+                args=param_schedule(i).get("args", ()),
+                kwargs=param_schedule(i).get("kwargs", {}),
             )
             for i in range(max_precompute)
         }
@@ -241,16 +248,16 @@ class Learner:
 
             def decorator(func: Callable) -> Callable:
                 # Capture immutable values at decoration time
-                decoration_as_executable = decor_kwargs.pop('as_executable', True)
+                decoration_as_executable = decor_kwargs.pop("as_executable", True)
                 decoration_decor_kwargs = decor_kwargs.copy()
 
                 # Store initial placeholder (so validation passes)
                 base_task_obj: dict[str, Any] = {
-                    'func': func,
-                    'args': (),
-                    'kwargs': {},
-                    'decor_kwargs': decoration_decor_kwargs,
-                    'as_executable': decoration_as_executable
+                    "func": func,
+                    "args": (),
+                    "kwargs": {},
+                    "decor_kwargs": decoration_decor_kwargs,
+                    "as_executable": decoration_as_executable,
                 }
                 setattr(self, f"{task_attr_name}_function", base_task_obj)
 
@@ -258,11 +265,11 @@ class Learner:
                 def wrapper(*args, **kwargs) -> Any:
                     # Each call -> update the stored task object
                     task_obj = {
-                        'func': func,
-                        'args': args,
-                        'kwargs': kwargs,
-                        'decor_kwargs': decoration_decor_kwargs.copy(),
-                        'as_executable': decoration_as_executable
+                        "func": func,
+                        "args": args,
+                        "kwargs": kwargs,
+                        "decor_kwargs": decoration_decor_kwargs.copy(),
+                        "as_executable": decoration_as_executable,
                     }
 
                     # overwrite the attribute so external consumers always see "latest"
@@ -288,9 +295,9 @@ class Learner:
         self,
         metric_name: str,
         threshold: float,
-        operator: str = '',
+        operator: str = "",
         as_executable: bool = True,
-        **decor_kwargs
+        **decor_kwargs,
     ) -> Callable:
         """Create a decorator for stop criterion functions."""
 
@@ -298,19 +305,19 @@ class Learner:
             """Decorator that registers a stop criterion function."""
 
             # Capture immutable values at decoration time
-            final_as_executable = decor_kwargs.pop('as_executable', as_executable)
+            final_as_executable = decor_kwargs.pop("as_executable", as_executable)
             clean_decor_kwargs = decor_kwargs.copy()
 
             # Store initial config immediately (so validation passes)
             base_task_obj = {
-                'func': func,
-                'args': (),
-                'kwargs': {},
-                'decor_kwargs': clean_decor_kwargs,
-                'as_executable': final_as_executable,
-                'operator': operator,
-                'threshold': threshold,
-                'metric_name': metric_name,
+                "func": func,
+                "args": (),
+                "kwargs": {},
+                "decor_kwargs": clean_decor_kwargs,
+                "as_executable": final_as_executable,
+                "operator": operator,
+                "threshold": threshold,
+                "metric_name": metric_name,
             }
             self.criterion_function = base_task_obj
 
@@ -319,14 +326,14 @@ class Learner:
                 """Async wrapper that evaluates the stopping condition."""
                 # Build fresh task object with runtime values
                 task_obj = {
-                    'func': func,
-                    'args': args,
-                    'kwargs': kwargs,
-                    'decor_kwargs': clean_decor_kwargs.copy(),
-                    'as_executable': final_as_executable,
-                    'operator': operator,
-                    'threshold': threshold,
-                    'metric_name': metric_name,
+                    "func": func,
+                    "args": args,
+                    "kwargs": kwargs,
+                    "decor_kwargs": clean_decor_kwargs.copy(),
+                    "as_executable": final_as_executable,
+                    "operator": operator,
+                    "threshold": threshold,
+                    "metric_name": metric_name,
                 }
 
                 # Update so external callers always see "latest state"
@@ -346,9 +353,10 @@ class Learner:
         return decorator
 
     def _register_task(
-        self, task_obj: dict[str, Any],
-        deps: Optional[Union[Any, tuple[Any, ...]]] = None
-        ) -> Any:
+        self,
+        task_obj: dict[str, Any],
+        deps: Optional[Union[Any, tuple[Any, ...]]] = None,
+    ) -> Any:
         """Register and submit a task for execution.
 
         Args:
@@ -360,8 +368,8 @@ class Learner:
         Returns:
             Task future object for the submitted task.
         """
-        func: Callable = task_obj['func']
-        args: tuple[Any, ...] = task_obj['args']
+        func: Callable = task_obj["func"]
+        args: tuple[Any, ...] = task_obj["args"]
 
         # Ensure deps is added as a tuple
         if deps:
@@ -369,9 +377,9 @@ class Learner:
                 deps = (deps,)  # Wrap deps in a tuple if it's a single Task
             args += deps
 
-        kwargs: dict[str, Any] = task_obj['kwargs']
-        decor_kwargs: dict[Any] = task_obj['decor_kwargs']
-        as_executable: bool = task_obj.get('as_executable', True)
+        kwargs: dict[str, Any] = task_obj["kwargs"]
+        decor_kwargs: dict[Any] = task_obj["decor_kwargs"]
+        as_executable: bool = task_obj.get("as_executable", True)
 
         if as_executable:
             return self.asyncflow.executable_task(func, **decor_kwargs)(*args, **kwargs)
@@ -379,9 +387,12 @@ class Learner:
             return self.asyncflow.function_task(func, **decor_kwargs)(*args, **kwargs)
 
     def compare_metric(
-        self, metric_name: str,
-        metric_value: float, threshold: float, operator: str = ''
-        ) -> bool:
+        self,
+        metric_name: str,
+        metric_value: float,
+        threshold: float,
+        operator: str = "",
+    ) -> bool:
         """Compare a metric value against a threshold using a specified operator.
 
         Args:
@@ -439,12 +450,10 @@ class Learner:
             tuple containing (simulation_task, training_task) futures.
         """
         sim_task: Any = self._register_task(self.simulation_function)
-        train_task: Any = self._register_task(self.training_function,
-        deps=sim_task)
+        train_task: Any = self._register_task(self.training_function, deps=sim_task)
         return sim_task, train_task
 
-    def _check_stop_criterion(self, stop_task_result: Any
-    ) -> tuple[bool, float]:
+    def _check_stop_criterion(self, stop_task_result: Any) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
 
         Args:
@@ -467,33 +476,41 @@ class Learner:
 
         # check if the metric value is a number
         if isinstance(metric_value, (float, int)):
-            operator: str = self.criterion_function['operator']
-            threshold: float = self.criterion_function['threshold']
-            metric_name: str = self.criterion_function['metric_name']
+            operator: str = self.criterion_function["operator"]
+            threshold: float = self.criterion_function["threshold"]
+            metric_name: str = self.criterion_function["metric_name"]
 
             self.metric_values_per_iteration[self.iteration] = metric_value
             self.iteration += 1
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(f'stop criterion metric: {metric_name} '
-                f'is met with value of: {metric_value} '
-                '. Breaking the active learning loop')
+                print(
+                    f"stop criterion metric: {metric_name} "
+                    f"is met with value of: {metric_value} "
+                    ". Breaking the active learning loop"
+                )
                 return True, metric_value
             else:
-                print(f'stop criterion metric: {metric_name} '
-                f'is not met yet ({metric_value}).')
+                print(
+                    f"stop criterion metric: {metric_name} "
+                    f"is not met yet ({metric_value})."
+                )
                 return False, metric_value
         else:
-            raise TypeError(f'Stop criterion task must produce a '
-            f'numerical value, got {type(metric_value)} instead')
+            raise TypeError(
+                f"Stop criterion task must produce a "
+                f"numerical value, got {type(metric_value)} instead"
+            )
 
     def teach(self) -> None:
         """Teach method to be implemented by subclasses.
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
-        raise NotImplementedError('This is not supported, please define your '
-        'teach method and invoke it directly')
+        raise NotImplementedError(
+            "This is not supported, please define your "
+            "teach method and invoke it directly"
+        )
 
     def get_metric_results(self) -> list[float]:
         """Get the result of a task(s) by its name.
