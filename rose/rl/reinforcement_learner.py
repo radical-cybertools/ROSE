@@ -236,7 +236,6 @@ class ParallelExperience(ReinforcementLearner):
         super().__init__(asyncflow, register_and_submit=False)
         self.environment_functions: Dict[str, Dict] = {}
         self.work_dir = '.'
-        self.test_function = self.criterion_function
 
     def environment_task(self, name: str) -> Callable:
         """Decorator to register an environment task under a given name.
@@ -358,6 +357,8 @@ class ParallelExperience(ReinforcementLearner):
                 are not properly configured.
             Exception: If neither max_iter nor criterion_function is provided.
         """
+        self.test_function = self.criterion_function
+
         # Validate that required functions are set
         if not self.environment_functions or \
                 not self.update_function or \
