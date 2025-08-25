@@ -27,6 +27,7 @@ class SequentialActiveLearner(Learner):
         """
         super().__init__(asyncflow, register_and_submit=True)
         self.learner_id: Optional[int] = None
+        self.from_simulation_pool: Optional[bool] = False
 
     async def teach(
         self,
@@ -58,19 +59,20 @@ class SequentialActiveLearner(Learner):
                 active_learn_function) are not set.
             Exception: If neither max_iter nor criterion_function is provided.
         """
-        # Validate required functions
-        if (
-            not self.simulation_function
-            or not self.training_function
-            or not self.active_learn_function
-        ):
+        # If not from simulation pool, simulation_function must be set
+        if not self.from_simulation_pool and self.simulation_function is None:
+            raise Exception("Simulation function must be set when not using simulation pool!")
+
+        # Training and active learning functions always required
+        if self.training_function is None or self.active_learn_function is None:
             raise Exception(
-                "Simulation, Training, and Active Learning functions must be set!"
+                "Training and Active Learning functions must be set!"
             )
 
-        if not max_iter and not self.criterion_function:
+        # Either max_iter or criterion_function must be provided
+        if max_iter is None and self.criterion_function is None:
             raise Exception(
-                "Either max_iter or stop_criterion_function must be provided."
+                "Either max_iter or criterion_function must be provided."
             )
 
         learner_suffix: str = (
@@ -83,16 +85,22 @@ class SequentialActiveLearner(Learner):
         train_task: tuple = ()
 
         if not skip_pre_loop:
-            # Pre-loop: use iteration 0 configuration
-            sim_config: TaskConfig = self._get_iteration_task_config(
-                self.simulation_function, learner_config, "simulation", 0
-            )
+            # Always get training config
             train_config: TaskConfig = self._get_iteration_task_config(
                 self.training_function, learner_config, "training", 0
             )
 
-            sim_task = self._register_task(sim_config)
-            train_task = self._register_task(train_config, deps=sim_task)
+            if self.from_simulation_pool:
+                # No simulation task needed
+                train_task = self._register_task(train_config)
+            else:
+                # Get simulation config and register it as a dependency
+                sim_config: TaskConfig = self._get_iteration_task_config(
+                    self.simulation_function, learner_config, "simulation", 0
+                )
+
+                sim_task = self._register_task(sim_config)
+                train_task = self._register_task(train_config, deps=sim_task)
 
         # Determine iteration range
         iteration_range: Union[Iterator[int], range]
@@ -262,34 +270,15 @@ class ParallelActiveLearner(Learner):
 
         Raises:
             ValueError: If parallel_learners < 2 (use SequentialActiveLearner instead).
-            Exception: If required base functions are not set.
-            Exception: If neither max_iter nor criterion_function is provided.
             ValueError: If learner_configs length doesn't match parallel_learners.
         """
         if parallel_learners < 2:
             raise ValueError("For single learner, use SequentialActiveLearner")
 
-        # Validate base functions are set
-        if (
-            not self.simulation_function
-            or not self.training_function
-            or not self.active_learn_function
-        ):
-            raise Exception(
-                "Simulation, Training, and Active Learning functions must be set!"
-            )
-
-        if not max_iter and not self.criterion_function:
-            raise Exception(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
-
         # Prepare learner configurations
         learner_configs = learner_configs or [None] * parallel_learners
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
-
-        print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
         async def active_learner_workflow(learner_id: int) -> Any:
             """Run a single SequentialActiveLearner.
@@ -335,10 +324,12 @@ class ParallelActiveLearner(Learner):
                 print(f"ActiveLearner-{learner_id}] failed with error: {e}")
                 raise
 
+        print(f"Starting Parallel Active Learning with {parallel_learners} learners")
+
         # Submit all learners asynchronously
-        futures: list[Any] = [
+        learners: list[Any] = [
             active_learner_workflow(i) for i in range(parallel_learners)
         ]
 
         # Wait for all learners to complete and collect results
-        return await asyncio.gather(*[f for f in futures])
+        return await asyncio.gather(*[learner for learner in learners])
