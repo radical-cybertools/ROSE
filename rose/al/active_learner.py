@@ -32,7 +32,7 @@ class SequentialActiveLearner(Learner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        from_simulation_pool: bool = False,
+        skip_simulation_step: bool = False,
         learner_config: Optional[LearnerConfig] = None,
     ) -> Any:
         """Run sequential active learning with optional per-iteration configuration.
@@ -46,7 +46,7 @@ class SequentialActiveLearner(Learner):
                 stop criterion is met (requires criterion_function to be set).
             skip_pre_loop: If True, skips the initial simulation and training
                 phases before the main learning loop.
-            from_simulation_pool: If True, simulation tasks will be skipped and
+            skip_simulation_step: If True, simulation tasks will be skipped and
                 managed externally. Defaults to False.
             learner_config: Configuration object containing per-iteration
                 parameters for simulation, training, active learning, and
@@ -62,7 +62,7 @@ class SequentialActiveLearner(Learner):
             Exception: If neither max_iter nor criterion_function is provided.
         """
         # Validation: If not from simulation pool, simulation_function must be set
-        if not from_simulation_pool and self.simulation_function is None:
+        if not skip_simulation_step and self.simulation_function is None:
             raise Exception("Simulation function must be "
                             "set when not using simulation pool!")
 
@@ -93,7 +93,7 @@ class SequentialActiveLearner(Learner):
                 self.training_function, learner_config, "training", 0
             )
 
-            if from_simulation_pool:
+            if skip_simulation_step:
                 # No simulation task needed - training runs independently
                 train_task: asyncio.Future = self._register_task(train_config)
             else:
@@ -126,7 +126,7 @@ class SequentialActiveLearner(Learner):
             )
 
             # Register active learning task with appropriate dependencies
-            if from_simulation_pool:
+            if skip_simulation_step:
                 # Only depend on training task (no simulation dependency)
                 acl_task: asyncio.Future = self._register_task(
                     acl_config, deps=train_task)
@@ -154,7 +154,7 @@ class SequentialActiveLearner(Learner):
                 self.training_function, learner_config, "training", i + 1
             )
 
-            if from_simulation_pool:
+            if skip_simulation_step:
                 # No simulation task for next iteration
                 sim_task = ()  # Keep empty tuple for consistency
                 train_task = self._register_task(next_train_config, deps=acl_task)
@@ -264,7 +264,7 @@ class ParallelActiveLearner(Learner):
         parallel_learners: int = 2,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        from_simulation_pool: bool = False,
+        skip_simulation_step: bool = False,
         learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
     ) -> list[Any]:
         """Run parallel active learning by launching multiple SequentialActiveLearners.
@@ -333,7 +333,7 @@ class ParallelActiveLearner(Learner):
                 learner_result = await sequential_learner.teach(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
-                    from_simulation_pool = from_simulation_pool,
+                    skip_simulation_step = skip_simulation_step,
                     learner_config=sequential_config,
                 )
 
