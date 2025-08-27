@@ -51,6 +51,8 @@ class SequentialActiveLearner(Learner):
             learner_config: Configuration object containing per-iteration
                 parameters for simulation, training, active learning, and
                 criterion functions.
+            skip_simulation_step: if True, all learners will skip the simulation
+                step and the learner will consider a simulation pool already exist.
 
         Returns:
             The result of the learning process. Type depends on the specific
@@ -283,6 +285,8 @@ class ParallelActiveLearner(Learner):
             learner_configs: list of configuration objects, one for each learner.
                 If None, all learners use default configuration. Length must
                 match parallel_learners if provided.
+            skip_simulation_step: if True, all learners will skip the simulation
+                step and the learner will consider a simulation pool already exist.
 
         Returns:
             list containing the results from each learner, in the same order
