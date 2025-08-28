@@ -50,7 +50,6 @@ class TestSequentialActiveLearner:
 
         return sequential_learner
 
-
     @pytest.mark.asyncio
     async def test_teach_missing_required_functions(self, sequential_learner):
         """Test that teach raises exception when required functions are missing."""
@@ -64,7 +63,7 @@ class TestSequentialActiveLearner:
         # Test with no functions set (should fail on simulation function check)
         with pytest.raises(
             ValueError,
-            match=r"Simulation function must be set when not using simulation pool!"
+            match=r"Simulation function must be set when not using simulation pool!",
         ):
             await sequential_learner.teach(max_iter=1)
 
@@ -72,8 +71,7 @@ class TestSequentialActiveLearner:
         # (should fail on training/active learning check)
         sequential_learner.simulation_function = AsyncMock()
         with pytest.raises(
-            ValueError,
-            match=r"Training and Active Learning functions must be set!"
+            ValueError, match=r"Training and Active Learning functions must be set!"
         ):
             await sequential_learner.teach(max_iter=1)
 
@@ -81,8 +79,7 @@ class TestSequentialActiveLearner:
         # (should still fail on training/active learning check)
         sequential_learner.training_function = AsyncMock()
         with pytest.raises(
-            ValueError,
-            match=r"Training and Active Learning functions must be set!"
+            ValueError, match=r"Training and Active Learning functions must be set!"
         ):
             await sequential_learner.teach(max_iter=1)
 

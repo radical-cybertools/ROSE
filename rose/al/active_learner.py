@@ -65,14 +65,13 @@ class SequentialActiveLearner(Learner):
         """
         # Validation: If not from simulation pool, simulation_function must be set
         if not skip_simulation_step and self.simulation_function is None:
-            raise ValueError("Simulation function must be "
-                            "set when not using simulation pool!")
+            raise ValueError(
+                "Simulation function must be set when not using simulation pool!"
+            )
 
         # Training and active learning functions always required
         if self.training_function is None or self.active_learn_function is None:
-            raise ValueError(
-                "Training and Active Learning functions must be set!"
-            )
+            raise ValueError("Training and Active Learning functions must be set!")
 
         # Either max_iter or criterion_function must be provided
         if max_iter == 0 and self.criterion_function is None:
@@ -106,7 +105,8 @@ class SequentialActiveLearner(Learner):
 
                 sim_task: asyncio.Future = self._register_task(sim_config)
                 train_task: asyncio.Future = self._register_task(
-                    train_config, deps=sim_task)
+                    train_config, deps=sim_task
+                )
 
         # Determine iteration range
         iteration_range: Union[Iterator[int], range]
@@ -131,11 +131,13 @@ class SequentialActiveLearner(Learner):
             if skip_simulation_step:
                 # Only depend on training task (no simulation dependency)
                 acl_task: asyncio.Future = self._register_task(
-                    acl_config, deps=train_task)
+                    acl_config, deps=train_task
+                )
             else:
                 # Depend on both simulation and training tasks
                 acl_task: asyncio.Future = self._register_task(
-                    acl_config, deps=(sim_task, train_task))
+                    acl_config, deps=(sim_task, train_task)
+                )
 
             # Check stop criterion if configured
             if self.criterion_function:
@@ -143,7 +145,8 @@ class SequentialActiveLearner(Learner):
                     self.criterion_function, learner_config, "criterion", i
                 )
                 stop_task: asyncio.Future = self._register_task(
-                    criterion_config, deps=acl_task)
+                    criterion_config, deps=acl_task
+                )
                 stop: Any = await stop_task
 
                 should_stop: bool
@@ -337,7 +340,7 @@ class ParallelActiveLearner(Learner):
                 learner_result = await sequential_learner.teach(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
-                    skip_simulation_step = skip_simulation_step,
+                    skip_simulation_step=skip_simulation_step,
                     learner_config=sequential_config,
                 )
 

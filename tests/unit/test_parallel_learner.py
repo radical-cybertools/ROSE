@@ -120,7 +120,8 @@ class TestParallelActiveLearner:
             match="Training and Active Learning functions must be set!",
         ):
             await parallel_learner.teach(
-                parallel_learners=2, max_iter=1, skip_simulation_step=True)
+                parallel_learners=2, max_iter=1, skip_simulation_step=True
+            )
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()
