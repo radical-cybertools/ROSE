@@ -105,21 +105,22 @@ class TestParallelActiveLearner:
         ):
             await parallel_learner.teach(parallel_learners=1)
 
-        # Test with missing simulation functions it should raise error about 
+        # Test with missing simulation functions it should raise error about
         # simulation first
         with pytest.raises(
             ValueError,
             match="Simulation function must be set when not using simulation pool!",
         ):
             await parallel_learner.teach(parallel_learners=2, max_iter=1)
-        
+
         # Test with missing simulation functions and skip_simulation_step
         # it should raise an error about missing train/active_learn tasks
         with pytest.raises(
             ValueError,
             match="Training and Active Learning functions must be set!",
         ):
-            await parallel_learner.teach(parallel_learners=2, max_iter=1, skip_simulation_step=True)
+            await parallel_learner.teach(
+                parallel_learners=2, max_iter=1, skip_simulation_step=True)
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()

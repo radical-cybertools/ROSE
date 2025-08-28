@@ -1,6 +1,6 @@
 import asyncio
 import itertools
-from collections.abc import Iterator
+from collections.abc import Coroutine, Iterator
 from typing import Any, Optional, Union
 
 from radical.asyncflow import WorkflowEngine
@@ -51,8 +51,6 @@ class SequentialActiveLearner(Learner):
             learner_config: Configuration object containing per-iteration
                 parameters for simulation, training, active learning, and
                 criterion functions.
-            skip_simulation_step: if True, all learners will skip the simulation
-                step and the learner will consider a simulation pool already exist.
 
         Returns:
             The result of the learning process. Type depends on the specific
@@ -356,9 +354,9 @@ class ParallelActiveLearner(Learner):
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
         # Submit all learners asynchronously
-        learners: list[asyncio.Future] = [
+        learners: list[Coroutine] = [
             active_learner_workflow(i) for i in range(parallel_learners)
         ]
 
         # Wait for all learners to complete and collect results
-        return await asyncio.gather(*[learner for learner in learners])
+        return await asyncio.gather(*learners)
