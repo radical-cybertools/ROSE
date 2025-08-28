@@ -59,24 +59,26 @@ class SequentialActiveLearner(Learner):
             implementation of the learning functions.
 
         Raises:
-            Exception: If required functions (simulation_function, training_function,
+            ValueError: If required simulation function are not set when
+                when skip_simulation_step is not enabled
+            ValueError: If required functions (training_function,
                 active_learn_function) are not set.
-            Exception: If neither max_iter nor criterion_function is provided.
+            ValueError: If neither max_iter nor criterion_function is provided.
         """
         # Validation: If not from simulation pool, simulation_function must be set
         if not skip_simulation_step and self.simulation_function is None:
-            raise Exception("Simulation function must be "
+            raise ValueError("Simulation function must be "
                             "set when not using simulation pool!")
 
         # Training and active learning functions always required
         if self.training_function is None or self.active_learn_function is None:
-            raise Exception(
+            raise ValueError(
                 "Training and Active Learning functions must be set!"
             )
 
         # Either max_iter or criterion_function must be provided
         if max_iter == 0 and self.criterion_function is None:
-            raise Exception(
+            raise ValueError(
                 "Either max_iter > 0 or criterion_function must be provided."
             )
 
