@@ -84,6 +84,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
     3. Testing/evaluation of the updated policy
     """
 
+
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the SequentialReinforcementLearner.
 
@@ -97,6 +98,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
+        skip_emulation_step: bool = False,
         learner_config: Optional[LearnerConfig] = None,
     ) -> Any:
         """Run the sequential reinforcement learning loop with configuration support.
@@ -112,6 +114,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 Defaults to 0.
             skip_pre_loop (bool): If True, skips the initial environment and update
                 phases before the main learning loop.
+            skip_emulation_step (bool): If True, skips the environment task and assumes
+                a simulation pool already exists. Defaults to False.
             learner_config (Optional[LearnerConfig]): Configuration object containing
                 per-iteration parameters for environment, update, and test functions.
 
@@ -125,12 +129,12 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         self.test_function = self.criterion_function
         # Validate that required functions are set
-        if not self.environment_function or not self.update_function:
-            raise Exception("Environment and Update function must be set!")
-
+        if not skip_emulation_step and not self.environment_function:
+            raise Exception("Environment function must be set unless using simulation pool!")
+        if not self.update_function:
+            raise Exception("Update function must be set!")
         if not self.test_function:
             raise Exception("Test function must be set!")
-
         if not max_iter and not self.criterion_function:
             mgs = "Either max_iter or stop_criterion_function must be provided."
             raise Exception(mgs)
@@ -138,7 +142,6 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         learner_suffix: str = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-
         print(f"Starting Sequential RL Learner{learner_suffix}")
 
         # Initialize tasks for pre-loop
@@ -146,16 +149,21 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         update_task: tuple = ()
 
         if not skip_pre_loop:
-            # Pre-loop: use iteration 0 configuration
-            env_config: TaskConfig = self._get_iteration_task_config(
-                self.environment_function, learner_config, "environment", 0
-            )
-            update_config: TaskConfig = self._get_iteration_task_config(
-                self.update_function, learner_config, "update", 0
-            )
-
-            env_task = self._register_task(env_config)
-            update_task = self._register_task(update_config, deps=env_task)
+            if skip_emulation_step:
+                # No environment task, only update
+                update_config: TaskConfig = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
+                )
+                update_task = self._register_task(update_config)
+            else:
+                env_config: TaskConfig = self._get_iteration_task_config(
+                    self.environment_function, learner_config, "environment", 0
+                )
+                update_config: TaskConfig = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
+                )
+                env_task = self._register_task(env_config)
+                update_task = self._register_task(update_config, deps=env_task)
 
         # Setup iteration counter
         iteration_range: Union[Iterator[int], range]
@@ -169,16 +177,17 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             learner_prefix: str = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
-
             print(f"{learner_prefix}Starting Iteration-{i}")
 
-            # Get iteration-specific test configuration
             test_config: TaskConfig = self._get_iteration_task_config(
                 self.test_function, learner_config, "test", i
             )
 
             # Register test task with dependencies
-            test_task = self._register_task(test_config, deps=(env_task, update_task))
+            if skip_emulation_step:
+                test_task = self._register_task(test_config, deps=update_task)
+            else:
+                test_task = self._register_task(test_config, deps=(env_task, update_task))
 
             # Check stop criterion if configured
             if self.criterion_function:
@@ -187,20 +196,24 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 )
                 stop_task = self._register_task(criterion_config, deps=test_task)
                 stop_result = await stop_task
-
                 should_stop, _ = self._check_stop_criterion(stop_result)
                 if should_stop:
                     break
 
             # Prepare next iteration tasks with iteration-specific configs
-            next_env_config: TaskConfig = self._get_iteration_task_config(
-                self.environment_function, learner_config, "environment", i + 1
-            )
             next_update_config: TaskConfig = self._get_iteration_task_config(
                 self.update_function, learner_config, "update", i + 1
             )
-            env_task = self._register_task(next_env_config, deps=test_task)
-            update_task = self._register_task(next_update_config, deps=env_task)
+            if skip_emulation_step:
+                # No environment task, only update
+                update_task = self._register_task(next_update_config, deps=test_task)
+                env_task = ()  # keep empty tuple for consistency
+            else:
+                next_env_config: TaskConfig = self._get_iteration_task_config(
+                    self.environment_function, learner_config, "environment", i + 1
+                )
+                env_task = self._register_task(next_env_config, deps=test_task)
+                update_task = self._register_task(next_update_config, deps=env_task)
 
             # Wait for update to complete
             await update_task
