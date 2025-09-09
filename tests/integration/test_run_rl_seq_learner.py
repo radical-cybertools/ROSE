@@ -21,7 +21,11 @@ async def test_rl_pipeline_functions():
     async def update(data, *args):
         return sum(data) / len(data)
 
-    @rl.as_stop_criterion(metric_name='MODEL_REWARD', threshold=20, operator=GREATER_THAN_THRESHOLD, as_executable=False)
+    @rl.as_stop_criterion(
+        metric_name='MODEL_REWARD',
+        threshold=20,
+        operator=GREATER_THAN_THRESHOLD,
+        as_executable=False)
     async def check_reward(val, *args):
         print("reward:",val)
         return sum(val) > 15

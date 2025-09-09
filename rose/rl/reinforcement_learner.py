@@ -130,7 +130,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         self.test_function = self.criterion_function
         # Validate that required functions are set
         if not skip_emulation_step and not self.environment_function:
-            raise Exception("Environment function must be set unless using simulation pool!")
+            raise Exception("Environment function must be set unless" 
+            +" using simulation pool!")
         if not self.update_function:
             raise Exception("Update function must be set!")
         if not self.test_function:

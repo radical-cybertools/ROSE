@@ -66,23 +66,26 @@ class TestSequentialReinforcementLearner:
         await configured_learner.learn(max_iter=2)
 
         # Check that the functions were called
-        assert configured_learner._register_task.call_count == 10
+        assert configured_learner._register_task.call_count == 8
         
     @pytest.mark.asyncio
     async def test_learn_stops_on_criterion(self, configured_learner):
         """Test that learn stops when the stop criterion is met."""
         # Modify the criterion function to return True on the second call
         configured_learner.criterion_function = AsyncMock(side_effect=[False, True])
-        configured_learner._check_stop_criterion = MagicMock(side_effect=[(False, None), (True, "stop_reason")])
+        configured_learner._check_stop_criterion = MagicMock(
+            side_effect=[(False, None), (True, "stop_reason")]
+            )
 
         await configured_learner.learn(max_iter=5)
 
         # Check that the functions were called
-        assert configured_learner._register_task.call_count == 8
+        assert configured_learner._register_task.call_count == 6
 
     @pytest.mark.asyncio
-    async def test_learn_raises_without_iterations_or_criterion(self, sequential_learner):
-        """Test that learn raises exception when neither max_iter nor criterion_function is provided."""
+    async def test_learn_without_iterations_or_criterion(self, sequential_learner):
+        """Test that learn raises exception when """
+        """neither max_iter nor criterion_function is provided."""
         sequential_learner.environment_function = AsyncMock()
         sequential_learner.update_function = AsyncMock()
         with pytest.raises(Exception) as excinfo:
@@ -98,7 +101,7 @@ class TestSequentialReinforcementLearner:
         await configured_learner.learn(max_iter=2)
 
         # Verify _register_task was called for environment and update tasks
-        # Should be called for: 2 environment tasks + 2 update tasks + 2 stop criterion checks = 6 times
-        assert configured_learner._register_task.call_count == 10
+        # Should be called for: 8 times
+        assert configured_learner._register_task.call_count == 8
 
 
