@@ -90,7 +90,7 @@ class TestSequentialReinforcementLearner:
         sequential_learner.update_function = AsyncMock()
         with pytest.raises(Exception) as excinfo:
             await sequential_learner.learn()
-        assert "Test function must be set!" in str(excinfo.value)
+        assert "Either max_iter or stop_criterion_function" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_learn_with_max_iterations(self, configured_learner):
