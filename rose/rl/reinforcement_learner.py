@@ -434,14 +434,6 @@ class ParallelExperience(ReinforcementLearner):
             )
             print(f"{learner_prefix}Starting Iteration-{i}")
 
-            # Get iteration-specific test configuration
-            #test_config: TaskConfig = self._get_iteration_task_config(
-            #    self.test_function, learner_config, "test", i
-            #)
-
-            # Register test task
-            #test_task = self._register_task(test_config, deps=update_task)
-
             # Check stop criterion if configured
             if self.criterion_function:
                 criterion_config: TaskConfig = self._get_iteration_task_config(
