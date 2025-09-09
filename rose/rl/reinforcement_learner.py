@@ -84,7 +84,6 @@ class SequentialReinforcementLearner(ReinforcementLearner):
     3. Testing/evaluation of the updated policy
     """
 
-
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the SequentialReinforcementLearner.
 
@@ -129,8 +128,9 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         # Validate that required functions are set
         if not skip_emulation_step and not self.environment_function:
-            raise Exception("Environment function must be set unless" 
-            +" using simulation pool!")
+            raise Exception(
+                "Environment function must be set unless" + " using simulation pool!"
+            )
         if not self.update_function:
             raise Exception("Update function must be set!")
         if not max_iter and not self.criterion_function:
@@ -382,10 +382,7 @@ class ParallelExperience(ReinforcementLearner):
         """
 
         # Validate that required functions are set
-        if (
-            not self.environment_functions
-            or not self.update_function
-        ):
+        if not self.environment_functions or not self.update_function:
             raise Exception("Environment, Update, and Criterion functions must be set!")
 
         if not max_iter and not self.criterion_function:
@@ -603,10 +600,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             raise ValueError("For single learner, use SequentialReinforcementLearner")
 
         # Validate base functions are set
-        if (
-            not self.environment_function
-            or not self.update_function
-        ):
+        if not self.environment_function or not self.update_function:
             raise Exception("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
