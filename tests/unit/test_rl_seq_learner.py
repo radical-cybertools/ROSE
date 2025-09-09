@@ -4,8 +4,6 @@ from rose.rl.reinforcement_learner import SequentialReinforcementLearner, TaskCo
 
 import pytest
 
-
-
 class TestSequentialReinforcementLearner:
     """Test cases for SequentialReinforcementLearner class."""
 
