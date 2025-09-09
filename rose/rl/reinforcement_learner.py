@@ -127,15 +127,12 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             Exception: If environment, update, or test functions are not set.
             Exception: If neither max_iter nor criterion_function is provided.
         """
-        self.test_function = self.criterion_function
         # Validate that required functions are set
         if not skip_emulation_step and not self.environment_function:
             raise Exception("Environment function must be set unless" 
             +" using simulation pool!")
         if not self.update_function:
             raise Exception("Update function must be set!")
-        if not self.test_function:
-            raise Exception("Test function must be set!")
         if not max_iter and not self.criterion_function:
             mgs = "Either max_iter or stop_criterion_function must be provided."
             raise Exception(mgs)
@@ -402,6 +399,8 @@ class ParallelExperience(ReinforcementLearner):
 
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
 
+        update_task: tuple = ()
+
         if not skip_pre_loop:
             # Pre-loop: collect experiences and update
             env_tasks = []
@@ -608,7 +607,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             not self.environment_function
             or not self.update_function
         ):
-            raise Exception("Environment, Update, and Test functions must be set!")
+            raise Exception("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
             raise Exception(
