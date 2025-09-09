@@ -28,8 +28,7 @@ async def test_rl_pipeline_functions():
         as_executable=False,
     )
     async def check_reward(val, *args):
-        print("reward:", val)
-        return sum(val) > 15
+        return val > 2
 
     await rl.learn(max_iter=1)
 

@@ -97,7 +97,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        skip_emulation_step: bool = False,
+        skip_simulation_step: bool = False,
         learner_config: Optional[LearnerConfig] = None,
     ) -> Any:
         """Run the sequential reinforcement learning loop with configuration support.
@@ -113,7 +113,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 Defaults to 0.
             skip_pre_loop (bool): If True, skips the initial environment and update
                 phases before the main learning loop.
-            skip_emulation_step (bool): If True, skips the environment task and assumes
+            skip_simulation_step (bool): If True, skips the environment task and assumes
                 a simulation pool already exists. Defaults to False.
             learner_config (Optional[LearnerConfig]): Configuration object containing
                 per-iteration parameters for environment, update, and test functions.
@@ -127,7 +127,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             Exception: If neither max_iter nor criterion_function is provided.
         """
         # Validate that required functions are set
-        if not skip_emulation_step and not self.environment_function:
+        if not skip_simulation_step and not self.environment_function:
             raise Exception(
                 "Environment function must be set unless" + " using simulation pool!"
             )
@@ -147,7 +147,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         update_task: tuple = ()
 
         if not skip_pre_loop:
-            if skip_emulation_step:
+            if skip_simulation_step:
                 # No environment task, only update
                 update_config: TaskConfig = self._get_iteration_task_config(
                     self.update_function, learner_config, "update", 0
@@ -182,7 +182,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                     self.criterion_function, learner_config, "criterion", i
                 )
                 stop_task: asyncio.Future = self._register_task(
-                    criterion_config, deps=env_task
+                    criterion_config, deps=update_task
                 )
                 stop: Any = await stop_task
 
@@ -195,7 +195,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             next_update_config: TaskConfig = self._get_iteration_task_config(
                 self.update_function, learner_config, "update", i + 1
             )
-            if skip_emulation_step:
+            if skip_simulation_step:
                 # No environment task, only update
                 update_task = self._register_task(next_update_config, deps=stop_task)
                 env_task = ()  # keep empty tuple for consistency
@@ -383,7 +383,7 @@ class ParallelExperience(ReinforcementLearner):
 
         # Validate that required functions are set
         if not self.environment_functions or not self.update_function:
-            raise Exception("Environment, Update, and Criterion functions must be set!")
+            raise Exception("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
             raise Exception(
