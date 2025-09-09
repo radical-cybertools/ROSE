@@ -179,24 +179,17 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             )
             print(f"{learner_prefix}Starting Iteration-{i}")
 
-            test_config: TaskConfig = self._get_iteration_task_config(
-                self.test_function, learner_config, "test", i
-            )
-
-            # Register test task with dependencies
-            if skip_emulation_step:
-                test_task = self._register_task(test_config, deps=update_task)
-            else:
-                test_task = self._register_task(test_config, deps=(env_task, update_task))
-
-            # Check stop criterion if configured
             if self.criterion_function:
                 criterion_config: TaskConfig = self._get_iteration_task_config(
                     self.criterion_function, learner_config, "criterion", i
                 )
-                stop_task = self._register_task(criterion_config, deps=test_task)
-                stop_result = await stop_task
-                should_stop, _ = self._check_stop_criterion(stop_result)
+                stop_task: asyncio.Future = self._register_task(
+                    criterion_config, deps=env_task
+                )
+                stop: Any = await stop_task
+
+                should_stop: bool
+                should_stop, _ = self._check_stop_criterion(stop)
                 if should_stop:
                     break
 
@@ -206,13 +199,13 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             )
             if skip_emulation_step:
                 # No environment task, only update
-                update_task = self._register_task(next_update_config, deps=test_task)
+                update_task = self._register_task(next_update_config, deps=stop_task)
                 env_task = ()  # keep empty tuple for consistency
             else:
                 next_env_config: TaskConfig = self._get_iteration_task_config(
                     self.environment_function, learner_config, "environment", i + 1
                 )
-                env_task = self._register_task(next_env_config, deps=test_task)
+                env_task = self._register_task(next_env_config, deps=stop_task)
                 update_task = self._register_task(next_update_config, deps=env_task)
 
             # Wait for update to complete
@@ -389,15 +382,13 @@ class ParallelExperience(ReinforcementLearner):
                 are not properly configured.
             Exception: If neither max_iter nor criterion_function is provided.
         """
-        self.test_function = self.criterion_function
 
         # Validate that required functions are set
         if (
             not self.environment_functions
             or not self.update_function
-            or not self.test_function
         ):
-            raise Exception("Environment, Update, and Test functions must be set!")
+            raise Exception("Environment, Update, and Criterion functions must be set!")
 
         if not max_iter and not self.criterion_function:
             raise Exception(
@@ -409,9 +400,6 @@ class ParallelExperience(ReinforcementLearner):
         )
 
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
-
-        # Initialize tasks for pre-loop
-        update_task: tuple = ()
 
         if not skip_pre_loop:
             # Pre-loop: collect experiences and update
@@ -447,19 +435,19 @@ class ParallelExperience(ReinforcementLearner):
             print(f"{learner_prefix}Starting Iteration-{i}")
 
             # Get iteration-specific test configuration
-            test_config: TaskConfig = self._get_iteration_task_config(
-                self.test_function, learner_config, "test", i
-            )
+            #test_config: TaskConfig = self._get_iteration_task_config(
+            #    self.test_function, learner_config, "test", i
+            #)
 
             # Register test task
-            test_task = self._register_task(test_config, deps=update_task)
+            #test_task = self._register_task(test_config, deps=update_task)
 
             # Check stop criterion if configured
             if self.criterion_function:
                 criterion_config: TaskConfig = self._get_iteration_task_config(
                     self.criterion_function, learner_config, "criterion", i
                 )
-                stop_task = self._register_task(criterion_config, deps=test_task)
+                stop_task = self._register_task(criterion_config, deps=update_task)
                 stop_result = await stop_task
 
                 should_stop, _ = self._check_stop_criterion(stop_result)
@@ -472,7 +460,7 @@ class ParallelExperience(ReinforcementLearner):
                 next_env_config: TaskConfig = self._get_iteration_task_config(
                     env_func, learner_config, f"environment_{env_name}", i + 1
                 )
-                env_task = self._register_task(next_env_config, deps=test_task)
+                env_task = self._register_task(next_env_config, deps=stop_task)
                 env_tasks.append(env_task)
 
             # Wait for all environment tasks to complete
@@ -543,7 +531,6 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         # Copy the base functions from the parent learner
         sequential_learner.environment_function = self.environment_function
         sequential_learner.update_function = self.update_function
-        sequential_learner.test_function = self.test_function
         sequential_learner.criterion_function = self.criterion_function
 
         # Set learner-specific identifier for logging
@@ -578,7 +565,6 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         return LearnerConfig(
             environment=getattr(parallel_config, "environment", None),
             update=getattr(parallel_config, "update", None),
-            test=getattr(parallel_config, "test", None),
             criterion=getattr(parallel_config, "criterion", None),
         )
 
@@ -628,7 +614,6 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         if (
             not self.environment_function
             or not self.update_function
-            or not self.test_function
         ):
             raise Exception("Environment, Update, and Test functions must be set!")
 

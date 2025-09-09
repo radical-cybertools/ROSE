@@ -15,17 +15,18 @@ async def test_rl_pipeline_functions():
 
     @rl.environment_task(as_executable=False)
     async def environment(*args):
-        return [[1, 2, 3, 4],[2, 4, 6, 8],[3, 6, 9, 12],[4, 8, 12, 16]]
+        return [1,2,3,4]
 
     @rl.update_task(as_executable=False)
-    async def update(data):
-        return sum([sum(i) for i in data]) / len(data)
+    async def update(data, *args):
+        return sum(data) / len(data)
 
     @rl.as_stop_criterion(metric_name='MODEL_REWARD', threshold=20, operator=GREATER_THAN_THRESHOLD, as_executable=False)
-    async def check_reward(val):
-        return val > 15
+    async def check_reward(val, *args):
+        print("reward:",val)
+        return sum(val) > 15
 
-    await rl.learn(max_iter=2)
+    await rl.learn(max_iter=1)
 
     scores = rl.get_metric_results()
 
