@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 from rose.metrics import GREATER_THAN_THRESHOLD
+from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 
 
 @pytest.mark.asyncio

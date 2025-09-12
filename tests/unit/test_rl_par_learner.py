@@ -1,17 +1,13 @@
-import asyncio
-import os
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from radical.asyncflow import WorkflowEngine
+
+from rose.learner import LearnerConfig
 from rose.rl.reinforcement_learner import (
-    ParallelExperience,
     ParallelReinforcementLearner,
     SequentialReinforcementLearner,
-    TaskConfig,
 )
-from rose.learner import LearnerConfig
-from rose.rl.experience import ExperienceBank
-import pytest
 
 
 class TestParallelReinforcementLearner:
@@ -126,7 +122,8 @@ class TestParallelReinforcementLearner:
     async def test_learn_without_iterations_or_criterion(
         self, configured_parallel_learner
     ):
-        """Test that learn raises exception when neither max_iter nor criterion_function is provided."""
+        """Test that learn raises exception when neither max_iter nor"""
+        """criterion_function is provided."""
         configured_parallel_learner.criterion_function = None
 
         with pytest.raises(Exception) as excinfo:
@@ -138,7 +135,8 @@ class TestParallelReinforcementLearner:
 
     @pytest.mark.asyncio
     async def test_learn_mismatched_config_length(self, configured_parallel_learner):
-        """Test that learn raises exception when learner_configs length doesn't match parallel_learners."""
+        """Test that learn raises exception when learner_configs length doesn't """
+        """match parallel_learners."""
         learner_configs = [LearnerConfig(), LearnerConfig()]  # Length 2
 
         with pytest.raises(ValueError) as excinfo:
@@ -227,4 +225,4 @@ class TestParallelReinforcementLearner:
             learn_calls = mock_sequential_learner.learn.call_args_list
             assert len(learn_calls) == 2
             for call in learn_calls:
-                assert call.kwargs["skip_pre_loop"] == True
+                assert call.kwargs["skip_pre_loop"]

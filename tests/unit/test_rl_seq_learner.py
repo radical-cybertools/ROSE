@@ -1,8 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock
-from radical.asyncflow import WorkflowEngine
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner, TaskConfig
 
 import pytest
+from radical.asyncflow import WorkflowEngine
+
+from rose.rl.reinforcement_learner import SequentialReinforcementLearner, TaskConfig
+
 
 class TestSequentialReinforcementLearner:
     """Test cases for SequentialReinforcementLearner class."""

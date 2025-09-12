@@ -3,8 +3,9 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
-from rose.rl.reinforcement_learner import ParallelReinforcementLearner
 from rose.metrics import GREATER_THAN_THRESHOLD
+from rose.rl.reinforcement_learner import ParallelReinforcementLearner
+
 
 @pytest.mark.asyncio
 async def test_rl_pipeline_functions():
