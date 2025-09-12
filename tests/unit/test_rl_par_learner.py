@@ -135,7 +135,7 @@ class TestParallelReinforcementLearner:
 
     @pytest.mark.asyncio
     async def test_learn_mismatched_config_length(self, configured_parallel_learner):
-        """Test that learn raises exception when learner_configs length doesn't """
+        """Test that learn raises exception when learner_configs length doesn't"""
         """match parallel_learners."""
         learner_configs = [LearnerConfig(), LearnerConfig()]  # Length 2
 
