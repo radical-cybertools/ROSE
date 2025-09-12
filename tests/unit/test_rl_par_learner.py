@@ -4,14 +4,15 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 from radical.asyncflow import WorkflowEngine
 from rose.rl.reinforcement_learner import (
-    ParallelExperience, 
-    ParallelReinforcementLearner, 
+    ParallelExperience,
+    ParallelReinforcementLearner,
     SequentialReinforcementLearner,
-    TaskConfig
+    TaskConfig,
 )
 from rose.learner import LearnerConfig
 from rose.rl.experience import ExperienceBank
 import pytest
+
 
 class TestParallelReinforcementLearner:
     """Test cases for ParallelReinforcementLearner class."""
@@ -44,14 +45,25 @@ class TestParallelReinforcementLearner:
         """Test _create_sequential_learner method."""
         learner_id = 1
         config = None
-        
-        sequential_learner = configured_parallel_learner._create_sequential_learner(learner_id, config)
-        
+
+        sequential_learner = configured_parallel_learner._create_sequential_learner(
+            learner_id, config
+        )
+
         assert isinstance(sequential_learner, SequentialReinforcementLearner)
         assert sequential_learner.learner_id == learner_id
-        assert sequential_learner.environment_function == configured_parallel_learner.environment_function
-        assert sequential_learner.update_function == configured_parallel_learner.update_function
-        assert sequential_learner.criterion_function == configured_parallel_learner.criterion_function
+        assert (
+            sequential_learner.environment_function
+            == configured_parallel_learner.environment_function
+        )
+        assert (
+            sequential_learner.update_function
+            == configured_parallel_learner.update_function
+        )
+        assert (
+            sequential_learner.criterion_function
+            == configured_parallel_learner.criterion_function
+        )
 
     def test_convert_to_sequential_config(self, parallel_learner):
         """Test _convert_to_sequential_config method."""
@@ -65,7 +77,9 @@ class TestParallelReinforcementLearner:
         mock_config.update = "upd_params"
         mock_config.criterion = "crit_params"
 
-        with patch("rose.rl.reinforcement_learner.LearnerConfig") as mock_learner_config:
+        with patch(
+            "rose.rl.reinforcement_learner.LearnerConfig"
+        ) as mock_learner_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_learner_config.assert_called_once_with(
@@ -97,36 +111,46 @@ class TestParallelReinforcementLearner:
         assert "Environment and Update functions must be set" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_learn_invalid_parallel_learners_count(self, configured_parallel_learner):
+    async def test_learn_invalid_parallel_learners_count(
+        self, configured_parallel_learner
+    ):
         """Test that learn raises exception when parallel_learners < 2."""
         with pytest.raises(ValueError) as excinfo:
             await configured_parallel_learner.learn(parallel_learners=1, max_iter=1)
 
-        assert "For single learner, use SequentialReinforcementLearner" in str(excinfo.value)
+        assert "For single learner, use SequentialReinforcementLearner" in str(
+            excinfo.value
+        )
 
     @pytest.mark.asyncio
-    async def test_learn_without_iterations_or_criterion(self, configured_parallel_learner):
+    async def test_learn_without_iterations_or_criterion(
+        self, configured_parallel_learner
+    ):
         """Test that learn raises exception when neither max_iter nor criterion_function is provided."""
         configured_parallel_learner.criterion_function = None
 
         with pytest.raises(Exception) as excinfo:
             await configured_parallel_learner.learn(parallel_learners=2)
 
-        assert "Either max_iter or stop_criterion_function must be provided" in str(excinfo.value)
+        assert "Either max_iter or stop_criterion_function must be provided" in str(
+            excinfo.value
+        )
 
     @pytest.mark.asyncio
     async def test_learn_mismatched_config_length(self, configured_parallel_learner):
         """Test that learn raises exception when learner_configs length doesn't match parallel_learners."""
         learner_configs = [LearnerConfig(), LearnerConfig()]  # Length 2
-        
+
         with pytest.raises(ValueError) as excinfo:
             await configured_parallel_learner.learn(
                 parallel_learners=3,  # Different length
                 max_iter=1,
-                learner_configs=learner_configs
+                learner_configs=learner_configs,
             )
 
-        assert "learner_configs length must match parallel_learners" in str(excinfo.value)
+        assert "learner_configs length must match parallel_learners" in str(
+            excinfo.value
+        )
 
     @pytest.mark.asyncio
     async def test_learn_successful_execution(self, configured_parallel_learner):
@@ -135,39 +159,52 @@ class TestParallelReinforcementLearner:
         mock_sequential_learner = MagicMock()
         mock_sequential_learner.learn = AsyncMock(return_value="learner_result")
         mock_sequential_learner.metric_values_per_iteration = {"metric1": [1, 2, 3]}
-        
-        with patch.object(configured_parallel_learner, '_create_sequential_learner', 
-                         return_value=mock_sequential_learner):
-            results = await configured_parallel_learner.learn(parallel_learners=2, max_iter=1)
-            
+
+        with patch.object(
+            configured_parallel_learner,
+            "_create_sequential_learner",
+            return_value=mock_sequential_learner,
+        ):
+            results = await configured_parallel_learner.learn(
+                parallel_learners=2, max_iter=1
+            )
+
             assert len(results) == 2
             assert all(result == "learner_result" for result in results)
-            
+
             # Verify metric storage
-            assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
-            assert "learner-1" in configured_parallel_learner.metric_values_per_iteration
+            assert (
+                "learner-0" in configured_parallel_learner.metric_values_per_iteration
+            )
+            assert (
+                "learner-1" in configured_parallel_learner.metric_values_per_iteration
+            )
 
     @pytest.mark.asyncio
     async def test_learn_handles_learner_exceptions(self, configured_parallel_learner):
         """Test that learn properly handles exceptions from individual learners."""
+
         # Mock one successful and one failing sequential learner
         def create_learner_side_effect(learner_id, config):
             mock_learner = MagicMock()
             mock_learner.metric_values_per_iteration = {}
-            
+
             if learner_id == 0:
                 mock_learner.learn = AsyncMock(return_value="success")
             else:
                 mock_learner.learn = AsyncMock(side_effect=Exception("Learner failed"))
-            
+
             return mock_learner
-        
-        with patch.object(configured_parallel_learner, '_create_sequential_learner', 
-                         side_effect=create_learner_side_effect):
+
+        with patch.object(
+            configured_parallel_learner,
+            "_create_sequential_learner",
+            side_effect=create_learner_side_effect,
+        ):
             # The exception should propagate up and be raised
             with pytest.raises(Exception) as excinfo:
                 await configured_parallel_learner.learn(parallel_learners=2, max_iter=1)
-            
+
             assert "Learner failed" in str(excinfo.value)
 
     @pytest.mark.asyncio
@@ -176,17 +213,18 @@ class TestParallelReinforcementLearner:
         mock_sequential_learner = MagicMock()
         mock_sequential_learner.learn = AsyncMock(return_value="learner_result")
         mock_sequential_learner.metric_values_per_iteration = {}
-        
-        with patch.object(configured_parallel_learner, '_create_sequential_learner', 
-                         return_value=mock_sequential_learner):
+
+        with patch.object(
+            configured_parallel_learner,
+            "_create_sequential_learner",
+            return_value=mock_sequential_learner,
+        ):
             await configured_parallel_learner.learn(
-                parallel_learners=2, 
-                max_iter=1, 
-                skip_pre_loop=True
+                parallel_learners=2, max_iter=1, skip_pre_loop=True
             )
-            
+
             # Verify that sequential learners were called with skip_pre_loop=True
             learn_calls = mock_sequential_learner.learn.call_args_list
             assert len(learn_calls) == 2
             for call in learn_calls:
-                assert call.kwargs['skip_pre_loop'] == True
+                assert call.kwargs["skip_pre_loop"] == True
