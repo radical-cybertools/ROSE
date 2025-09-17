@@ -66,7 +66,6 @@ class UQMetrics:
             else:
                 if y_true.ndim > 1:
                     y_true = np.squeeze(y_true)
-                    print(y_true.shape)
                     if y_true.ndim > 1:
                         raise ValueError(
                         f"For classification, y_true must have 2 dimensions "
@@ -201,14 +200,12 @@ class UQMetrics:
                 save_path=Path(plot_dir, 'uncertain_plot.png')
             else:
                 save_path='uncertain_plot.png'
-            print('save_path', save_path)
             self.plot_top_uncertain(mc_preds, k=k, metric=metric, y_true=y_true, save_path=save_path, show_error=True)
         if plot == 'plot_scatter_uncertainty' or plot == 'both':
             if plot_dir:
                 save_path=Path(plot_dir, 'scatter_plot.png')
             else:
                 save_path='scatter_plot.png'
-            print('save_path', save_path)
             self.scatter_uncertainty(mc_preds, metric=metric, y_true=y_true, save_path=save_path)
         return top_indices, scores[top_indices]
 
@@ -289,7 +286,6 @@ class UQMetrics:
         elif self.task_type == "regression" and y_true is not None:
             mean_preds = np.mean(mc_preds, axis=0).squeeze()
             for bar, idx in zip(bars, top_indices):
-                print(mean_preds[idx], y_true[idx], y_true.shape)
                 txt = f"pred={mean_preds[idx]:.3f}, true={y_true[idx]:.3f}"
                 plt.text(
                     bar.get_width() + 0.01 * max(top_scores),
