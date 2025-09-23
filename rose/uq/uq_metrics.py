@@ -5,11 +5,14 @@ from pathlib import Path
 # ---- Decorator registry for UQ algorithms ----
 UQ_REGISTRY = {}
 
+
 def register_uq(name):
     """Decorator to register a UQ metric"""
+
     def decorator(func):
         UQ_REGISTRY[name] = func
         return func
+
     return decorator
 
 
@@ -18,33 +21,30 @@ class UQMetrics:
         """
         task_type: 'classification' or 'regression'
         """
-        if task_type not in ['classification', 'regression']:
+        if task_type not in ["classification", "regression"]:
             raise ValueError("task_type must be 'classification' or 'regression'")
         self.task_type = task_type
 
-#
-#*****************************  
+    #
+    # *****************************
     def _validate_inputs(self, mc_preds, y_true=None):
         """Safeguard to check input dimensions"""
         if not isinstance(mc_preds, np.ndarray):
             try:
                 mc_preds = np.array(mc_preds)
-            except Exception as err:
+            except:
                 raise TypeError(
-                    f"Unable to convert {type(mc_preds)} mc_preds "
-                    f"to numpy array"
-                ) from err
+                    f"Unable to convert {type(mc_preds)} mc_preds to numpy array"
+                )
 
-        
-        if self.task_type == 'classification':
+        if self.task_type == "classification":
             # Expected: [n_mc_samples, n_instances, n_classes]
             if mc_preds.ndim != 3:
                 mc_preds = np.squeeze(mc_preds)
                 if mc_preds.ndim != 3:
                     raise ValueError(
                         f"For classification, mc_preds must have 3 dimensions "
-                        f"[n_mc_samples, n_instances, n_classes], "
-                        f"got shape {mc_preds.shape}"
+                        f"[n_mc_samples, n_instances, n_classes], got shape {mc_preds.shape}"
                     )
         else:
             # Expected: [n_mc_samples, n_instances] (regression outputs)
@@ -58,29 +58,30 @@ class UQMetrics:
         if y_true is not None:
             try:
                 y_true = np.array(y_true)
-            except Exception as err:
-                raise TypeError(f"Unable to convert {type(y_true)} "
-                                f"y_true to numpy array") from err
-            if self.task_type == 'classification':
+            except:
+                raise TypeError(
+                    f"Unable to convert {type(y_true)} y_true to numpy array"
+                )
+            if self.task_type == "classification":
                 if y_true.ndim > 2:
                     y_true = np.squeeze(y_true)
                     if y_true.ndim > 2:
                         raise ValueError(
-                        f"For classification, y_true must have 2 dimensions "
-                        f"[n_instances, n_classes], got shape {y_true.shape}"
-                    )
+                            f"For classification, y_true must have 2 dimensions "
+                            f"[n_instances, n_classes], got shape {y_true.shape}"
+                        )
             else:
                 if y_true.ndim > 1:
                     y_true = np.squeeze(y_true)
                     if y_true.ndim > 1:
                         raise ValueError(
-                        f"For classification, y_true must have 2 dimensions "
-                        f"[n_instances], got shape {y_true.shape}"
-                    )
+                            f"For classification, y_true must have 2 dimensions "
+                            f"[n_instances], got shape {y_true.shape}"
+                        )
         return mc_preds, y_true
 
-#
-#*****************************  
+    #
+    # *****************************
     # ---- Classification metrics ----
     @register_uq("predictive_entropy")
     def predictive_entropy(self, mc_preds):
@@ -89,8 +90,8 @@ class UQMetrics:
         entropy = -np.sum(mean_probs * np.log(mean_probs + 1e-8), axis=1)
         return entropy
 
-#
-#*****************************  
+    #
+    # *****************************
     @register_uq("mutual_information")
     def mutual_information(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
@@ -101,21 +102,22 @@ class UQMetrics:
         mi = predictive_entropy - expected_entropy
         return mi
 
-#
-#*****************************  
+    #
+    # *****************************
     @register_uq("variation_ratio")
     def variation_ratio(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
         n_mc_samples = mc_preds.shape[0]
         votes = np.argmax(mc_preds, axis=2)  # [n_mc_samples, N]
-        mode_vote = np.apply_along_axis(lambda x: np.bincount(x).argmax(), 
-                                        axis=0, arr=votes)
+        mode_vote = np.apply_along_axis(
+            lambda x: np.bincount(x).argmax(), axis=0, arr=votes
+        )
         mode_count = np.sum(votes == mode_vote, axis=0)
         vr = 1.0 - mode_count / n_mc_samples
         return vr
 
-#
-#*****************************  
+    #
+    # *****************************
     @register_uq("margin")
     def margin(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
@@ -126,16 +128,16 @@ class UQMetrics:
         margin = top1 - top2
         return margin
 
-#
-#*****************************  
+    #
+    # *****************************
     # ---- Regression metrics ----
     @register_uq("predictive_variance")
     def predictive_variance(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
         return np.var(mc_preds, axis=0).squeeze()
 
-#
-#*****************************  
+    #
+    # *****************************
     @register_uq("predictive_interval_width")
     def predictive_interval_width(self, mc_preds, quantile=0.95):
         mc_preds, _ = self._validate_inputs(mc_preds)
@@ -143,12 +145,12 @@ class UQMetrics:
         upper = np.percentile(mc_preds, (1 + quantile) / 2 * 100, axis=0)
         return (upper - lower).squeeze()
 
-#
-#*****************************  
+    #
+    # *****************************
     @register_uq("negative_log_likelihood")
     def negative_log_likelihood(self, mc_preds, y_true):
         mc_preds, y_true = self._validate_inputs(mc_preds, y_true)
-        if self.task_type == 'classification':
+        if self.task_type == "classification":
             mean_probs = np.mean(mc_preds, axis=0)
             nll = -np.log(mean_probs[np.arange(len(y_true)), y_true] + 1e-8)
         else:
@@ -158,11 +160,10 @@ class UQMetrics:
                 0.5 * np.log(2 * np.pi * var_pred)
                 + 0.5 * ((y_true - mean_pred) ** 2) / var_pred
             )
-
         return nll
 
-#
-#*****************************  
+    #
+    # *****************************
     def compute_uncertainty(self, mc_preds, y_true=None):
         """Compute all registered UQ metrics"""
         mc_preds, y_true = self._validate_inputs(mc_preds, y_true)
@@ -172,17 +173,20 @@ class UQMetrics:
             try:
                 if name == "negative_log_likelihood" and y_true is None:
                     continue
-                results[name] = func(self, mc_preds) \
-                    if name != "negative_log_likelihood" \
-                        else func(self, mc_preds, y_true)
+                results[name] = (
+                    func(self, mc_preds)
+                    if name != "negative_log_likelihood"
+                    else func(self, mc_preds, y_true)
+                )
             except Exception as e:
                 results[name] = f"Error: {e}"
         return results
 
-#
-#*****************************  
-    def select_top_uncertain(self, mc_preds, k=10, metric=None, y_true=None, 
-                             plot=None, plot_dir=None):
+    #
+    # *****************************
+    def select_top_uncertain(
+        self, mc_preds, k=10, metric=None, y_true=None, plot=None, plot_dir=None
+    ):
         """
         Select top-k most uncertain samples according to a registered metric.
 
@@ -199,37 +203,51 @@ class UQMetrics:
 
         # Default metric
         if metric is None:
-            metric = "predictive_entropy" if self.task_type == "classification" \
+            metric = (
+                "predictive_entropy"
+                if self.task_type == "classification"
                 else "predictive_variance"
+            )
 
         if metric not in UQ_REGISTRY:
-            raise ValueError(f"Metric '{metric}' is not registered. "
-                             f"Available: {list(UQ_REGISTRY.keys())}")
+            raise ValueError(
+                f"Metric '{metric}' is not registered. Available: {list(UQ_REGISTRY.keys())}"
+            )
 
         func = UQ_REGISTRY[metric]
-        scores = func(self, mc_preds) if metric != "negative_log_likelihood" \
+        scores = (
+            func(self, mc_preds)
+            if metric != "negative_log_likelihood"
             else func(self, mc_preds, y_true)
+        )
 
         top_indices = np.argsort(-scores)[:k]
 
-        if plot == 'plot_top_uncertain' or plot == 'both':
+        if plot == "plot_top_uncertain" or plot == "both":
             if plot_dir:
-                save_path=Path(plot_dir, 'uncertain_plot.png')
+                save_path = Path(plot_dir, "uncertain_plot.png")
             else:
-                save_path='uncertain_plot.png'
-            self.plot_top_uncertain(mc_preds, k=k, metric=metric, y_true=y_true, 
-                                    save_path=save_path, show_error=True)
-        if plot == 'plot_scatter_uncertainty' or plot == 'both':
+                save_path = "uncertain_plot.png"
+            self.plot_top_uncertain(
+                mc_preds,
+                k=k,
+                metric=metric,
+                y_true=y_true,
+                save_path=save_path,
+                show_error=True,
+            )
+        if plot == "plot_scatter_uncertainty" or plot == "both":
             if plot_dir:
-                save_path=Path(plot_dir, 'scatter_plot.png')
+                save_path = Path(plot_dir, "scatter_plot.png")
             else:
-                save_path='scatter_plot.png'
-            self.scatter_uncertainty(mc_preds, metric=metric, y_true=y_true, 
-                                    save_path=save_path)
+                save_path = "scatter_plot.png"
+            self.scatter_uncertainty(
+                mc_preds, metric=metric, y_true=y_true, save_path=save_path
+            )
         return top_indices, scores[top_indices]
 
-#
-#*****************************  
+    #
+    # *****************************
     def plot_top_uncertain(
         self, mc_preds, k=10, metric=None, y_true=None, save_path=None, show_error=False
     ):
@@ -298,8 +316,9 @@ class UQMetrics:
                     va="center",
                     ha="left",
                     fontsize=10,
-                    color="darkred" if y_true is not None and 
-                    pred_labels[idx] != y_true[idx] else "black",
+                    color="darkred"
+                    if y_true is not None and pred_labels[idx] != y_true[idx]
+                    else "black",
                 )
 
         # For regression: annotate true values if available
@@ -325,11 +344,9 @@ class UQMetrics:
         else:
             plt.show()
 
-#
-#*****************************            
-    def scatter_uncertainty(
-        self, mc_preds, metric=None, y_true=None, save_path=None
-    ):
+    #
+    # *****************************
+    def scatter_uncertainty(self, mc_preds, metric=None, y_true=None, save_path=None):
         """
         Scatter plot of uncertainty vs. predictions (or residuals).
 
@@ -340,17 +357,23 @@ class UQMetrics:
             save_path: optional, if provided saves plot to file
         """
         # Compute uncertainty scores
-        #nll, entropy, variance = self.compute_metrics(mc_preds, y_true)
+        # nll, entropy, variance = self.compute_metrics(mc_preds, y_true)
         if metric is None:
-            metric = "predictive_entropy" \
-                if self.task_type == "classification" else "variance"
+            metric = (
+                "predictive_entropy"
+                if self.task_type == "classification"
+                else "variance"
+            )
 
         try:
             func = UQ_REGISTRY[metric]
-            scores = func(self, mc_preds) if metric != "negative_log_likelihood" \
+            scores = (
+                func(self, mc_preds)
+                if metric != "negative_log_likelihood"
                 else func(self, mc_preds, y_true)
-        except Exception as err:
-            raise ValueError(f"Unsupported metric {metric}: {err}") from err
+            )
+        except:
+            raise ValueError(f"Unsupported metric {metric}")
 
         plt.figure(figsize=(7, 6))
 
@@ -360,14 +383,25 @@ class UQMetrics:
 
             if y_true is not None:
                 correct = pred_labels == y_true
-                plt.scatter(scores[correct], np.max(mean_probs, axis=1)[correct],
-                            c="green", alpha=0.6, label="Correct")
-                plt.scatter(scores[~correct], np.max(mean_probs, axis=1)[~correct],
-                            c="red", alpha=0.6, label="Incorrect")
+                plt.scatter(
+                    scores[correct],
+                    np.max(mean_probs, axis=1)[correct],
+                    c="green",
+                    alpha=0.6,
+                    label="Correct",
+                )
+                plt.scatter(
+                    scores[~correct],
+                    np.max(mean_probs, axis=1)[~correct],
+                    c="red",
+                    alpha=0.6,
+                    label="Incorrect",
+                )
                 plt.ylabel("Max Predicted Probability", fontsize=12)
             else:
-                plt.scatter(scores, np.max(mean_probs, axis=1), 
-                            c="steelblue", alpha=0.6)
+                plt.scatter(
+                    scores, np.max(mean_probs, axis=1), c="steelblue", alpha=0.6
+                )
                 plt.ylabel("Max Predicted Probability", fontsize=12)
 
             plt.xlabel(f"Uncertainty ({metric})", fontsize=12)
