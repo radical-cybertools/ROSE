@@ -1,6 +1,6 @@
 import asyncio
 import itertools
-from typing import Callable, Dict, Any, Optional, List, Union, Iterator
+from typing import dict, Any, Optional, list, Union, Iterator
 from ..learner import Learner
 from ..learner import TaskConfig
 from ..learner import LearnerConfig
@@ -9,14 +9,16 @@ from radical.asyncflow import WorkflowEngine
 
 class UQLearner(Learner):
     """UQ active learner that runs iterations one after another.
-    
-    This class implements a sequential active learning approach based on Uncertainty Quantification. 
-    Each iteration consists of simulation, a set of training and prediction steps, and active learning phases executed in sequence. 
+    This class implements a sequential active learning approach based 
+    on Uncertainty Quantification.
+    Each iteration consists of simulation, a set of training and prediction steps, 
+    and active learning phases executed in sequence. 
     The learner can be configured with per-iteration parameters using LearnerConfig.
-    
+
     Attributes:
-        learner_name (Optional[int])    :   Identifier for the learner. 
-                                            Set by ParallelActiveLearner when used in parallel mode.
+        learner_name (Optional[int])    :   Identifier for the learner.
+                                            Set by ParallelActiveLearner when 
+                                            used in parallel mode.
         prediction_task                 :   Decorator to register prediction task
         learner_results                 :   Learner training results.
     """
@@ -31,23 +33,25 @@ class UQLearner(Learner):
         super().__init__(asyncflow, register_and_submit=False)
 
         self.learner_name: str = 'UQLearner'
-        self.learner_results: List[str, Dict[str, Any]] = []
+        self.learner_results: list[str, dict[str, Any]] = []
     
     async def teach(self, 
-                    model_names: List,
+                    model_names: list,
                     num_predictions: int = 1,
                     max_iter: int = 0,
                     skip_pre_loop: bool = False,
-                    learning_config: Optional[Dict[str, LearnerConfig]] = None) -> Dict[str, Any]:
+                    learning_config: 
+                    Optional[dict[str, LearnerConfig]] = None) -> dict[str, Any]:
         """Run sequential active learning with optional per-iteration configuration.
-        
         Executes the active learning loop sequentially, with each iteration containing
-        simulation, a set of training and prediction steps, and active learning phases. Supports configurable
+        simulation, a set of training and prediction steps, and active learning phases. 
+        Supports configurable
         stopping criteria and per-iteration parameter customization.
-        
+
         Args:
-            num_predictions : Number of predictions per training model – 
-                            if only a single model is used for training, the UQ metrics must be calculated based on multiple predictions.
+            num_predictions : Number of predictions per training model –
+                            if only a single model is used for training,
+                            the UQ metrics must be calculated based on multiple predictions.
             max_iter        : Maximum number of iterations to run. If 0, runs until
                             stop criterion is met (requires criterion_function to be set).
             skip_pre_loop   : If True, skips the initial simulation and training
@@ -56,55 +60,65 @@ class UQLearner(Learner):
                             parameters for simulation, training, prediction, active learning, and
                             criterion functions.    
         Returns:
-            The result of the learning process, including the mean value of uncertainty quantification (UQ) metrics 
+            The result of the learning process, including the mean value of uncertainty 
+            quantification (UQ) metrics 
             and a list of model validation criteria (stop_value).
         Raises:
-            Exception: If required functions (simulation_function, training_functions, prediction_function,
-                active_learn_function) are not set.
+            Exception: If required functions (simulation_function, training_functions, 
+            prediction_function, active_learn_function) are not set.
             Exception: If neither max_iter nor criterion_function is provided.
             Exception: If a training task has no matching prediction task.
             Exception: If any task of the learner fails during execution.
         """
 
         # # Validate required functions
-        if not self.simulation_function or not self.training_function or not self.prediction_function or not self.active_learn_function:
-            raise Exception("Simulation, Training, prediction, and at least one AL function must be set!")
+        if  not self.simulation_function or not self.training_function or \
+            not self.prediction_function or not self.active_learn_function:
+            raise Exception("Simulation, Training, prediction, and at least"
+                            f" one AL function must be set!")
         # Validate exit criteria
         if not max_iter and not self.criterion_function:
-            raise Exception("Either max_iter or stop_criterion_function must be provided.")
+            raise Exception("Either max_iter or "
+                            "stop_criterion_function must be provided.")
     
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
 
         print(f"Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
-            prefix = f"Learner {self.learner_name}] starting training for Ensemble of Models: "
+            prefix = f"[Learner {self.learner_name}] starting training for " \
+                    "Ensemble of Models: "
         else:
-            prefix = f"Learner {self.learner_name}] starting training for Single Model: "  
+            prefix = f"[Learner {self.learner_name}] starting training " \
+                        "for Single Model: "  
         print(f"{prefix} {model_names}")
 
         @self.asyncflow.block
         async def _traininig_block(learning_config: TaskConfig, 
                                     model_name: str, 
-                                    iteration_count: int) -> Dict[str, Any]:
-            """Run a simulation, train of a single model, and generate a set of predictions for that model.
+                                    iteration_count: int) -> dict[str, Any]:
+            """Run a simulation, train of a single model, and generate a set of 
+                predictions for that model.
             Args:
-                learning_config:    Configuration object for retrieving task configurations.
-                model_name:         Name of mode used for training.
-                iteration_count:    Active learning Iteration count
+                learning_config:
+                    Configuration object for retrieving task configurations.
+                model_name:
+                    Name of mode used for training.
+                iteration_count:
+                    Active learning Iteration count
             Returns:
-                The result from last task (prediction) execution.  
+                The result from last task (prediction) execution.
             Raises:
                 Exception: If the training block fails during execution.
             """
             try:
 
                 sim_config: TaskConfig = self._get_iteration_task_config(
-                        self.simulation_function, learning_config, 'simulation', iteration_count
-                    )
+                        self.simulation_function, learning_config, 'simulation', 
+                        iteration_count)
                 training_config: TaskConfig = self._get_iteration_task_config(
-                    self.training_function, learning_config, 'training', iteration_count
-                )
+                    self.training_function, learning_config, 'training', 
+                    iteration_count)
                 training_config['kwargs']['--model_name'] = model_name
 
                 sim_task = self._register_task(sim_config)
@@ -113,22 +127,25 @@ class UQLearner(Learner):
                 prediction_tasks = []
                 for i in range(num_predictions):
                     prediction_config: TaskConfig = self._get_iteration_task_config(
-                                                self.prediction_function, learning_config, 'prediction', iteration_count
-                                            )
+                        self.prediction_function, learning_config, 'prediction', 
+                        iteration_count)
                     prediction_config['kwargs']['--model_name'] = model_name
                     prediction_config['kwargs']['--iteration'] = i
-                    prediction_task =  self._register_task(prediction_config, deps=training_task)
+                    prediction_task =  self._register_task(prediction_config, 
+                                                           deps=training_task)
                     prediction_tasks.append(prediction_task)
 
-                print(f"[{self.learner_name}-{model_name}] Completed with {iteration_count} iterations ")
+                print(f"[{self.learner_name}-{model_name}] Completed with {iteration_count} "
+                      f"iterations ")
                 return await asyncio.gather(*prediction_tasks)
 
             except Exception as e:
-                print(f"[{self.learner_name}-{model_name}] Failed train/prediction with error: {e}")
+                print(f"[{self.learner_name}-{model_name}] "
+                      f"Failed train/prediction with error: {e}")
                 raise
 
         @self.asyncflow.block
-        async def _run_pipeline() -> Dict[str, Any]:
+        async def _run_pipeline() -> dict[str, Any]:
             """Run a single pipeline.
             Raises:
                 Exception: If any task in pipeline fails during execution.
@@ -141,7 +158,7 @@ class UQLearner(Learner):
                 training_tasks: tuple = ()
 
                 if not skip_pre_loop:
-                    futures: List[Any] = [
+                    futures: list[Any] = [
                                     _traininig_block(learning_config, model_name, 0) 
                                     for model_name in model_names
                                 ]
@@ -159,7 +176,7 @@ class UQLearner(Learner):
 
                     if self.criterion_function and self.uncertainty_function:
                         # Store results for current iteration
-                        result_dict: Dict[str, Any] = {
+                        result_dict: dict[str, Any] = {
                             'iterations': iteration_count,
                         }
                 
@@ -178,14 +195,17 @@ class UQLearner(Learner):
                         result_dict['uq'] = uq_stop_value
                         if uq_model_stop:
                             self.learner_results.append(result_dict)
-                            print(f"[Learner {self.learner_name}] UQ value reached its threshold - Stopping training for all models at iteration {i} with value: {uq_stop_value}")
+                            print(f"[Learner {self.learner_name}] UQ value reached "
+                                  f"its threshold - Stopping training for all models at "
+                                  f"iteration {i} with value: {uq_stop_value}")
                             break
 
                     # Get iteration-specific configurations
                     acl_config: TaskConfig = self._get_iteration_task_config(
                         self.active_learn_function, learning_config, 'active_learn', i
                     )
-                    acl_task = self._register_task(acl_config, deps=(training_tasks + (uq_task,) if uq_task else training_tasks))
+                    acl_task = self._register_task(acl_config, deps=(training_tasks + (uq_task,) 
+                                                                    if uq_task else training_tasks))
                     al_results = await acl_task
                     
                     print(f'Learner {self.learner_name}] {al_results}')
@@ -197,13 +217,15 @@ class UQLearner(Learner):
                         for model_name in model_names:
                             criterion_function = self.criterion_function
                             criterion_function['kwargs']['--model_name'] = model_name
-                            stop_task =  self._register_task(criterion_function, deps=acl_task)
+                            stop_task =  self._register_task(criterion_function, 
+                                                            deps=acl_task)
                             stop_tasks.append(stop_task)
                         stops = await asyncio.gather(*stop_tasks)
 
                         model_stop: bool
                         stop_value: float
-                        should_stop: int = 0  #The pipeline will stop once all models meet the exit criteria.
+                        #The pipeline will stop once all models meet the exit criteria.
+                        should_stop: int = 0  
                         final_results = []
                         for stop in stops:
                             model_stop, stop_value = self._check_stop_criterion(stop)
@@ -217,17 +239,20 @@ class UQLearner(Learner):
                         self.learner_results.append(result_dict)
 
                         if should_stop == len(stops):
-                            print(f"[Learner {self.learner_name}] Stopping criterion met for all models at iteration {i} with value: {stop_value}")
+                            print(f"[Learner {self.learner_name}] Stopping criterion met "
+                                f"for all models at iteration {i} with value: {stop_value}")
                             break
                     
                     iteration_count = i + 1
-                    futures: List[Any] = [
-                                    _traininig_block(learning_config, model_name, iteration_count) 
+                    futures: list[Any] = [
+                                    _traininig_block(learning_config, model_name, 
+                                                    iteration_count) 
                                     for model_name in model_names
                                 ]
                     await asyncio.gather(*futures)
 
-                print(f"[Learner {self.learner_name}] Completed with {iteration_count} iterations")
+                print(f"[Learner {self.learner_name}] Completed with {iteration_count} "
+                      f"iterations")
 
             except Exception as e:
                 print(f"[Learner {self.learner_name}] Failed with error: {e}")
@@ -247,12 +272,11 @@ class UQLearner(Learner):
     
 
 class ParallelUQLearner(UQLearner):
-    """Parallel active learner that runs multiple UQLearners concurrently.
-    
+    """
+    Parallel active learner that runs multiple UQLearners concurrently.
     This class orchestrates multiple UQLearner instances to run in parallel,
     allowing for concurrent exploration of the learning space. Each learner can be
     configured independently through per-learner LearnerConfig objects.
-    
     The parallel learner manages the lifecycle of all sequential learners and collects
     their results when all have completed their learning processes.
     """
@@ -269,7 +293,6 @@ class ParallelUQLearner(UQLearner):
         learner_name: str
     ) -> UQLearner:
         """Create a UQLearner instance for a parallel learner.
-        
         Creates and configures a new UQLearner with the same base
         functions as the parent parallel learner, but with a unique identifier
         for logging and debugging purposes.
@@ -299,7 +322,6 @@ class ParallelUQLearner(UQLearner):
         parallel_config: Optional[LearnerConfig]
     ) -> Optional[LearnerConfig]:
         """Convert a LearnerConfig to a LearnerConfig.
-        
         Note: This method currently performs a direct copy as both parallel and
         sequential learners use the same LearnerConfig type. This method exists
         to provide a clear interface for potential future differences in
@@ -328,31 +350,31 @@ class ParallelUQLearner(UQLearner):
         )
 
     async def teach(self,
-        learner_names: List,
-        model_names: List,
+        learner_names: list,
+        model_names: list,
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[Dict[str, Optional[LearnerConfig]]] = None,
-    ) -> List[Any]:
+        learner_configs: Optional[dict[str, Optional[LearnerConfig]]] = None,
+    ) -> list[Any]:
         """Run parallel active learning by launching multiple UQLearners.
-        
         Orchestrates multiple UQLearner instances to run concurrently,
         each with potentially different configurations. All learners run
         independently and their results are collected when all have completed.
 
         Args:
-            learner_names: List of learner names to run concurrently.
+            learner_names: list of learner names to run concurrently.
             max_iter: Maximum number of iterations for each learner. If 0,
                 learners run until their individual stop criteria are met.
             skip_pre_loop: If True, all learners skip their initial simulation
                 and training phases.
-            learner_configs: A list of configuration objects, one for each learner. 
-                            If None, all learners will use the default configuration. 
-                            If provided, the length must match the number of elements in learner_names.
+            learner_configs: A list of configuration objects, one for each learner.
+                            If None, all learners will use the default configuration.
+                            If provided, the length must match the number 
+                            of elements in learner_names.
 
         Returns:
-            List containing the results from each learner, in the same order
+            list containing the results from each learner, in the same order
             as the learners were launched. Result types depend on the specific
             implementation of the learning functions.
 
@@ -364,30 +386,31 @@ class ParallelUQLearner(UQLearner):
 
         parallel_learners = len(learner_names)
         # # Validate base functions are set
-        if not self.simulation_function or not self.training_function or not self.active_learn_function:
-            raise Exception("Simulation, Training, and Active Learning functions must be set!")
+        if not self.simulation_function or not self.training_function or \
+           not self.active_learn_function:
+            raise Exception("Simulation, Training, and Active Learning "
+                            f"functions must be set!")
 
         if not max_iter and not self.criterion_function:
             raise Exception("Either max_iter or stop_criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or [None] * len(learner_names)
-        if len(learner_configs) != parallel_learners:
-            raise ValueError("learner_configs length must match parallel_learners")
+        if len(learner_configs) != len(learner_names):
+            raise ValueError("learner_configs length must match learner_names")
 
-        print(f"Starting Parallel Active Learning with {parallel_learners} learners")
+        print(f"Starting Parallel Active Learning with {len(learner_names)} learners")
 
         @self.asyncflow.block
         async def _run_sequential_learner(learner_name: int) -> Any:
             """Run a single UQLearner.
-            
             Internal async function that manages the lifecycle of a single
             UQLearner within the parallel learning context.
-            
+
             Args:
                 learner_name: Unique identifier for this learner instance.
             Returns:
-                The result from the sequential learner's teach method.   
+                The result from the sequential learner's teach method.
             Raises:
                 Exception: Re-raises any exception from the sequential learner
                     with additional context about which learner failed.
@@ -398,7 +421,8 @@ class ParallelUQLearner(UQLearner):
                     learner_name)
                 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[LearnerConfig] = self._convert_to_sequential_config(
+                sequential_config: Optional[LearnerConfig] = \
+                    self._convert_to_sequential_config(
                     learner_configs[learner_name]
                 )
                 print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
@@ -416,7 +440,7 @@ class ParallelUQLearner(UQLearner):
                 raise
 
         # Submit all learners asynchronously
-        futures: List[Any] = [_run_sequential_learner(learner_name) for learner_name in learner_names]
+        futures: list[Any] = [_run_sequential_learner(learner_name) for learner_name in learner_names]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*[f for f in futures])

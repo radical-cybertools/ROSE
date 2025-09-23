@@ -29,8 +29,12 @@ class UQMetrics:
         if not isinstance(mc_preds, np.ndarray):
             try:
                 mc_preds = np.array(mc_preds)
-            except:
-                raise TypeError(f"Unable to convert {type(mc_preds)} mc_preds to numpy array")
+            except Exception as err:
+                raise TypeError(
+                    f"Unable to convert {type(mc_preds)} mc_preds "
+                    f"to numpy array"
+                ) from err
+
         
         if self.task_type == 'classification':
             # Expected: [n_mc_samples, n_instances, n_classes]
@@ -39,7 +43,8 @@ class UQMetrics:
                 if mc_preds.ndim != 3:
                     raise ValueError(
                         f"For classification, mc_preds must have 3 dimensions "
-                        f"[n_mc_samples, n_instances, n_classes], got shape {mc_preds.shape}"
+                        f"[n_mc_samples, n_instances, n_classes], "
+                        f"got shape {mc_preds.shape}"
                     )
         else:
             # Expected: [n_mc_samples, n_instances] (regression outputs)
@@ -53,8 +58,9 @@ class UQMetrics:
         if y_true is not None:
             try:
                 y_true = np.array(y_true)
-            except:
-                raise TypeError(f"Unable to convert {type(y_true)} y_true to numpy array")
+            except Exception as err:
+                raise TypeError(f"Unable to convert {type(y_true)} "
+                                f"y_true to numpy array") from err
             if self.task_type == 'classification':
                 if y_true.ndim > 2:
                     y_true = np.squeeze(y_true)
@@ -102,7 +108,8 @@ class UQMetrics:
         mc_preds, _ = self._validate_inputs(mc_preds)
         n_mc_samples = mc_preds.shape[0]
         votes = np.argmax(mc_preds, axis=2)  # [n_mc_samples, N]
-        mode_vote = np.apply_along_axis(lambda x: np.bincount(x).argmax(), axis=0, arr=votes)
+        mode_vote = np.apply_along_axis(lambda x: np.bincount(x).argmax(), 
+                                        axis=0, arr=votes)
         mode_count = np.sum(votes == mode_vote, axis=0)
         vr = 1.0 - mode_count / n_mc_samples
         return vr
@@ -147,7 +154,11 @@ class UQMetrics:
         else:
             mean_pred = np.mean(mc_preds, axis=0).squeeze()
             var_pred = np.var(mc_preds, axis=0).squeeze() + 1e-8
-            nll = 0.5 * np.log(2 * np.pi * var_pred) + 0.5 * ((y_true - mean_pred) ** 2) / var_pred
+            nll = (
+                0.5 * np.log(2 * np.pi * var_pred)
+                + 0.5 * ((y_true - mean_pred) ** 2) / var_pred
+            )
+
         return nll
 
 #
@@ -161,14 +172,16 @@ class UQMetrics:
             try:
                 if name == "negative_log_likelihood" and y_true is None:
                     continue
-                results[name] = func(self, mc_preds) if name != "negative_log_likelihood" else func(self, mc_preds, y_true)
+                results[name] = func(self, mc_preds) if name != "negative_log_likelihood" \
+                        else func(self, mc_preds, y_true)
             except Exception as e:
                 results[name] = f"Error: {e}"
         return results
 
 #
 #*****************************  
-    def select_top_uncertain(self, mc_preds, k=10, metric=None, y_true=None, plot=None, plot_dir=None):
+    def select_top_uncertain(self, mc_preds, k=10, metric=None, y_true=None, 
+                             plot=None, plot_dir=None):
         """
         Select top-k most uncertain samples according to a registered metric.
 
@@ -185,13 +198,16 @@ class UQMetrics:
 
         # Default metric
         if metric is None:
-            metric = "predictive_entropy" if self.task_type == "classification" else "predictive_variance"
+            metric = "predictive_entropy" if self.task_type == "classification" \
+                else "predictive_variance"
 
         if metric not in UQ_REGISTRY:
-            raise ValueError(f"Metric '{metric}' is not registered. Available: {list(UQ_REGISTRY.keys())}")
+            raise ValueError(f"Metric '{metric}' is not registered. "
+                             f"Available: {list(UQ_REGISTRY.keys())}")
 
         func = UQ_REGISTRY[metric]
-        scores = func(self, mc_preds) if metric != "negative_log_likelihood" else func(self, mc_preds, y_true)
+        scores = func(self, mc_preds) if metric != "negative_log_likelihood" \
+            else func(self, mc_preds, y_true)
 
         top_indices = np.argsort(-scores)[:k]
 
@@ -200,13 +216,15 @@ class UQMetrics:
                 save_path=Path(plot_dir, 'uncertain_plot.png')
             else:
                 save_path='uncertain_plot.png'
-            self.plot_top_uncertain(mc_preds, k=k, metric=metric, y_true=y_true, save_path=save_path, show_error=True)
+            self.plot_top_uncertain(mc_preds, k=k, metric=metric, y_true=y_true, 
+                                    save_path=save_path, show_error=True)
         if plot == 'plot_scatter_uncertainty' or plot == 'both':
             if plot_dir:
                 save_path=Path(plot_dir, 'scatter_plot.png')
             else:
                 save_path='scatter_plot.png'
-            self.scatter_uncertainty(mc_preds, metric=metric, y_true=y_true, save_path=save_path)
+            self.scatter_uncertainty(mc_preds, metric=metric, y_true=y_true, 
+                                    save_path=save_path)
         return top_indices, scores[top_indices]
 
 #
@@ -279,7 +297,8 @@ class UQMetrics:
                     va="center",
                     ha="left",
                     fontsize=10,
-                    color="darkred" if y_true is not None and pred_labels[idx] != y_true[idx] else "black",
+                    color="darkred" if y_true is not None and 
+                    pred_labels[idx] != y_true[idx] else "black",
                 )
 
         # For regression: annotate true values if available
@@ -322,13 +341,15 @@ class UQMetrics:
         # Compute uncertainty scores
         #nll, entropy, variance = self.compute_metrics(mc_preds, y_true)
         if metric is None:
-            metric = "predictive_entropy" if self.task_type == "classification" else "variance"
+            metric = "predictive_entropy" \
+                if self.task_type == "classification" else "variance"
 
         try:
             func = UQ_REGISTRY[metric]
-            scores = func(self, mc_preds) if metric != "negative_log_likelihood" else func(self, mc_preds, y_true)
-        except:
-            raise ValueError(f"Unsupported metric {metric}")
+            scores = func(self, mc_preds) if metric != "negative_log_likelihood" \
+                else func(self, mc_preds, y_true)
+        except Exception as err:
+            raise ValueError(f"Unsupported metric {metric}: {err}") from err
 
         plt.figure(figsize=(7, 6))
 
@@ -344,7 +365,8 @@ class UQMetrics:
                             c="red", alpha=0.6, label="Incorrect")
                 plt.ylabel("Max Predicted Probability", fontsize=12)
             else:
-                plt.scatter(scores, np.max(mean_probs, axis=1), c="steelblue", alpha=0.6)
+                plt.scatter(scores, np.max(mean_probs, axis=1), 
+                            c="steelblue", alpha=0.6)
                 plt.ylabel("Max Predicted Probability", fontsize=12)
 
             plt.xlabel(f"Uncertainty ({metric})", fontsize=12)
