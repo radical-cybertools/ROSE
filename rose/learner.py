@@ -159,7 +159,6 @@ class Learner:
         self.active_learn_task: Callable = self.register_decorator("active_learn")
         self.prediction_task: Callable = self.register_decorator("prediction")
         self.uncertainty_task: Callable = self.register_decorator("uncertainty")
-        
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
@@ -432,7 +431,7 @@ class Learner:
             return async_wrapper
 
         return decorator
-    
+
     def _register_task(
         self,
         task_obj: dict[str, Any],
@@ -532,8 +531,9 @@ class Learner:
         """
         sim_task: Any = self._register_task(self.simulation_function)
         train_task: Any = self._register_task(self.training_function, deps=sim_task)
-        prediction_task: Any = self._register_task(self.prediction_function, 
-                                                deps=train_task)
+        prediction_task: Any = self._register_task(
+            self.prediction_function, deps=train_task
+        )
         return sim_task, train_task, prediction_task
 
     def _check_uncertainty(self, uncertainty_task_result: Any) -> tuple[bool, float]:
@@ -566,8 +566,9 @@ class Learner:
             self.uncertainty_values_per_iteration[self.iteration] = uncertainty_value
             self.iteration += 1
 
-            if self.compare_metric(uq_metric_name, uncertainty_value, 
-                                   threshold, operator):
+            if self.compare_metric(
+                uq_metric_name, uncertainty_value, threshold, operator
+            ):
                 print(
                     f"stop uncertainty metric: {uq_metric_name} "
                     f"is met with value of: {uncertainty_value} "
@@ -585,7 +586,7 @@ class Learner:
                 f"uncertainty task must produce a "
                 f"numerical value, got {type(uncertainty_value)} instead"
             )
-        
+
     def _check_stop_criterion(self, stop_task_result: Any) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
 
@@ -669,7 +670,7 @@ class Learner:
             list of uncertainty values from the learner.
         """
         return self.uncertainty_values_per_iteration
-    
+
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
 
