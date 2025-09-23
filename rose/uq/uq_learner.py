@@ -133,9 +133,7 @@ class UQLearner(Learner):
                     "simulation",
                     iteration_count,
                 )
-                # training_config: TaskConfig = self._get_iteration_task_config(
-                #     self.training_function, learning_config, "training", iteration_count
-                # )
+
                 training_config: TaskConfig = copy.deepcopy(
                     self._get_iteration_task_config(
                     self.training_function, learning_config, "training", iteration_count
