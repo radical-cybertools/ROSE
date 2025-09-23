@@ -136,9 +136,12 @@ class UQLearner(Learner):
 
                 training_config: TaskConfig = copy.deepcopy(
                     self._get_iteration_task_config(
-                    self.training_function, learning_config, "training", iteration_count
+                        self.training_function,
+                        learning_config,
+                        "training",
+                        iteration_count,
                     )
-                    )
+                )
                 training_config["kwargs"]["--model_name"] = model_name
 
                 sim_task = self._register_task(sim_config)

@@ -40,7 +40,6 @@ GREATER_THAN_OR_EQUAL_TO_THRESHOLD = ">="
 
 
 class LearningMetrics(Enum):
-
     # Learning metrics
     MODEL_ACCURACY = "model_accuracy"
     QUERY_EFFICIENCY = "query_efficiency"
