@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 import numpy as np
 import argparse
-from rose.uq import UQMetrics
 
 
 def active_learn(home_dir, pool_file, samples_file, uq_selection, learner_name):

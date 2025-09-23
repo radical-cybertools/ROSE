@@ -14,10 +14,10 @@ def train_model(home_dir, samples_file, model_name, learner_name, epochs=10):
         from models import MC_Dropout_CNN, BayesianNN, MC_Dropout_MLP, elbo_loss
         import json
 
-        model_file = Path(home_dir, f'{model_name}.pkl')
+        model_file = Path(home_dir, f'{model_name}.pt')
         transform = transforms.Compose([transforms.ToTensor()])
-        full_train = datasets.MNIST(root="./mnist_data", train=True, download=True, transform=transform)
-
+        full_train = datasets.MNIST(root=Path(home_dir, "mnist_data"), train=True, download=True, transform=transform)
+        
         with open(Path(home_dir, learner_name + samples_file), 'r') as f:
             labeled_idx = json.load(f)
         loader = DataLoader(Subset(full_train, labeled_idx), batch_size=64, shuffle=True)
@@ -72,6 +72,7 @@ def train_model(home_dir, samples_file, model_name, learner_name, epochs=10):
         # Example: save model weights
         torch.save(model.state_dict(), model_file)
     except:
+        # In case of any error, just wait
         for _ in range(100):
             time.sleep(10)
 

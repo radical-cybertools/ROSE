@@ -15,10 +15,10 @@ class UQLearner(Learner):
     The learner can be configured with per-iteration parameters using LearnerConfig.
     
     Attributes:
-        learner_name (Optional[int]):   Identifier for the learner. 
-                                        Set by ParallelActiveLearner when used in parallel mode.
-        prediction_task                :   Decorator to register prediction task
-        learner_results             :   Learner raining results.
+        learner_name (Optional[int])    :   Identifier for the learner. 
+                                            Set by ParallelActiveLearner when used in parallel mode.
+        prediction_task                 :   Decorator to register prediction task
+        learner_results                 :   Learner training results.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -174,7 +174,7 @@ class UQLearner(Learner):
                         uq_value = await uq_task
                         print(f'Learner {self.learner_name}] {uq_value}')
 
-                        uq_model_stop, uq_stop_value = self._check_stop_criterion(uq_value)
+                        uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                         result_dict['uq'] = uq_stop_value
                         if uq_model_stop:
                             self.learner_results.append(result_dict)
@@ -185,10 +185,9 @@ class UQLearner(Learner):
                     acl_config: TaskConfig = self._get_iteration_task_config(
                         self.active_learn_function, learning_config, 'active_learn', i
                     )
-                    acl_task = self._register_task(acl_config, deps=(training_tasks, uq_task))
+                    acl_task = self._register_task(acl_config, deps=(training_tasks + (uq_task,) if uq_task else training_tasks))
                     al_results = await acl_task
                     
-                    #uq: Any = await acl_task
                     print(f'Learner {self.learner_name}] {al_results}')
 
                     # Check stop criterion if configured

@@ -45,6 +45,7 @@ class LearnerConfig(BaseModel):
             or a dictionary mapping iteration numbers to TaskConfig objects.
         training: Configuration for training tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
+        prediction: Configuration for prediction tasks. Can be a single TaskConfig
         active_learn: Configuration for active learning tasks. Can be a single
             TaskConfig or a dictionary mapping iteration numbers to TaskConfig
             objects.
@@ -529,7 +530,7 @@ class Learner:
         """
         sim_task: Any = self._register_task(self.simulation_function)
         train_task: Any = self._register_task(self.training_function, deps=sim_task)
-        prediction_task: Any = self._register_task(self.prediction_function_function, deps=train_task)
+        prediction_task: Any = self._register_task(self.prediction_function, deps=train_task)
         return sim_task, train_task, prediction_task
 
     def _check_uncertainty(self, uncertainty_task_result: Any) -> tuple[bool, float]:

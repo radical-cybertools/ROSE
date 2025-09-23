@@ -10,7 +10,7 @@ def check_stop(home_dir, model_name):
         from torch.utils.data import DataLoader
         from models import MC_Dropout_CNN, BayesianNN, MC_Dropout_MLP
         from pathlib import Path
-        model_file = Path(home_dir, model_name + "_model.pt")
+        model_file = Path(home_dir, model_name + ".pt")
         transform = transforms.Compose([transforms.ToTensor()])
 
         data_dir = Path(home_dir, 'mnist_data')
@@ -62,6 +62,7 @@ def check_stop(home_dir, model_name):
         #Return accuracy to pipeline executor.
         print(acc)
     except:
+        # In case of any error, return a random float between 0 and 1
         print(random.random())
 
 if __name__ == "__main__":
@@ -69,4 +70,4 @@ if __name__ == "__main__":
     parser.add_argument('--model_name', type=str, help='Name of the model used for training')
     parser.add_argument('--home_dir', type=str, help='Home directory for the project')
     args = parser.parse_args()
-    check_stop(args.home_dir, "_model.pt", model_name=args.model_name)
+    check_stop(args.home_dir, model_name=args.model_name)

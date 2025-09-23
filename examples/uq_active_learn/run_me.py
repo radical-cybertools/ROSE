@@ -25,7 +25,7 @@ TASK_TYPE = 'classification'
 USECASE = 'ENSEMBLE'        
             # Options: 'Bayesian', 'SINGLE_MODEL', 'ENSEMBLE'
 UQ_QUERY_SIZE = 10
-home_dir = '/anvil/scratch/x-mgoliyad1/uq/ROSE/examples/uq_active_learn'
+home_dir = os.environ.get('ROSE_HOME', '/anvil/scratch/x-mgoliyad1/uq/ROSE/examples/uq_active_learn')
 
 async def uq_learner():
 
@@ -124,7 +124,7 @@ async def uq_learner():
             return np.mean(uq_metric)
 
     learner_configs = {}
-    for i, PIPELINE in enumerate(PIPELINES):
+    for PIPELINE in PIPELINES:
         learner_configs[PIPELINE] = LearnerConfig(
                             simulation=TaskConfig(kwargs={                            
                             '--home_dir': home_dir,

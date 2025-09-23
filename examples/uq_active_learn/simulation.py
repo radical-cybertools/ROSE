@@ -19,7 +19,8 @@ def simulate(home_dir, samples_file, pool_file, train_batch, learner_name):
                                     download=False  # Do NOT download again
                                 )
         indices = np.arange(len(mnist_train))
-    except:          
+    except:    
+        # In case of any error, create dummy indices      
         indices = np.arange(1000)
 
     np.random.seed(42)

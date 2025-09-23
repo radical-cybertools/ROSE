@@ -7,7 +7,7 @@ import argparse
 QUERY_SIZE = 10
 
 def prediction(home_dir, pool_file, predict_file, model_name, prediction_dir, prediction_num, learner_name):
-    # Load samples``
+    # Load samples from pool and make predictions
 
     predict_file = Path(prediction_dir, str(prediction_num) + '_' + model_name + predict_file)
     try:
@@ -30,7 +30,7 @@ def prediction(home_dir, pool_file, predict_file, model_name, prediction_dir, pr
             predict_dir.mkdir(parents=True, exist_ok=True)
 
         
-        model_file = Path(home_dir, f'{model_name}.pkl')
+        model_file = Path(home_dir, f'{model_name}.pt')
 
         transform = transforms.Compose([transforms.ToTensor()])
         full_train = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
@@ -58,6 +58,7 @@ def prediction(home_dir, pool_file, predict_file, model_name, prediction_dir, pr
             return
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
         all_preds = []
         for _ in range(QUERY_SIZE):
             batch_preds = []
@@ -72,6 +73,7 @@ def prediction(home_dir, pool_file, predict_file, model_name, prediction_dir, pr
             all_preds.append(np.vstack(batch_preds))
         all_preds = np.array(all_preds)
     except:
+        # In case of any error, create dummy predictions
         all_preds = np.ones((QUERY_SIZE, 640, 10)) * 0.1  # Dummy predictions if anything fails
 
     np.save(predict_file, all_preds)
