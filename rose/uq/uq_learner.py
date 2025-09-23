@@ -1,6 +1,6 @@
 import asyncio
 import itertools
-from typing import dict, Any, Optional, list, Union, Iterator
+from typing import Any, Optional, Union, Iterator
 from ..learner import Learner
 from ..learner import TaskConfig
 from ..learner import LearnerConfig
@@ -9,15 +9,15 @@ from radical.asyncflow import WorkflowEngine
 
 class UQLearner(Learner):
     """UQ active learner that runs iterations one after another.
-    This class implements a sequential active learning approach based 
+    This class implements a sequential active learning approach based
     on Uncertainty Quantification.
-    Each iteration consists of simulation, a set of training and prediction steps, 
-    and active learning phases executed in sequence. 
+    Each iteration consists of simulation, a set of training and prediction steps,
+    and active learning phases executed in sequence.
     The learner can be configured with per-iteration parameters using LearnerConfig.
 
     Attributes:
-        learner_name (Optional[int])    :   Identifier for the learner.
-                                            Set by ParallelActiveLearner when 
+        learner_name (Optional[str])    :   Identifier for the learner.
+                                            Set by ParallelActiveLearner when
                                             used in parallel mode.
         prediction_task                 :   Decorator to register prediction task
         learner_results                 :   Learner training results.
@@ -44,27 +44,30 @@ class UQLearner(Learner):
                     Optional[dict[str, LearnerConfig]] = None) -> dict[str, Any]:
         """Run sequential active learning with optional per-iteration configuration.
         Executes the active learning loop sequentially, with each iteration containing
-        simulation, a set of training and prediction steps, and active learning phases. 
+        simulation, a set of training and prediction steps, and active learning phases.
         Supports configurable
         stopping criteria and per-iteration parameter customization.
 
         Args:
             num_predictions : Number of predictions per training model –
                             if only a single model is used for training,
-                            the UQ metrics must be calculated based on multiple predictions.
+                            the UQ metrics must be calculated based on 
+                            multiple predictions.
             max_iter        : Maximum number of iterations to run. If 0, runs until
-                            stop criterion is met (requires criterion_function to be set).
+                            stop criterion is met 
+                            (requires criterion_function to be set).
             skip_pre_loop   : If True, skips the initial simulation and training
                             phases before the main learning loop.
             learner_config  : Configuration object containing per-iteration
-                            parameters for simulation, training, prediction, active learning, and
-                            criterion functions.    
+                            parameters for simulation, training, prediction, 
+                            active learning, and
+                            criterion functions.
         Returns:
-            The result of the learning process, including the mean value of uncertainty 
-            quantification (UQ) metrics 
+            The result of the learning process, including the mean value of uncertainty
+            quantification (UQ) metrics
             and a list of model validation criteria (stop_value).
         Raises:
-            Exception: If required functions (simulation_function, training_functions, 
+            Exception: If required functions (simulation_function, training_functions,
             prediction_function, active_learn_function) are not set.
             Exception: If neither max_iter nor criterion_function is provided.
             Exception: If a training task has no matching prediction task.
@@ -97,7 +100,7 @@ class UQLearner(Learner):
         async def _traininig_block(learning_config: TaskConfig, 
                                     model_name: str, 
                                     iteration_count: int) -> dict[str, Any]:
-            """Run a simulation, train of a single model, and generate a set of 
+            """Run a simulation, train of a single model, and generate a set of
                 predictions for that model.
             Args:
                 learning_config:
@@ -122,7 +125,8 @@ class UQLearner(Learner):
                 training_config['kwargs']['--model_name'] = model_name
 
                 sim_task = self._register_task(sim_config)
-                training_task =  await self._register_task(training_config, deps=sim_task)
+                training_task =  await self._register_task(training_config, 
+                                                           deps=sim_task)
 
                 prediction_tasks = []
                 for i in range(num_predictions):
@@ -135,8 +139,8 @@ class UQLearner(Learner):
                                                            deps=training_task)
                     prediction_tasks.append(prediction_task)
 
-                print(f"[{self.learner_name}-{model_name}] Completed with {iteration_count} "
-                      f"iterations ")
+                print(f"[{self.learner_name}-{model_name}] Completed with "
+                      f"{iteration_count} iterations ")
                 return await asyncio.gather(*prediction_tasks)
 
             except Exception as e:
@@ -196,16 +200,18 @@ class UQLearner(Learner):
                         if uq_model_stop:
                             self.learner_results.append(result_dict)
                             print(f"[Learner {self.learner_name}] UQ value reached "
-                                  f"its threshold - Stopping training for all models at "
-                                  f"iteration {i} with value: {uq_stop_value}")
+                                  f"its threshold - Stopping training for all models"
+                                  f" at iteration {i} with value: "
+                                  f"{uq_stop_value}")
                             break
 
                     # Get iteration-specific configurations
                     acl_config: TaskConfig = self._get_iteration_task_config(
                         self.active_learn_function, learning_config, 'active_learn', i
                     )
-                    acl_task = self._register_task(acl_config, deps=(training_tasks + (uq_task,) 
-                                                                    if uq_task else training_tasks))
+                    acl_task = self._register_task(acl_config, 
+                                deps=(training_tasks + (uq_task,)
+                                if uq_task else training_tasks))
                     al_results = await acl_task
                     
                     print(f'Learner {self.learner_name}] {al_results}')
@@ -239,8 +245,9 @@ class UQLearner(Learner):
                         self.learner_results.append(result_dict)
 
                         if should_stop == len(stops):
-                            print(f"[Learner {self.learner_name}] Stopping criterion met "
-                                f"for all models at iteration {i} with value: {stop_value}")
+                            print(f"[Learner {self.learner_name}] Stopping "
+                                f"criterion met for all models at iteration {i} "
+                                f"with value: {stop_value}")
                             break
                     
                     iteration_count = i + 1
@@ -370,7 +377,7 @@ class ParallelUQLearner(UQLearner):
                 and training phases.
             learner_configs: A list of configuration objects, one for each learner.
                             If None, all learners will use the default configuration.
-                            If provided, the length must match the number 
+                            If provided, the length must match the number
                             of elements in learner_names.
 
         Returns:
@@ -384,7 +391,6 @@ class ParallelUQLearner(UQLearner):
             ValueError: If learner_configs length doesn't match parallel_learners.
         """
 
-        parallel_learners = len(learner_names)
         # # Validate base functions are set
         if not self.simulation_function or not self.training_function or \
            not self.active_learn_function:
@@ -392,7 +398,8 @@ class ParallelUQLearner(UQLearner):
                             f"functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise Exception("Either max_iter or stop_criterion_function must be provided.")
+            raise Exception("Either max_iter or stop_criterion_function"
+                            f" must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or [None] * len(learner_names)
@@ -440,7 +447,8 @@ class ParallelUQLearner(UQLearner):
                 raise
 
         # Submit all learners asynchronously
-        futures: list[Any] = [_run_sequential_learner(learner_name) for learner_name in learner_names]
+        futures: list[Any] = [_run_sequential_learner(learner_name) 
+                              for learner_name in learner_names]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*[f for f in futures])

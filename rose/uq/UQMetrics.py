@@ -172,7 +172,8 @@ class UQMetrics:
             try:
                 if name == "negative_log_likelihood" and y_true is None:
                     continue
-                results[name] = func(self, mc_preds) if name != "negative_log_likelihood" \
+                results[name] = func(self, mc_preds) \
+                    if name != "negative_log_likelihood" \
                         else func(self, mc_preds, y_true)
             except Exception as e:
                 results[name] = f"Error: {e}"

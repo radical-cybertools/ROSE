@@ -50,8 +50,8 @@ class LearnerConfig(BaseModel):
             TaskConfig or a dictionary mapping iteration numbers to TaskConfig
             objects.
         criterion: Configuration for criterion tasks. Can be a single TaskConfig
-        uncertainty: Configuration for uncertainty Quantification tasks. 
-            Can be a single TaskConfig or a dictionary mapping iteration numbers 
+        uncertainty: Configuration for uncertainty Quantification tasks.
+            Can be a single TaskConfig or a dictionary mapping iteration numbers
             to TaskConfig objects.
     """
 
@@ -115,7 +115,7 @@ class Learner:
 
     Attributes:
         criterion_function: Configuration for criterion/stopping condition functions.
-        uncertainty_function: Configuration for Uncertainty Quantification 
+        uncertainty_function: Configuration for Uncertainty Quantification
                               condition functions.
         training_function: Configuration for training functions.
         prediction_function: Configuration for prediction functions.
@@ -566,7 +566,8 @@ class Learner:
             self.uncertainty_values_per_iteration[self.iteration] = uncertainty_value
             self.iteration += 1
 
-            if self.compare_metric(uq_metric_name, uncertainty_value, threshold, operator):
+            if self.compare_metric(uq_metric_name, uncertainty_value, 
+                                   threshold, operator):
                 print(
                     f"stop uncertainty metric: {uq_metric_name} "
                     f"is met with value of: {uncertainty_value} "
