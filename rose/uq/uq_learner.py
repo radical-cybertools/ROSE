@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import copy
 from typing import Any, Optional, Union, Iterator
 from ..learner import Learner
 from ..learner import TaskConfig
@@ -33,7 +34,7 @@ class UQLearner(Learner):
         super().__init__(asyncflow, register_and_submit=False)
 
         self.learner_name: str = "UQLearner"
-        self.learner_results: list[str, dict[str, Any]] = []
+        self.learner_results: list[dict[str, Any]] = []
 
     async def teach(
         self,
@@ -42,7 +43,7 @@ class UQLearner(Learner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learning_config: Optional[dict[str, LearnerConfig]] = None,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         """Run sequential active learning with optional per-iteration configuration.
         Executes the active learning loop sequentially, with each iteration containing
         simulation, a set of training and prediction steps, and active learning phases.
@@ -132,9 +133,14 @@ class UQLearner(Learner):
                     "simulation",
                     iteration_count,
                 )
-                training_config: TaskConfig = self._get_iteration_task_config(
+                # training_config: TaskConfig = self._get_iteration_task_config(
+                #     self.training_function, learning_config, "training", iteration_count
+                # )
+                training_config: TaskConfig = copy.deepcopy(
+                    self._get_iteration_task_config(
                     self.training_function, learning_config, "training", iteration_count
-                )
+                    )
+                    )
                 training_config["kwargs"]["--model_name"] = model_name
 
                 sim_task = self._register_task(sim_config)
@@ -293,7 +299,7 @@ class UQLearner(Learner):
 
             except Exception as e:
                 print(f"[Learner {self.learner_name}] Failed with error: {e}")
-                raise
+                return e
 
         try:
             result = await _run_pipeline()
@@ -304,7 +310,7 @@ class UQLearner(Learner):
 
         except Exception as e:
             print(f"Learner {self.learner_name}] Failed with error: {e}")
-            raise
+            return e
         return self.learner_results
 
 
