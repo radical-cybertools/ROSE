@@ -51,15 +51,15 @@ class UQLearner(Learner):
         Args:
             num_predictions : Number of predictions per training model –
                             if only a single model is used for training,
-                            the UQ metrics must be calculated based on 
+                            the UQ metrics must be calculated based on
                             multiple predictions.
             max_iter        : Maximum number of iterations to run. If 0, runs until
-                            stop criterion is met 
+                            stop criterion is met
                             (requires criterion_function to be set).
             skip_pre_loop   : If True, skips the initial simulation and training
                             phases before the main learning loop.
             learner_config  : Configuration object containing per-iteration
-                            parameters for simulation, training, prediction, 
+                            parameters for simulation, training, prediction,
                             active learning, and
                             criterion functions.
         Returns:
