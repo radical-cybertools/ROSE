@@ -196,7 +196,7 @@ class UQScorer:
         Args:
             mc_preds: numpy array of MC predictions
             k: number of samples to select
-            metric: string, one of UQ_REGISTRY.keys() 
+            metric: string, one of UQ_REGISTRY.keys()
             (default depends on task type)
             y_true: required only if metric == 'negative_log_likelihood'
 
