@@ -34,7 +34,7 @@ def prediction(home_dir, pool_suffix, predict_suffix, model_name, prediction_dir
         model_file = Path(home_dir, f'{model_name}.pt')
 
         transform = transforms.Compose([transforms.ToTensor()])
-        full_train = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
+        full_train = datasets.MNIST(root="./mnist_data", train=True, download=True, transform=transform)
         pool_file = Path(home_dir, learner_name + pool_suffix)
         with open(pool_file, 'r') as f:
             pool_idx = json.load(f)
@@ -76,6 +76,7 @@ def prediction(home_dir, pool_suffix, predict_suffix, model_name, prediction_dir
         all_preds = np.array(all_preds)
     except:
         # In case of any error, create dummy predictions
+        print(f"Model {model_name} skipped predictions...")
         all_preds = np.ones((QUERY_SIZE, 640, 10)) * 0.1  # Dummy predictions if anything fails
 
     print(f"Model {model_name} predictions are saved to {predict_file}.")

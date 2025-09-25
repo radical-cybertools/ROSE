@@ -1,5 +1,4 @@
 # simulation.py
-import logging
 import json
 import argparse
 import numpy as np
@@ -13,7 +12,6 @@ def simulate(home_dir, samples_suffix, pool_suffix, train_batch, learner_name):
     try:
         from torchvision import datasets, transforms
         data_dir = Path(home_dir, 'mnist_data')
-        logging.basicConfig(level=logging.INFO)
         transform = transforms.Compose([transforms.ToTensor()])
         mnist_train = datasets.MNIST(root=data_dir,
                                     train=True,
@@ -23,7 +21,8 @@ def simulate(home_dir, samples_suffix, pool_suffix, train_batch, learner_name):
         indices = np.arange(len(mnist_train))
     except:    
         # In case of any error, create dummy indices      
-        indices = np.arange(1000)
+        print(f"Load dummy indices {train_batch*2} initial samples.")
+        indices = np.arange(train_batch*2)
 
     np.random.seed(42)
     np.random.shuffle(indices)
@@ -36,7 +35,7 @@ def simulate(home_dir, samples_suffix, pool_suffix, train_batch, learner_name):
     with open(pool_file, 'w') as f:
         json.dump(X_pool_idx.tolist(), f)
 
-    logging.info(f"Selected {train_batch} initial samples.")
+    print(f"Selected {train_batch} initial samples.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prediction argument parser")

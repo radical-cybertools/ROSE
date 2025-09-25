@@ -164,8 +164,8 @@ class UQLearner(Learner):
                     prediction_tasks.append(prediction_task)
 
                 print(
-                    f"[{self.learner_name}-{model_name}] Completed "
-                    f"{iteration_count + 1} iteration(s) "
+                    f"[{self.learner_name}-{model_name}] Completed training "
+                    f"for {iteration_count + 1} iteration(s) "
                 )
                 return await asyncio.gather(*prediction_tasks)
 
@@ -276,8 +276,9 @@ class UQLearner(Learner):
                                 stop_training[model_name] = True
                                 should_stop += 1
                                 print(
-                                    f"[Learner {self.learner_name}] Model {model_name} will stop "
-                                    f"training as stop criterion is met at iteration {i} "
+                                    f"[Learner {self.learner_name}] Model "
+                                    f"{model_name} will stop training"
+                                    f" as stop criterion is met at iteration {i}"
                                 )
 
                         # Store results for current iteration

@@ -1,15 +1,14 @@
 # training.py
 import time
 import argparse
-from pathlib import Path
 
 def train_model(home_dir, samples_suffix, model_name, learner_name, epochs=1):
 
     try:
+        from torchvision import datasets, transforms
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
-        from torchvision import datasets, transforms
         from torch.utils.data import DataLoader, Subset
         from pathlib import Path
         from models import MC_Dropout_CNN, BayesianNN, MC_Dropout_MLP, elbo_loss
@@ -75,8 +74,10 @@ def train_model(home_dir, samples_suffix, model_name, learner_name, epochs=1):
         torch.save(model.state_dict(), model_file)
     except:
         # In case of any error, just wait
-        for _ in range(100):
-            time.sleep(10)
+        print(f"Skip Training for {model_name} due to error.")
+        for _ in range(10):
+            time.sleep(1)
+            print("sleeping...")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prediction argument parser")
@@ -86,6 +87,6 @@ if __name__ == "__main__":
     parser.add_argument('--home_dir', type=str, help='Home directory for the project')
     args = parser.parse_args()
 
-    print(args)
+    #print(args)
 
     train_model(home_dir=args.home_dir, samples_suffix="_samples.json", model_name=args.model_name, learner_name=args.learner_name, epochs=args.epochs)

@@ -15,7 +15,7 @@ def register_uq(name):
     return decorator
 
 
-class UQMetrics:
+class UQScorer:
     def __init__(self, task_type):
         """
         task_type: 'classification' or 'regression'

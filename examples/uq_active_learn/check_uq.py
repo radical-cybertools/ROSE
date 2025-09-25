@@ -3,7 +3,7 @@ import numpy as np
 import json
 import sys
 import argparse
-from rose.uq import UQMetrics
+from rose.uq import UQScorer
 
 def check_uq(home_dir, predict_dir, learner_name, query_size, uq_metric_name, task_type):
 
@@ -32,7 +32,7 @@ def check_uq(home_dir, predict_dir, learner_name, query_size, uq_metric_name, ta
     if len(all_preds) == 0:
         print(sys.float_info.max)
     else:
-        uq = UQMetrics(task_type=task_type)
+        uq = UQScorer(task_type=task_type)
         top_idx_local, uq_metric = uq.select_top_uncertain(all_preds, k=query_size, metric=uq_metric_name)
 
         with open(Path(home_dir, learner_name + '_uq_selection.json'), 'w') as f:
