@@ -2,7 +2,7 @@ To accelerate the development of UQ-driven active learning methods, ROSE provide
 
 In this example, we illustrate how to define a UQ–AL workflow that supports multiple levels of parallelism.
 
-In many cases, an AL cycle requires evaluating **N candidate models or simulations concurrently** to quantify predictive uncertainty and guide sample selection. Beyond that, it may also require running **M independent AL workflows in parallel**, for example when exploring multiple uncertainty metrics, acquisition strategies, or datasets simultaneously.
+In many cases, an AL cycle requires evaluating **multiple candidate models or simulations concurrently** to quantify predictive uncertainty and guide sample selection. Beyond that, it may also require running **several independent AL workflows in parallel** to exploring multiple uncertainty metrics.
 
 This introduces **two levels of parallelism**:
 
@@ -60,12 +60,6 @@ code_path = f'{sys.executable} {os.getcwd()}'
 async def prediction(*args):
     return f'{code_path}/predict.py'
 
-# Defining the stop criterion with a metric (MODEL_ACCURACY in this case)
-@learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY, 
-                                    threshold=1.0, 
-                                    query_size=10)
-async def check_uq(*args):
-    return f'{code_path}/check_uq.py' 
 ```
 
 2. **`uncertainty_quantification`**
@@ -73,6 +67,15 @@ async def check_uq(*args):
    * Aggregates predictions from all models.
    * Computes uncertainty metrics.
    * Returns the top-k uncertain samples for the next active learning cycle.
+
+```python
+
+# Defining the uncertainty quantification with a metric (PREDICTIVE_ENTROPY in this case)
+@learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY, 
+                                    threshold=1.0, 
+                                    query_size=10)
+async def check_uq(*args):
+    return f'{code_path}/check_uq.py'xs
 
 #### Workflow Summary
 
@@ -96,6 +99,8 @@ learner = ParallelUQLearner(asyncflow)
 Run the Teaching (Active Learning Loop)
 
 ```python
+PIPELINES = ['UQ_learner1', 'UQ_learner2']
+
 results = await learner.teach(
     learner_names=PIPELINES,
     model_names=MODELS,
