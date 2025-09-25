@@ -1,6 +1,7 @@
 from enum import Enum
 
 # UQ metrcics
+CUSTOM_UQ = "custom_uq"
 PREDICTIVE_ENTROPY = "predictive_entropy"
 MUTUAL_INFORMATION = "mutual_information"
 VARIATION_RATIO = "variation_ratio"
@@ -50,6 +51,7 @@ GREATER_THAN_OR_EQUAL_TO_THRESHOLD = ">="
 
 class LearningMetrics(Enum):
     # UQ metrcics
+    CUSTOM_UQ = "custom_uq"
     PREDICTIVE_ENTROPY = "predictive_entropy"
     MUTUAL_INFORMATION = "mutual_information"
     VARIATION_RATIO = "variation_ratio"
@@ -98,6 +100,7 @@ class LearningMetrics(Enum):
     # Dictionary mapping each metric to its corresponding operator
     OPERATORS = {
         # UQ metrics
+        CUSTOM_UQ: LESS_THAN_THRESHOLD,
         PREDICTIVE_ENTROPY: LESS_THAN_THRESHOLD,
         MUTUAL_INFORMATION: LESS_THAN_THRESHOLD,
         VARIATION_RATIO: LESS_THAN_THRESHOLD,

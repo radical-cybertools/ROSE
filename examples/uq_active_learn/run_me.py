@@ -4,6 +4,7 @@ import os
 import json
 from pathlib import Path
 import asyncio
+import numpy as np
 #import shutil
 import subprocess
 from rose.uq.uq_learner import ParallelUQLearner
@@ -15,6 +16,26 @@ from radical.asyncflow import ConcurrentExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
 # from radical.asyncflow import DaskExecutionBackend
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from rose.uq import UQScorer, register_uq, UQ_REGISTRY
+
+
+@register_uq("custom_uq")
+def confidence_score(self, mc_preds):
+    """
+    Custom classification metric: 1 - max predicted probability.
+    Lower max prob = higher uncertainty.
+    """
+    mc_preds, _ = self._validate_inputs(mc_preds)
+    mean_probs = np.mean(mc_preds, axis=0)      # [n_instances, n_classes]
+    max_prob = np.max(mean_probs, axis=1)
+    return 1.0 - max_prob
+
+
+scorer = UQScorer(task_type="classification")
+print("Available metrics:", list(UQ_REGISTRY.keys()))
+
+#UQ_METRIC_NAME=PREDICTIVE_ENTROPY
+UQ_METRIC_NAME='custom_uq'
 
 
 ACC_THRESHOLD = 0.5
@@ -105,7 +126,7 @@ async def uq_learner():
                f'--home_dir {home_dir}'
 
     # Defining the stop criterion with a metric (MODEL_ACCURACY in this case)
-    @learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY, 
+    @learner.uncertainty_quantification(uq_metric_name=UQ_METRIC_NAME, 
                                         threshold=UQ_THRESHOLD, 
                                         query_size=UQ_QUERY_SIZE)
     async def check_uq(*args, **kwargs):
@@ -142,7 +163,7 @@ async def uq_learner():
                             '--prediction_dir': f'{PIPELINE}_prediction'}),
 
                             uncertainty=TaskConfig(kwargs={                            
-                            '--uq_metric_name': PREDICTIVE_ENTROPY,
+                            '--uq_metric_name': METRIC_NAME,
                             '--task_type': TASK_TYPE,
                             '--query_size': UQ_QUERY_SIZE,
                             '--learner_name': f'{PIPELINE}',

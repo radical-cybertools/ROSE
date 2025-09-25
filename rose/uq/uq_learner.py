@@ -221,7 +221,7 @@ class UQLearner(Learner):
                         )
                         uq_task = self._register_task(uq_config, deps=training_tasks)
                         uq_value = await uq_task
-                        # print(f"Learner {self.learner_name}] {uq_value}")
+                        print(f"[Learner {self.learner_name}] {uq_value}")
 
                         uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                         result_dict["uq"] = uq_stop_value
@@ -484,15 +484,22 @@ class ParallelUQLearner(UQLearner):
                 print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
 
                 # Run the sequential learner
-                return {
-                    learner_name: await sequential_learner.teach(
-                        model_names=model_names,
-                        num_predictions=num_predictions,
-                        max_iter=max_iter,
-                        skip_pre_loop=skip_pre_loop,
-                        learning_config=sequential_config,
-                    )
-                }
+                learner_result = await sequential_learner.teach(
+                    model_names=model_names,
+                    num_predictions=num_predictions,
+                    max_iter=max_iter,
+                    skip_pre_loop=skip_pre_loop,
+                    learning_config=sequential_config,
+                )
+
+                self.metric_values_per_iteration[f"learner-{learner_name}"] = (
+                    sequential_learner.metric_values_per_iteration
+                )
+                self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
+                    sequential_learner.uncertainty_values_per_iteration
+                )
+                return learner_result
+
             except Exception as e:
                 print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
                 raise
