@@ -49,7 +49,7 @@ class LearnerConfig(BaseModel):
             TaskConfig or a dictionary mapping iteration numbers to TaskConfig
             objects.
         criterion: Configuration for criterion tasks. Can be a single TaskConfig
-            uncertainty: Configuration for uncertainty Quantification tasks. 
+            uncertainty: Configuration for uncertainty Quantification tasks.
             Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
@@ -114,7 +114,7 @@ class Learner:
 
     Attributes:
         criterion_function: Configuration for criterion/stopping condition functions.
-        uncertainty_function: Configuration for Uncertainty 
+        uncertainty_function: Configuration for Uncertainty
         Quantification condition functions.
         training_function: Configuration for training functions.
         prediction_function: Configuration for prediction functions.
