@@ -99,8 +99,7 @@ class UQScorer:
     def mutual_information(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
         mean_probs = np.mean(mc_preds, axis=0)
-        predictive_entropy = -np.sum(mean_probs * np.log(mean_probs 
-                                                + 1e-8), axis=1)
+        predictive_entropy = -np.sum(mean_probs * np.log(mean_probs + 1e-8), axis=1)
         mean_entropies = -np.sum(mc_preds * np.log(mc_preds + 1e-8), axis=2)
         expected_entropy = np.mean(mean_entropies, axis=0)
         mi = predictive_entropy - expected_entropy
