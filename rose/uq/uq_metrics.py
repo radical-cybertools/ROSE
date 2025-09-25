@@ -185,9 +185,7 @@ class UQMetrics:
 
     #
     # *****************************
-    def select_top_uncertain(
-        self, mc_preds, k=10, metric=None, y_true=None, plot=None, plot_dir=None
-    ):
+    def select_top_uncertain(self, mc_preds, k=10, metric=None, y_true=None):
         """
         Select top-k most uncertain samples according to a registered metric.
 
@@ -225,25 +223,4 @@ class UQMetrics:
 
         top_indices = np.argsort(-scores)[:k]
 
-        if plot == "plot_top_uncertain" or plot == "both":
-            if plot_dir:
-                save_path = Path(plot_dir, "uncertain_plot.png")
-            else:
-                save_path = "uncertain_plot.png"
-            self.plot_top_uncertain(
-                mc_preds,
-                k=k,
-                metric=metric,
-                y_true=y_true,
-                save_path=save_path,
-                show_error=True,
-            )
-        if plot == "plot_scatter_uncertainty" or plot == "both":
-            if plot_dir:
-                save_path = Path(plot_dir, "scatter_plot.png")
-            else:
-                save_path = "scatter_plot.png"
-            self.scatter_uncertainty(
-                mc_preds, metric=metric, y_true=y_true, save_path=save_path
-            )
         return top_indices, scores[top_indices]

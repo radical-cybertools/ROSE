@@ -49,13 +49,16 @@ class LearnerConfig(BaseModel):
             TaskConfig or a dictionary mapping iteration numbers to TaskConfig
             objects.
         criterion: Configuration for criterion tasks. Can be a single TaskConfig
+        uncertainty: Configuration for uncertainty Quantification tasks. Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
 
     simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    prediction: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     criterion: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    uncertainty: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
 
     class Config:
         """Pydantic configuration for LearnerConfig."""
@@ -70,7 +73,7 @@ class LearnerConfig(BaseModel):
 
         Args:
             task_name: Name of the task ('simulation',
-            'training', 'active_learn', 'criterion').
+            'training', 'prediction', 'active_learn', 'criterion', 'uncertainty).
             iteration: The iteration number (0-based).
 
         Returns:
@@ -110,15 +113,19 @@ class Learner:
 
     Attributes:
         criterion_function: Configuration for criterion/stopping condition functions.
+        uncertainty_function: Configuration for Uncertainty Quantification condition functions.
         training_function: Configuration for training functions.
+        prediction_function: Configuration for prediction functions.
         simulation_function: Configuration for simulation functions.
         active_learn_function: Configuration for active learning functions.
         asyncflow: The workflow engine for managing asynchronous task execution.
         register_and_submit: Whether to automatically register and submit tasks.
         utility_task: Decorator for utility tasks.
         training_task: Decorator for training tasks.
+        prediction_task: Decorator for prediction tasks.
         simulation_task: Decorator for simulation tasks.
         active_learn_task: Decorator for active learning tasks.
+        uncertainty_task: Decorator for uncertainty quantification tasks.
     """
 
     @typeguard.typechecked
@@ -133,9 +140,11 @@ class Learner:
             and submit decorated tasks.
         """
         self.criterion_function: dict[str, Any] = {}
+        self.uncertainty_function: dict[str, Any] = {}
         self.training_function: dict[str, Any] = {}
         self.simulation_function: dict[str, Any] = {}
         self.active_learn_function: dict[str, Any] = {}
+        self.prediction_function: dict[str, Any] = {}
 
         self.asyncflow: WorkflowEngine = asyncflow
 
@@ -145,9 +154,12 @@ class Learner:
         self.training_task: Callable = self.register_decorator("training")
         self.simulation_task: Callable = self.register_decorator("simulation")
         self.active_learn_task: Callable = self.register_decorator("active_learn")
+        self.prediction_task: Callable = self.register_decorator("prediction")
+        self.uncertainty_task: Callable = self.register_decorator("uncertainty")
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
+        self.uncertainty_values_per_iteration: dict[int, dict[str, float]] = {}
 
     def _get_iteration_task_config(
         self,
@@ -352,6 +364,71 @@ class Learner:
 
         return decorator
 
+    @typeguard.typechecked
+    def uncertainty_quantification(
+        self,
+        uq_metric_name: str,
+        query_size: float,
+        threshold: float,
+        operator: str = "",
+        as_executable: bool = True,
+        **decor_kwargs,
+    ) -> Callable:
+        """Create a decorator for uncertainty quantification functions."""
+
+        def decorator(func: Callable) -> Callable:
+            """Decorator that registers an uncertainty quantification function."""
+
+            # Capture immutable values at decoration time
+            final_as_executable = decor_kwargs.pop("as_executable", as_executable)
+            clean_decor_kwargs = decor_kwargs.copy()
+
+            # Store initial config immediately (so validation passes)
+            base_task_obj = {
+                "func": func,
+                "args": (),
+                "kwargs": {},
+                "decor_kwargs": clean_decor_kwargs,
+                "as_executable": final_as_executable,
+                "operator": operator,
+                "query_size": query_size,
+                "threshold": threshold,
+                "uq_metric_name": uq_metric_name,
+            }
+            self.uncertainty_function = base_task_obj
+
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs) -> tuple[bool, float]:
+                """Async wrapper that evaluates the stopping condition."""
+                # Build fresh task object with runtime values
+                task_obj = {
+                    "func": func,
+                    "args": args,
+                    "kwargs": kwargs,
+                    "decor_kwargs": clean_decor_kwargs.copy(),
+                    "as_executable": final_as_executable,
+                    "operator": operator,
+                    "query_size": query_size,
+                    "threshold": threshold,
+                    "uq_metric_name": uq_metric_name,
+                }
+
+                # Update so external callers always see "latest state"
+                self.uncertainty_function = task_obj
+
+                if self.register_and_submit:
+                    # Submit and check the uncertainty quantification
+                    result = await self._register_task(task_obj)
+                    return self._check_uncertainty(result)
+
+                # If not submitting immediately, evaluate locally
+                metric_value = await func(*args, **kwargs)
+                return self._check_uncertainty(metric_value)
+
+            return async_wrapper
+
+        return decorator
+
     def _register_task(
         self,
         task_obj: dict[str, Any],
@@ -451,7 +528,61 @@ class Learner:
         """
         sim_task: Any = self._register_task(self.simulation_function)
         train_task: Any = self._register_task(self.training_function, deps=sim_task)
-        return sim_task, train_task
+        prediction_task: Any = self._register_task(
+            self.prediction_function_function, deps=train_task
+        )
+        return sim_task, train_task, prediction_task
+
+    def _check_uncertainty(self, uncertainty_task_result: Any) -> tuple[bool, float]:
+        """Check if the uncertainty criterion is met based on task result.
+
+        Args:
+            stop_task_result: Result from the criterion task,
+            should be convertible to float.
+
+        Returns:
+            tuple of (should_stop: bool, metric_value: float).
+
+        Raises:
+            Exception: If the task result cannot be converted to a numerical value.
+            TypeError: If the stop criterion task doesn't produce a numerical value.
+        """
+        try:
+            uncertainty_value: float = float(uncertainty_task_result)
+        except Exception as e:
+            raise Exception(
+                f"Failed to obtain a numerical value from criterion task: {e}"
+            ) from e
+
+        # check if the metric value is a number
+        if isinstance(uncertainty_value, (float, int)):
+            operator: str = self.uncertainty_function["operator"]
+            threshold: float = self.uncertainty_function["threshold"]
+            uq_metric_name: str = self.uncertainty_function["uq_metric_name"]
+
+            self.uncertainty_values_per_iteration[self.iteration] = uncertainty_value
+            self.iteration += 1
+
+            if self.compare_metric(
+                uq_metric_name, uncertainty_value, threshold, operator
+            ):
+                print(
+                    f"Stop uncertainty metric: {uq_metric_name} "
+                    f"is met with value of: {uncertainty_value} "
+                    ". Breaking the active learning loop"
+                )
+                return True, uncertainty_value
+            else:
+                print(
+                    f"Uncertainty metric: {uq_metric_name} "
+                    f"is not met yet ({uncertainty_value})."
+                )
+                return False, uncertainty_value
+        else:
+            raise TypeError(
+                f"Uncertainty task must produce a "
+                f"numerical value, got {type(uncertainty_value)} instead"
+            )
 
     def _check_stop_criterion(self, stop_task_result: Any) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
@@ -528,6 +659,14 @@ class Learner:
             task information with 'future' and 'description' fields.
         """
         return self.metric_values_per_iteration
+
+    def get_uncertainty_results(self) -> list[float]:
+        """Get the uncertainty values from the learner.
+
+        Returns:
+            list of uncertainty values from the learner.
+        """
+        return self.uncertainty_values_per_iteration
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.

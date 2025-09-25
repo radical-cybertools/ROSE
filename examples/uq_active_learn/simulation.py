@@ -5,8 +5,10 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-def simulate(home_dir, samples_file, pool_file, train_batch, learner_name):
+def simulate(home_dir, samples_suffix, pool_suffix, train_batch, learner_name):
 
+    pool_file = Path(home_dir, learner_name + pool_suffix)
+    samples_file = Path(home_dir, learner_name + samples_suffix)
 
     try:
         from torchvision import datasets, transforms
@@ -29,9 +31,9 @@ def simulate(home_dir, samples_file, pool_file, train_batch, learner_name):
     X_labeled_idx = indices[:train_batch]
     X_pool_idx = indices[train_batch:]
 
-    with open(Path(home_dir, learner_name + samples_file), 'w') as f:
+    with open(samples_file, 'w') as f:
         json.dump(X_labeled_idx.tolist(), f)
-    with open(Path(home_dir, learner_name + pool_file), 'w') as f:
+    with open(pool_file, 'w') as f:
         json.dump(X_pool_idx.tolist(), f)
 
     logging.info(f"Selected {train_batch} initial samples.")

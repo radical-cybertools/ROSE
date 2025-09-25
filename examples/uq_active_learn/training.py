@@ -1,8 +1,9 @@
 # training.py
 import time
 import argparse
+from pathlib import Path
 
-def train_model(home_dir, samples_file, model_name, learner_name, epochs=10):
+def train_model(home_dir, samples_suffix, model_name, learner_name, epochs=1):
 
     try:
         import torch
@@ -18,7 +19,8 @@ def train_model(home_dir, samples_file, model_name, learner_name, epochs=10):
         transform = transforms.Compose([transforms.ToTensor()])
         full_train = datasets.MNIST(root=Path(home_dir, "mnist_data"), train=True, download=True, transform=transform)
         
-        with open(Path(home_dir, learner_name + samples_file), 'r') as f:
+        samples_file = Path(home_dir, learner_name + samples_suffix)
+        with open(samples_file, 'r') as f:
             labeled_idx = json.load(f)
         loader = DataLoader(Subset(full_train, labeled_idx), batch_size=64, shuffle=True)
         
@@ -86,4 +88,4 @@ if __name__ == "__main__":
 
     print(args)
 
-    train_model(home_dir=args.home_dir, samples_file="_samples.json", model_name=args.model_name, learner_name=args.learner_name, epochs=args.epochs)
+    train_model(home_dir=args.home_dir, samples_suffix="_samples.json", model_name=args.model_name, learner_name=args.learner_name, epochs=args.epochs)

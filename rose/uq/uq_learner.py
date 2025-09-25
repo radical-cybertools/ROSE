@@ -96,7 +96,7 @@ class UQLearner(Learner):
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
 
-        print(f"Learner {self.learner_name}] Starting execution...")
+        print(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
             prefix = (
                 f"[Learner {self.learner_name}] starting training for "
@@ -108,8 +108,7 @@ class UQLearner(Learner):
             )
         print(f"{prefix} {model_names}")
 
-        @self.asyncflow.block
-        async def _traininig_block(
+        async def _traininig_stage(
             learning_config: TaskConfig, model_name: str, iteration_count: int
         ) -> dict[str, Any]:
             """Run a simulation, train of a single model, and generate a set of
@@ -124,7 +123,7 @@ class UQLearner(Learner):
             Returns:
                 The result from last task (prediction) execution.
             Raises:
-                Exception: If the training block fails during execution.
+                Exception: If the training fails during execution.
             """
             try:
                 sim_config: TaskConfig = self._get_iteration_task_config(
@@ -165,8 +164,8 @@ class UQLearner(Learner):
                     prediction_tasks.append(prediction_task)
 
                 print(
-                    f"[{self.learner_name}-{model_name}] Completed with "
-                    f"{iteration_count} iterations "
+                    f"[{self.learner_name}-{model_name}] Completed "
+                    f"{iteration_count + 1} iteration(s) "
                 )
                 return await asyncio.gather(*prediction_tasks)
 
@@ -177,7 +176,6 @@ class UQLearner(Learner):
                 )
                 raise
 
-        @self.asyncflow.block
         async def _run_pipeline() -> dict[str, Any]:
             """Run a single pipeline.
             Raises:
@@ -186,15 +184,17 @@ class UQLearner(Learner):
             try:
                 # Track iterations and results for this pipeline
                 iteration_count: int = 0
+                stop_training = {name: False for name in model_names}
 
                 # Initialize tasks for pre-loop
                 training_tasks: tuple = ()
 
                 if not skip_pre_loop:
                     futures: list[Any] = [
-                        _traininig_block(learning_config, model_name, 0)
+                        _traininig_stage(learning_config, model_name, 0)
                         for model_name in model_names
                     ]
+
                     training_tasks = await asyncio.gather(*futures)
 
                 # Determine iteration range
@@ -212,7 +212,7 @@ class UQLearner(Learner):
                             "iterations": iteration_count,
                         }
 
-                    print(f"Learner {self.learner_name}] Starting Iteration-{i}")
+                    print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
                     uq_task: tuple = ()
                     if self.uncertainty_function:
                         # Get iteration-specific configurations
@@ -221,7 +221,7 @@ class UQLearner(Learner):
                         )
                         uq_task = self._register_task(uq_config, deps=training_tasks)
                         uq_value = await uq_task
-                        print(f"Learner {self.learner_name}] {uq_value}")
+                        # print(f"Learner {self.learner_name}] {uq_value}")
 
                         uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                         result_dict["uq"] = uq_stop_value
@@ -241,37 +241,44 @@ class UQLearner(Learner):
                     )
                     acl_task = self._register_task(
                         acl_config,
-                        deps=(
-                            training_tasks + (uq_task,) if uq_task else training_tasks
-                        ),
+                        deps=(uq_task if uq_task else training_tasks),
                     )
                     al_results = await acl_task
 
-                    print(f"Learner {self.learner_name}] {al_results}")
+                    print(f"[Learner {self.learner_name}] {al_results}")
 
                     # Check stop criterion if configured
                     if self.criterion_function:
-                        stop_tasks = []
+                        stop_tasks = {}
                         # Run validation for each model in learner
                         for model_name in model_names:
+                            if stop_training[model_name]:
+                                continue
                             criterion_function = self.criterion_function
                             criterion_function["kwargs"]["--model_name"] = model_name
                             stop_task = self._register_task(
                                 criterion_function, deps=acl_task
                             )
-                            stop_tasks.append(stop_task)
-                        stops = await asyncio.gather(*stop_tasks)
+                            stop_tasks[model_name] = stop_task
+
+                        results = await asyncio.gather(*stop_tasks.values())
+                        stops = dict(zip(stop_tasks.keys(), results))
 
                         model_stop: bool
                         stop_value: float
                         # The pipeline will stop once all models meet the exit criteria.
                         should_stop: int = 0
                         final_results = []
-                        for stop in stops:
+                        for model_name, stop in stops.items():
                             model_stop, stop_value = self._check_stop_criterion(stop)
                             final_results.append(stop_value)
                             if model_stop:
+                                stop_training[model_name] = True
                                 should_stop += 1
+                                print(
+                                    f"[Learner {self.learner_name}] Model {model_name} will stop "
+                                    f"training as stop criterion is met at iteration {i} "
+                                )
 
                         # Store results for current iteration
                         result_dict["criterion"] = final_results
@@ -288,15 +295,16 @@ class UQLearner(Learner):
 
                     iteration_count = i + 1
                     futures: list[Any] = [
-                        _traininig_block(learning_config, model_name, iteration_count)
+                        _traininig_stage(learning_config, model_name, iteration_count)
                         for model_name in model_names
+                        if not stop_training[model_name]
                     ]
                     await asyncio.gather(*futures)
 
-                print(
-                    f"[Learner {self.learner_name}] Completed with {iteration_count} "
-                    f"iterations"
-                )
+                    print(
+                        f"[Learner {self.learner_name}] Completed "
+                        f"{iteration_count + 1} iteration(s)"
+                    )
 
             except Exception as e:
                 print(f"[Learner {self.learner_name}] Failed with error: {e}")
@@ -449,7 +457,6 @@ class ParallelUQLearner(UQLearner):
 
         print(f"Starting Parallel Active Learning with {len(learner_names)} learners")
 
-        @self.asyncflow.block
         async def _run_sequential_learner(learner_name: int) -> Any:
             """Run a single UQLearner.
             Internal async function that manages the lifecycle of a single

@@ -20,11 +20,13 @@ def check_stop(home_dir, model_name):
                                         transform=transform,
                                         download=False  # Do NOT download again
                                     )
-        except:           
-            mnist_test = datasets.MNIST(root=data_dir, 
-                                        train=False, 
-                                        download=True, 
-                                        transform=transform)
+        except:
+            print(random.random())
+            return
+            # mnist_test = datasets.MNIST(root=data_dir,
+            #                             train=False,
+            #                             download=True,
+            #                             transform=transform)
 
         test_loader = DataLoader(mnist_test, batch_size=64, shuffle=True)
 
@@ -36,14 +38,16 @@ def check_stop(home_dir, model_name):
         elif model_name == 'MC_Dropout_MLP':
             model = MC_Dropout_MLP()
         else:
-            print(f"Model {model_name} not recognized. Please use BayesianNN, MC_Dropout_CNN or MC_Dropout_MLP.")
+            #print(f"Model {model_name} not recognized. Please use BayesianNN, MC_Dropout_CNN or MC_Dropout_MLP.")
+            print(random.random())
             return
         
         # Load weights
         try:
             model.load_state_dict(torch.load(model_file))
         except Exception as e:
-            print(f"Error loading model weights: {model_name} not saved to {model_file}. Error: {e}")
+            #print(f"Error loading model weights: {model_name} not saved to {model_file}. Error: {e}")
+            print(random.random())
             return
 
         model.eval()
