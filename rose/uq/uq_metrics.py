@@ -21,7 +21,7 @@ class UQScorer:
         task_type: 'classification' or 'regression'
         """
         if task_type not in ["classification", "regression"]:
-            raise ValueError("task_type must be 'classification' or 'regression'")
+            raise ValueError("task_type must be classification or regression")
         self.task_type = task_type
 
     #
@@ -33,7 +33,7 @@ class UQScorer:
                 mc_preds = np.array(mc_preds)
             except Exception as err:
                 raise TypeError(
-                    f"Unable to convert {type(mc_preds)} mc_preds to numpy array"
+                    f"Fail to convert {type(mc_preds)} mc_preds to numpy array"
                 ) from err
 
         if self.task_type == "classification":
@@ -42,9 +42,9 @@ class UQScorer:
                 mc_preds = np.squeeze(mc_preds)
                 if mc_preds.ndim != 3:
                     raise ValueError(
-                        f"For classification, mc_preds must have 3 dimensions "
-                        f"[n_mc_samples, n_instances, n_classes], "
-                        f"got shape {mc_preds.shape}"
+                        f"For classification, mc_preds must have 3 dimensions"
+                        f" [n_mc_samples, n_instances, n_classes],"
+                        f" got shape {mc_preds.shape}"
                     )
         else:
             # Expected: [n_mc_samples, n_instances] (regression outputs)
@@ -53,30 +53,33 @@ class UQScorer:
                 if mc_preds.ndim != 2:
                     raise ValueError(
                         f"For regression, mc_preds must have 2 dimensions "
-                        f"[n_mc_samples, n_instances], got shape {mc_preds.shape}"
+                        f"[n_mc_samples, n_instances], "
+                        f"got shape {mc_preds.shape}"
                     )
         if y_true is not None:
             try:
                 y_true = np.array(y_true)
             except Exception as err:
                 raise TypeError(
-                    f"Unable to convert {type(y_true)} y_true to numpy array"
+                    f"Fail to convert {type(y_true)} y_true to numpy array"
                 ) from err
             if self.task_type == "classification":
                 if y_true.ndim > 2:
                     y_true = np.squeeze(y_true)
                     if y_true.ndim > 2:
                         raise ValueError(
-                            f"For classification, y_true must have 2 dimensions "
-                            f"[n_instances, n_classes], got shape {y_true.shape}"
+                            f"For classification, y_true must have "
+                            f"2 dimensions [n_instances, n_classes], "
+                            f"got shape {y_true.shape}"
                         )
             else:
                 if y_true.ndim > 1:
                     y_true = np.squeeze(y_true)
                     if y_true.ndim > 1:
                         raise ValueError(
-                            f"For classification, y_true must have 2 dimensions "
-                            f"[n_instances], got shape {y_true.shape}"
+                            f"For regression, y_true must have 1 "
+                            f"dimension [n_instances], "
+                            f"y_true shape is {y_true.shape}"
                         )
         return mc_preds, y_true
 
@@ -96,7 +99,8 @@ class UQScorer:
     def mutual_information(self, mc_preds):
         mc_preds, _ = self._validate_inputs(mc_preds)
         mean_probs = np.mean(mc_preds, axis=0)
-        predictive_entropy = -np.sum(mean_probs * np.log(mean_probs + 1e-8), axis=1)
+        predictive_entropy = -np.sum(mean_probs * np.log(mean_probs 
+                                                + 1e-8), axis=1)
         mean_entropies = -np.sum(mc_preds * np.log(mc_preds + 1e-8), axis=2)
         expected_entropy = np.mean(mean_entropies, axis=0)
         mi = predictive_entropy - expected_entropy
@@ -192,7 +196,8 @@ class UQScorer:
         Args:
             mc_preds: numpy array of MC predictions
             k: number of samples to select
-            metric: string, one of UQ_REGISTRY.keys() (default depends on task type)
+            metric: string, one of UQ_REGISTRY.keys() 
+            (default depends on task type)
             y_true: required only if metric == 'negative_log_likelihood'
 
         Returns:
