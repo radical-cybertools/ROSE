@@ -17,7 +17,7 @@ maintainers = [
 readme = "README.md"
 requires-python = ">=3.9"
 
-dependencies = ["radical.asyncflow", "radical.pilot"]
+dependencies = ["numpy", "radical.asyncflow", "radical.pilot"]
 
 [project.urls]
 Homepage = "https://github.com/radical-cybertools/ROSE"
