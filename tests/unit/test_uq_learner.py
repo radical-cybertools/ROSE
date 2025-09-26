@@ -148,7 +148,7 @@ class TestParallelUQLearner:
             Exception,
             match="task_type must be classification or regression",
         ):
-            scorer = UQScorer(task_type="task_type")
+            _ = UQScorer(task_type="task_type")
 
     @pytest.mark.asyncio
     async def test_scorer_validation_errors(self, parallel_learner):
