@@ -33,7 +33,7 @@ class UQScorer:
                 mc_preds = np.array(mc_preds)
             except Exception as err:
                 raise TypeError(
-                    f"Fail to convert {type(mc_preds)} mc_preds to numpy array"
+                    f"Fail to convert {type(mc_preds)} mc_preds to numpy"
                 ) from err
 
         if self.task_type == "classification":
@@ -42,7 +42,8 @@ class UQScorer:
                 mc_preds = np.squeeze(mc_preds)
                 if mc_preds.ndim != 3:
                     raise ValueError(
-                        f"For classification, mc_preds must have 3 dimensions"
+                        f"For classification, mc_preds must have "
+                        f" 3 dimensions "
                         f" [n_mc_samples, n_instances, n_classes],"
                         f" got shape {mc_preds.shape}"
                     )
