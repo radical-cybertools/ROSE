@@ -3,7 +3,19 @@ import numpy as np
 import json
 import sys
 import argparse
-from rose.uq import UQScorer
+from rose.uq import UQScorer, register_uq
+
+@register_uq("custom_uq")
+def confidence_score(self, mc_preds):
+    """
+    Custom classification metric: 1 - max predicted probability.
+    Lower max prob = higher uncertainty.
+    """
+    mc_preds, _ = self._validate_inputs(mc_preds)
+    mean_probs = np.mean(mc_preds, axis=0)      # [n_instances, n_classes]
+    max_prob = np.max(mean_probs, axis=1)
+    return 1.0 - max_prob
+
 
 def check_uq(home_dir, predict_dir, learner_name, query_size, uq_metric_name, task_type):
 

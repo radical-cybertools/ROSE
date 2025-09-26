@@ -28,11 +28,12 @@ class UQScorer:
     def _validate_inputs(self, mc_preds, y_true=None):
         """Safeguard to check input dimensions"""
         if not isinstance(mc_preds, np.ndarray):
+            _type = type(mc_preds)
             try:
                 mc_preds = np.array(mc_preds)
             except Exception as err:
                 raise TypeError(
-                    f"Fail to convert {type(mc_preds)} mc_preds to numpy"
+                    f"Fail to convert {_type} mc_preds to numpy"
                 ) from err
 
         if self.task_type == "classification":

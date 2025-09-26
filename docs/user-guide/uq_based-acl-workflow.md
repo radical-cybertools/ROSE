@@ -128,11 +128,9 @@ await learner.shutdown()
 ```
 from rose.uq import UQScorer, register_uq, UQ_REGISTRY
 
-
 @register_uq("custom_uq")
 def confidence_score(self, mc_preds):
     """
-
     Custom classification metric: 1 - max predicted probability.
     Lower max prob = higher uncertainty.
     """

@@ -5,7 +5,8 @@ from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
 from rose.uq.uq_learner import ParallelUQLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
-
+from rose.uq import UQScorer, register_uq, UQ_REGISTRY
+import numpy as np
 
 @pytest.mark.asyncio
 async def test_active_learning_pipeline_functions():
@@ -49,7 +50,26 @@ async def test_active_learning_pipeline_functions():
     )
 
     scores = learner.get_metric_results()
+    uq_scores = learner.get_uncertainty_results()
 
     assert scores != {}
+    assert uq_scores != {}
+
+    @register_uq("custom_uq")
+    def confidence_score(self, mc_preds):
+        """
+        Custom classification metric: 1 - max predicted probability.
+        Lower max prob = higher uncertainty.
+        """
+        mc_preds, _ = self._validate_inputs(mc_preds)
+        mean_probs = np.mean(mc_preds, axis=0)      # [n_instances, n_classes]
+        max_prob = np.max(mean_probs, axis=1)
+        return 1.0 - max_prob
+
+
+    #scorer = UQScorer(task_type="classification")
+    print("Available metrics:", list(UQ_REGISTRY.keys()))
+
+    assert "custom_uq" in UQ_REGISTRY
 
     await learner.shutdown()

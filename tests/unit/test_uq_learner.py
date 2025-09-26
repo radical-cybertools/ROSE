@@ -4,6 +4,9 @@ import pytest
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
+import numpy as np
+from rose.uq import UQScorer
+import regex as re
 
 from rose.uq.uq_learner import (
     LearnerConfig,
@@ -140,6 +143,99 @@ class TestParallelUQLearner:
             await parallel_learner.teach(
                 learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
             )
+
+        with pytest.raises(
+            Exception,
+            match="task_type must be classification or regression",
+        ):
+            scorer = UQScorer(task_type="task_type")
+
+
+    @pytest.mark.asyncio
+    async def test_scorer_validation_errors(self, parallel_learner):
+        """Test teach method validation and error cases."""
+
+        with pytest.raises(
+            Exception,
+            match="task_type must be classification or regression",
+        ):
+            scorer = UQScorer(task_type="task_type")
+
+
+        scorer = UQScorer(task_type="classification")
+        assert scorer.task_type == "classification"
+
+        mc_preds = [[1, 2], [3, 4, 5]]
+        y_true =[[1, 2], [3, 4, 5]]
+        with pytest.raises(
+            TypeError,
+            match="Fail to convert <class 'list'> mc_preds to numpy"
+        ):
+            scorer._validate_inputs(mc_preds)
+
+        mc_preds = np.ones((2, 3, 4))
+        with pytest.raises(
+            TypeError,
+            match="Fail to convert <class 'list'> y_true to numpy"
+        ):
+            scorer._validate_inputs(mc_preds, y_true)
+
+        mc_preds = np.ones((2, 3))
+        y_true = np.ones((2))
+        with pytest.raises(
+            ValueError,
+            match = r"For classification, mc_preds must have\s+3 "
+            "dimensions.*got shape \(.+\)"
+        ):
+            scorer._validate_inputs(mc_preds)
+        
+        mc_preds = np.ones((2, 3, 4))
+        y_true = np.ones((2, 3 ,4))
+        with pytest.raises(
+            ValueError,
+            match=r"For classification, y_true must have "
+                "2 dimensions \[n_instances, n_classes\], "
+                "got shape \(.+\)"
+        ):
+            scorer._validate_inputs(mc_preds, y_true)
+
+        scorer = UQScorer(task_type="regression")
+        assert scorer.task_type == "regression"
+
+        mc_preds = mc_preds = [[1, 2], [3, 4, 5]]
+        y_true = mc_preds = [[1, 2], [3, 4, 5]]
+        with pytest.raises(
+            TypeError,
+            match="Fail to convert <class 'list'> mc_preds to numpy"
+        ):
+            scorer._validate_inputs(mc_preds)
+
+        mc_preds = np.ones((2, 3))
+        with pytest.raises(
+            TypeError,
+            match="Fail to convert <class 'list'> y_true to numpy"
+        ):
+            scorer._validate_inputs(mc_preds, y_true)
+
+        mc_preds = np.ones((2, 3, 4))
+        y_true = np.ones((2, 3))
+        with pytest.raises(
+            ValueError,
+            match = r"For regression, mc_preds must have 2 dimensions "
+            r"\[n_mc_samples, n_instances\], got shape \(.+\)"
+
+        ):
+            scorer._validate_inputs(mc_preds)
+        
+        mc_preds = np.ones((2, 3))
+        with pytest.raises(
+            ValueError,
+            match=r"For regression, y_true must have "
+                "1 dimension \[n_instances\], "
+                "y_true shape is \(.+\)"
+        ):
+            scorer._validate_inputs(mc_preds, y_true)
+
 
     @pytest.mark.asyncio
     async def test_teach_successful_parallel_execution(

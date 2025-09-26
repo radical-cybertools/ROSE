@@ -12,30 +12,14 @@ from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
 from rose import TaskConfig
 from rose import LearnerConfig
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ConcurrentExecutionBackend
 from radical.asyncflow import RadicalExecutionBackend
 # from radical.asyncflow import DaskExecutionBackend
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from rose.uq import UQScorer, register_uq, UQ_REGISTRY
-
-
-@register_uq("custom_uq")
-def confidence_score(self, mc_preds):
-    """
-    Custom classification metric: 1 - max predicted probability.
-    Lower max prob = higher uncertainty.
-    """
-    mc_preds, _ = self._validate_inputs(mc_preds)
-    mean_probs = np.mean(mc_preds, axis=0)      # [n_instances, n_classes]
-    max_prob = np.max(mean_probs, axis=1)
-    return 1.0 - max_prob
-
-
-scorer = UQScorer(task_type="classification")
-print("Available metrics:", list(UQ_REGISTRY.keys()))
+#from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
+from radical.asyncflow import ConcurrentExecutionBackend
 
 #UQ_METRIC_NAME=PREDICTIVE_ENTROPY
-UQ_METRIC_NAME='custom_uq'
+UQ_METRIC_NAME='custom_uq'   #if you want to use custom metric defined in check_uq.py
 
 
 ACC_THRESHOLD = 0.5
@@ -71,8 +55,8 @@ async def uq_learner():
         return
     
     #engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
-    #engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
-    engine = await RadicalExecutionBackend(RESOURCES)
+    engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
+    #engine = await RadicalExecutionBackend(RESOURCES)
     #engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
     #engine = await DaskExecutionBackend({'n_workers': 2, 'threads_per_worker': 1})
     asyncflow = await WorkflowEngine.create(engine)
@@ -163,7 +147,7 @@ async def uq_learner():
                             '--prediction_dir': f'{PIPELINE}_prediction'}),
 
                             uncertainty=TaskConfig(kwargs={                            
-                            '--uq_metric_name': METRIC_NAME,
+                            '--uq_metric_name': UQ_METRIC_NAME,
                             '--task_type': TASK_TYPE,
                             '--query_size': UQ_QUERY_SIZE,
                             '--learner_name': f'{PIPELINE}',
