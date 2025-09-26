@@ -1,12 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
-
-from rose.uq.uq_learner import ParallelUQLearner
+from unittest.mock import MagicMock
+from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
+from rose.uq.uq_learner import ParallelUQLearner, UQLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
-from rose.uq import UQScorer, register_uq, UQ_REGISTRY
+from rose.uq import register_uq, UQ_REGISTRY
 import numpy as np
+from unittest.mock import AsyncMock, MagicMock
 
 
 @pytest.mark.asyncio
@@ -67,9 +68,62 @@ async def test_active_learning_pipeline_functions():
         max_prob = np.max(mean_probs, axis=1)
         return 1.0 - max_prob
 
-    # scorer = UQScorer(task_type="classification")
     print("Available metrics:", list(UQ_REGISTRY.keys()))
 
     assert "custom_uq" in UQ_REGISTRY
 
     await learner.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_uqlearner_runs_with_mock_functions():
+    engine = MagicMock(spec=WorkflowEngine)
+    learner = UQLearner(engine)
+
+    # Mock functions
+    learner.simulation_function = {"kwargs": {}}
+    learner.training_function = {"kwargs": {}}
+    learner.prediction_function = {"kwargs": {}}
+    learner.active_learn_function = {"kwargs": {}}
+    learner.criterion_function = {"kwargs": {}}
+    learner.uncertainty_function = {"kwargs": {}}
+
+    # Patch internal helpers
+    learner._get_iteration_task_config = MagicMock(return_value={"kwargs": {}})
+    learner._register_task = AsyncMock(side_effect=lambda config, deps=None: {"result": 42})
+    learner._check_stop_criterion = MagicMock(return_value=(True, 0.1))
+    learner._check_uncertainty = MagicMock(return_value=(False, 0.5))
+
+    results = await learner.teach(model_names=["modelA"], max_iter=1, num_predictions=1)
+    assert isinstance(results, list)
+    assert "criterion" in results[0]
+    assert "uq" in results[0]
+
+
+@pytest.mark.asyncio
+async def test_parallel_uqlearner_runs_with_mocks(monkeypatch):
+    engine = MagicMock(spec=WorkflowEngine)
+    plearner = ParallelUQLearner(engine)
+
+    # Mock required functions
+    plearner.simulation_function = {"kwargs": {}}
+    plearner.training_function = {"kwargs": {}}
+    plearner.prediction_function = {"kwargs": {}}
+    plearner.active_learn_function = {"kwargs": {}}
+    plearner.criterion_function = {"kwargs": {}}
+    plearner.uncertainty_function = {"kwargs": {}}
+
+    # Patch sequential learner teach
+    async def fake_teach(**kwargs):
+        return [{"criterion": [0.1], "uq": 0.2}]
+
+    monkeypatch.setattr(UQLearner, "teach", fake_teach)
+
+    results = await plearner.teach(
+        learner_names=[0, 1],
+        model_names=["m1"],
+        max_iter=1,
+    )
+    assert len(results) == 2
+    for r in results:
+        assert r[0]["uq"] == 0.2
