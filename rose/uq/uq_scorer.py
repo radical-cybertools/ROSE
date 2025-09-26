@@ -32,9 +32,7 @@ class UQScorer:
             try:
                 mc_preds = np.array(mc_preds)
             except Exception as err:
-                raise TypeError(
-                    f"Fail to convert {_type} mc_preds to numpy"
-                ) from err
+                raise TypeError(f"Fail to convert {_type} mc_preds to numpy") from err
 
         if self.task_type == "classification":
             # Expected: [n_mc_samples, n_instances, n_classes]

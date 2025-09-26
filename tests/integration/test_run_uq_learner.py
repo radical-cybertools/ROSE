@@ -8,6 +8,7 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQScorer, register_uq, UQ_REGISTRY
 import numpy as np
 
+
 @pytest.mark.asyncio
 async def test_active_learning_pipeline_functions():
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
@@ -62,12 +63,11 @@ async def test_active_learning_pipeline_functions():
         Lower max prob = higher uncertainty.
         """
         mc_preds, _ = self._validate_inputs(mc_preds)
-        mean_probs = np.mean(mc_preds, axis=0)      # [n_instances, n_classes]
+        mean_probs = np.mean(mc_preds, axis=0)  # [n_instances, n_classes]
         max_prob = np.max(mean_probs, axis=1)
         return 1.0 - max_prob
 
-
-    #scorer = UQScorer(task_type="classification")
+    # scorer = UQScorer(task_type="classification")
     print("Available metrics:", list(UQ_REGISTRY.keys()))
 
     assert "custom_uq" in UQ_REGISTRY
