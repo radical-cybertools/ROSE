@@ -1,4 +1,3 @@
-
 import numpy as np
 
 # ---- Decorator registry for UQ algorithms ----
