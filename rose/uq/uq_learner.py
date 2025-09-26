@@ -1,11 +1,12 @@
 import asyncio
-import itertools
 import copy
-from typing import Any, Optional, Union, Iterator
-from ..learner import Learner
-from ..learner import TaskConfig
-from ..learner import LearnerConfig
+import itertools
+from collections.abc import Iterator
+from typing import Any, Optional, Union
+
 from radical.asyncflow import WorkflowEngine
+
+from ..learner import Learner, LearnerConfig, TaskConfig
 
 
 class UQLearner(Learner):
@@ -85,7 +86,7 @@ class UQLearner(Learner):
         ):
             raise Exception(
                 "Simulation, Training, prediction, and at least"
-                f" one AL function must be set!"
+                " one AL function must be set!"
             )
         # Validate exit criteria
         if not max_iter and not self.criterion_function:
@@ -443,12 +444,12 @@ class ParallelUQLearner(UQLearner):
             or not self.active_learn_function
         ):
             raise Exception(
-                f"Simulation, Training, and Active Learning functions must be set!"
+                "Simulation, Training, and Active Learning functions must be set!"
             )
 
         if not max_iter and not self.criterion_function:
             raise Exception(
-                f"Either max_iter or stop_criterion_function must be provided."
+                "Either max_iter or stop_criterion_function must be provided."
             )
 
         # Prepare learner configurations

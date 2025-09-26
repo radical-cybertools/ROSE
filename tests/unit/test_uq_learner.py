@@ -1,13 +1,12 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
-import numpy as np
-from rose.uq import UQScorer
-import regex as re
 
+from rose.uq import UQScorer
 from rose.uq.uq_learner import (
     LearnerConfig,
     ParallelUQLearner,
@@ -177,11 +176,11 @@ class TestParallelUQLearner:
             scorer._validate_inputs(mc_preds, y_true)
 
         mc_preds = np.ones((2, 3))
-        y_true = np.ones((2))
+        y_true = np.ones(2)
         with pytest.raises(
             ValueError,
             match=r"For classification, mc_preds must have\s+3 "
-            "dimensions.*got shape \(.+\)",
+            r"dimensions.*got shape \(.+\)",
         ):
             scorer._validate_inputs(mc_preds)
 
@@ -190,8 +189,8 @@ class TestParallelUQLearner:
         with pytest.raises(
             ValueError,
             match=r"For classification, y_true must have "
-            "2 dimensions \[n_instances, n_classes\], "
-            "got shape \(.+\)",
+            r"2 dimensions \[n_instances, n_classes\], "
+            r"got shape \(.+\)",
         ):
             scorer._validate_inputs(mc_preds, y_true)
 
@@ -224,8 +223,8 @@ class TestParallelUQLearner:
         with pytest.raises(
             ValueError,
             match=r"For regression, y_true must have "
-            "1 dimension \[n_instances\], "
-            "y_true shape is \(.+\)",
+            r"1 dimension \[n_instances\], "
+            r"y_true shape is \(.+\)",
         ):
             scorer._validate_inputs(mc_preds, y_true)
 

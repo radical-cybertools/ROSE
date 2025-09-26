@@ -1,13 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
-
-import pytest
-from unittest.mock import MagicMock
-from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
-from rose.uq.uq_learner import ParallelUQLearner, UQLearner
-from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
-from rose.uq import register_uq, UQ_REGISTRY
-import numpy as np
 from unittest.mock import AsyncMock, MagicMock
+
+import numpy as np
+import pytest
+from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+
+from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
+from rose.uq import UQ_REGISTRY, register_uq
+from rose.uq.uq_learner import ParallelUQLearner, UQLearner
 
 
 @pytest.mark.asyncio
@@ -90,7 +90,9 @@ async def test_uqlearner_runs_with_mock_functions():
 
     # Patch internal helpers
     learner._get_iteration_task_config = MagicMock(return_value={"kwargs": {}})
-    learner._register_task = AsyncMock(side_effect=lambda config, deps=None: {"result": 42})
+    learner._register_task = AsyncMock(
+        side_effect=lambda config, deps=None: {"result": 42}
+    )
     learner._check_stop_criterion = MagicMock(return_value=(True, 0.1))
     learner._check_uncertainty = MagicMock(return_value=(False, 0.5))
 
