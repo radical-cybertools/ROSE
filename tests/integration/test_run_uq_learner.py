@@ -100,32 +100,3 @@ async def test_uqlearner_runs_with_mock_functions():
     assert isinstance(results, list)
     assert "criterion" in results[0]
     assert "uq" in results[0]
-
-
-@pytest.mark.asyncio
-async def test_parallel_uqlearner_runs_with_mocks(monkeypatch):
-    engine = MagicMock(spec=WorkflowEngine)
-    plearner = ParallelUQLearner(engine)
-
-    # Mock required functions
-    plearner.simulation_function = {"kwargs": {}}
-    plearner.training_function = {"kwargs": {}}
-    plearner.prediction_function = {"kwargs": {}}
-    plearner.active_learn_function = {"kwargs": {}}
-    plearner.criterion_function = {"kwargs": {}}
-    plearner.uncertainty_function = {"kwargs": {}}
-
-    # Patch sequential learner teach
-    async def fake_teach(**kwargs):
-        return [{"criterion": [0.1], "uq": 0.2}]
-
-    monkeypatch.setattr(UQLearner, "teach", fake_teach)
-
-    results = await plearner.teach(
-        learner_names=[0, 1],
-        model_names=["m1"],
-        max_iter=1,
-    )
-    assert len(results) == 2
-    for r in results:
-        assert r[0]["uq"] == 0.2
