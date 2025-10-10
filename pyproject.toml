@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ROSE"
 version = "0.1.0"
-description = "Toolkit to express and execute ML learn workflows on HPC"
+description = "Toolkit to express and execute ML surrogate building workflows on HPC"
 
 authors = [
     {name = "Aymen Alsaadi", email = "aymen.alsaadi@rutgers.edu"},
