@@ -12,16 +12,14 @@ import os
 import sys
 import asyncio
 
-from rose.metrics import MEAN_SQUARED_ERROR_MSE
 from rose.al.active_learner import SequentialActiveLearner
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
 
 
 async def rose_al():
     # Enable dry run in the workflow engine
-    asyncflow = await WorkflowEngine.create(engine, dry_run=True)
+    asyncflow = await WorkflowEngine.create(dry_run=True)
 
     # Create an active learner with the workflow engine
     acl = SequentialActiveLearner(asyncflow)

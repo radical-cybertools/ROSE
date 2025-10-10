@@ -20,7 +20,7 @@ ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.i
 
 ## Key Features ⭐⭐⭐
 
-- **Express, build and run** different surrogate building worklfows on HPC such as Active, and Reinforcement Learn workflows in minutes.
+- **Express, build and run** different surrogate building worklfows on HPC such as Active, and Reinforcement Learning workflows in minutes.
 - **Seamless Execution of Complex ML surrogate building Workflows on HPC** across diverse computing platforms:
     - Local desktops and laptops
     - Local and remote clusters and grids
