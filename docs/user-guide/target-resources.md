@@ -1,5 +1,5 @@
 # Target Machines for Executing AL Workflows
-ROSE enables the orchestration of ML Learning workflows on diverse computing resources using [radical.asyncflow](https://github.com/radical-cybertools/radical.asyncflow). Below, we will show how you can specify your `local computer` and `remote HPC machine` as target resources using the `RadicalExecutionBackend`.
+ROSE enables the orchestration of ML Surrogate building workflows on diverse computing resources using [radical.asyncflow](https://github.com/radical-cybertools/radical.asyncflow). Below, we will show how you can specify your `local computer` and `remote HPC machine` as target resources using the `RadicalExecutionBackend`.
 
 ## Local Computer
 For local execution, user can use their desktops, laptops, and their own small clusters to execute their AL workflows as follows:
