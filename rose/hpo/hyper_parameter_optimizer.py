@@ -13,6 +13,18 @@ class HPOBase(ABC):
 
     Users inherit from this class to integrate their HPO tool with ROSE's execution model.
     This class offers lazy config generation to avoid memory bottlenecks with large-scale HPO.
+    
+    Example of execution flow:
+
+    # Submit ALL N trials at once, but only run 5 at a time
+    # As soon as one finishes, report it and start the next
+
+    Trial 0 ████████ (done) → report immediately → suggest Trial 5 → start Trial 5
+    Trial 1 ██ (done) → report immediately → suggest Trial 6 → start Trial 6
+    Trial 2 ████████████ (still running)
+    Trial 3 ████ (done) → report immediately → suggest Trial 7 → start Trial 7
+    Trial 4 ██████ (done) → report immediately → suggest Trial 8 → start Trial 8
+
     """
     
     def __init__(self, 

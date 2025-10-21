@@ -97,7 +97,7 @@ async def main():
     backend = await ConcurrentExecutionBackend(ThreadPoolExecutor(max_workers=20))
     flow = await WorkflowEngine.create(backend=backend)
     
-    print("ROSE HPO Example - Ray Tune Integration\n")
+    logger.info("ROSE HPO Example - Ray Tune Integration\n")
     
     # Create Ray Tune adapter
     hpo = RayTuneAdapter(
