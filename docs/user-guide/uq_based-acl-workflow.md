@@ -92,7 +92,7 @@ This design allows **parallel training and uncertainty-aware sampling** within A
 Import and Initialize the UQ Learner
 
 ```python
-from rose.uq.uq_learner import ParallelUQLearner
+from rose.uq.uq_activeLearner import ParallelUQLearner
 learner = ParallelUQLearner(asyncflow)
 ```
 

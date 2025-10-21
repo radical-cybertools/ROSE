@@ -8,7 +8,7 @@ from ..learner import Learner, TaskConfig, LearnerConfig
 class UQLearnerConfig(LearnerConfig):
     """
     Attributes:
-        uncertainty: Configuration for uncertainty quantification tasks. 
+        uncertainty: Configuration for uncertainty quantification tasks.
             Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """     
