@@ -98,10 +98,10 @@ class TestParallelUQLearner:
         mock_config.prediction = pred
         mock_config.uncertainty = uncert
 
-        with patch("rose.uq.parallel_uq_learner.UQLearnerConfig") as mock_learner_config:
+        with patch("rose.uq.uq_learner.UQLearnerConfig") as mock_lrnr_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
-            mock_learner_config.assert_called_once_with(
+            mock_lrnr_config.assert_called_once_with(
                 simulation=sim,
                 training=train,
                 active_learn=active,
@@ -109,7 +109,6 @@ class TestParallelUQLearner:
                 prediction=pred,
                 uncertainty=uncert,
             )
-
 
     @pytest.mark.asyncio
     async def test_teach_validation_errors(self, parallel_learner):
