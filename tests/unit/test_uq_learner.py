@@ -7,11 +7,9 @@ import pytest
 from radical.asyncflow import WorkflowEngine
 
 from rose.uq import UQScorer
-from rose.uq.uq_learner import (
-    LearnerConfig,
-    ParallelUQLearner,
-    UQLearner,
-)
+from rose.uq.uq_activeLearner import ParallelUQLearner, SeqUQLearner
+from rose.uq.uq_learner import UQLearnerConfig
+
 
 
 class TestParallelUQLearner:
@@ -50,7 +48,7 @@ class TestParallelUQLearner:
         )
 
         # Verify it's a UQLearner instance
-        assert isinstance(sequential, UQLearner)
+        assert isinstance(sequential, SeqUQLearner)
 
         # Verify functions are copied
         assert (
@@ -80,7 +78,7 @@ class TestParallelUQLearner:
         assert result is None
 
         # Test with actual config
-        mock_config = MagicMock(spec=LearnerConfig)
+        mock_config = MagicMock(spec=UQLearnerConfig)
         mock_config.simulation = "sim_params"
         mock_config.training = "train_params"
         mock_config.active_learn = "active_params"
@@ -88,7 +86,7 @@ class TestParallelUQLearner:
         mock_config.prediction = "prediction_params"
         mock_config.uncertainty = "uncertainty_params"
 
-        with patch("rose.uq.uq_learner.LearnerConfig") as mock_learner_config:
+        with patch("rose.uq.uq_learner.UQLearnerConfig") as mock_learner_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_learner_config.assert_called_once_with(
@@ -234,7 +232,7 @@ class TestParallelUQLearner:
     ):
         """Test successful parallel execution of multiple learners."""
         # Mock the sequential learner creation and execution
-        mock_sequential = MagicMock(spec=UQLearner)
+        mock_sequential = MagicMock(spec=SeqUQLearner)
         mock_sequential.teach = AsyncMock(return_value="learner_result")
         mock_sequential.metric_values_per_iteration = {"metric1": [1, 2, 3]}
         mock_sequential.uncertainty_values_per_iteration = {"UQmetric1": [1, 2, 3]}
@@ -285,7 +283,7 @@ class TestParallelUQLearner:
     async def test_teach_learner_failure_handling(self, configured_parallel_learner):
         """Test handling of learner failures in parallel execution."""
         # Create a mock sequential learner that fails
-        mock_sequential = MagicMock(spec=UQLearner)
+        mock_sequential = MagicMock(spec=SeqUQLearner)
         mock_sequential.teach = AsyncMock(side_effect=Exception("Learner failed"))
 
         with patch.object(

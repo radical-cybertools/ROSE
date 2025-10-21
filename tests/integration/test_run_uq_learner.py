@@ -7,7 +7,7 @@ from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQ_REGISTRY, register_uq
-from rose.uq.uq_learner import ParallelUQLearner, UQLearner
+from rose.uq.uq_activeLearner import ParallelUQLearner, SeqUQLearner
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_active_learning_pipeline_functions():
 @pytest.mark.asyncio
 async def test_uqlearner_runs_with_mock_functions():
     engine = MagicMock(spec=WorkflowEngine)
-    learner = UQLearner(engine)
+    learner = SeqUQLearner(engine)
 
     # Mock functions
     learner.simulation_function = {"kwargs": {}}
