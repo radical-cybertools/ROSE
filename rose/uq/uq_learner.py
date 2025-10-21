@@ -14,7 +14,9 @@ class UQLearnerConfig(LearnerConfig):
             Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
+
     uncertainty: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+
 
 class UQLearner(Learner):
     """UQ active learner that runs iterations one after another.
@@ -47,7 +49,6 @@ class UQLearner(Learner):
 
         self.learner_name: str = "UQLearner"
         self.learner_results: list[dict[str, Any]] = []
-
 
     @typeguard.typechecked
     def uncertainty_quantification(
@@ -113,7 +114,6 @@ class UQLearner(Learner):
             return async_wrapper
 
         return decorator
-
 
     def _check_uncertainty(self, uncertainty_task_result: Any) -> tuple[bool, float]:
         """Check if the uncertainty criterion is met based on task result.

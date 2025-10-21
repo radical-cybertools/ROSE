@@ -153,10 +153,8 @@ class Learner:
         self.active_learn_task: Callable = self.register_decorator("active_learn")
         self.prediction_task: Callable = self.register_decorator("prediction")
 
-
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
-
 
     def _get_iteration_task_config(
         self,
@@ -361,8 +359,6 @@ class Learner:
 
         return decorator
 
-
-
     def _register_task(
         self,
         task_obj: dict[str, Any],
@@ -467,7 +463,6 @@ class Learner:
         )
         return sim_task, train_task, prediction_task
 
-
     def _check_stop_criterion(self, stop_task_result: Any) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
 
@@ -543,8 +538,6 @@ class Learner:
             task information with 'future' and 'description' fields.
         """
         return self.metric_values_per_iteration
-
-
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
