@@ -98,7 +98,7 @@ class TestParallelUQLearner:
         mock_config.prediction = pred
         mock_config.uncertainty = uncert
 
-        with patch("rose.uq.uq_learner.UQLearnerConfig") as mock_lrnr_config:
+        with patch("rose.uq.uq_activeLearner.UQLearnerConfig") as mock_lrnr_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_lrnr_config.assert_called_once_with(
