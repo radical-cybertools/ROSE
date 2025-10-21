@@ -7,10 +7,10 @@ import asyncio
 import numpy as np
 #import shutil
 import subprocess
-from rose.uq.uq_learner import ParallelUQLearner
+from rose.uq.uq_activeLearner import ParallelUQLearner
 from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
 from rose import TaskConfig
-from rose import LearnerConfig
+from rose.uq.uq_learner import UQLearnerConfig
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 # from radical.asyncflow import DaskExecutionBackend
@@ -130,7 +130,7 @@ async def uq_learner():
 
     learner_configs = {}
     for PIPELINE in PIPELINES:
-        learner_configs[PIPELINE] = LearnerConfig(
+        learner_configs[PIPELINE] = UQLearnerConfig(
                             simulation=TaskConfig(kwargs={                            
                             '--home_dir': home_dir,
                             '--train_batch': 50,
