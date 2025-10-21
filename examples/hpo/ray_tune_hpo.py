@@ -7,11 +7,12 @@ import numpy as np
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
+from radical.asyncflow.logging import init_default_logger
 from concurrent.futures import ThreadPoolExecutor
-
+import logging
 from rose.hpo import HPOBase
 
-
+logger = logging.getLogger(__name__)
 # ============================================================================
 # User's Ray Tune Adapter
 # ============================================================================
@@ -92,6 +93,7 @@ def train_pytorch_model(config):
 
 async def main():
     # Create AsyncFlow
+    init_default_logger(logging.INFO)
     backend = await ConcurrentExecutionBackend(ThreadPoolExecutor(max_workers=20))
     flow = await WorkflowEngine.create(backend=backend)
     
@@ -118,12 +120,10 @@ async def main():
     )
     
     # Results
-    print("\n" + "="*70)
-    print("BEST HYPERPARAMETERS FOUND")
-    print("="*70)
+    logger.info("BEST HYPERPARAMETERS FOUND")
     for param, value in results['best_config'].items():
-        print(f"  {param}: {value}")
-    print(f"\nBest Score: {results['best_score']:.4f}")
+        logger.info(f"{param}: {value}")
+    logger.info(f"Best Score: {results['best_score']:.4f}")
     
     await flow.shutdown()
 

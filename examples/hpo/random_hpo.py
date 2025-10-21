@@ -1,13 +1,18 @@
 """
-example_simple_hpo.py - Simple random search HPO with ROSE
+example_simple_hpo.py - Simple random search with lazy config generation
 """
 
 import asyncio
 import numpy as np
-from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
 from concurrent.futures import ThreadPoolExecutor
 
+from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
 from rose.hpo import HPOBase
+
+from radical.asyncflow.logging import init_default_logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SimpleRandomSearch(HPOBase):
     """Simple random search HPO"""
@@ -19,7 +24,6 @@ class SimpleRandomSearch(HPOBase):
         self.trials_done = 0
         
     def suggest_configurations(self, n_suggestions):
-        """Randomly sample configurations"""
         configs = []
         
         for _ in range(n_suggestions):
@@ -39,17 +43,11 @@ class SimpleRandomSearch(HPOBase):
         return configs
     
     def report_results(self, results):
-        """Nothing to update for random search"""
         pass
     
     def should_stop(self):
-        """Stop when we've done n_trials"""
         return self.trials_done >= self.n_trials
 
-
-# ============================================================================
-# User's Training Function
-# ============================================================================
 
 def train_model(config):
     """User's ML training function"""
@@ -57,7 +55,9 @@ def train_model(config):
     batch_size = config['batch_size']
     hidden_size = config['hidden_size']
     
-    # Simulate training (replace with real training)
+    import time
+    time.sleep(np.random.uniform(1, 3))
+
     score = 0.0
     score += 0.4 * np.exp(-((np.log10(lr) + 3) ** 2) / 2)
     score += 0.3 * np.exp(-((batch_size - 32) ** 2) / 500)
@@ -67,18 +67,13 @@ def train_model(config):
     return {'score': score, 'loss': 1 - score}
 
 
-# ============================================================================
-# Main
-# ============================================================================
-
 async def main():
-    # Create AsyncFlow backend and workflow engine
+    init_default_logger(logging.INFO)
     backend = await ConcurrentExecutionBackend(ThreadPoolExecutor(max_workers=10))
-    flow = await WorkflowEngine.create(backend=backend)
+    asyncflow = await WorkflowEngine.create(backend=backend)
     
-    print("🌹 ROSE HPO Example - Simple Random Search\n")
+    logger.info("ROSE HPO Example - Random Search with Lazy Config Generation\n")
     
-    # Create HPO instance
     hpo = SimpleRandomSearch(
         trainable=train_model,
         search_space={
@@ -87,26 +82,22 @@ async def main():
             'hidden_size': (64, 512)
         },
         n_trials=20,
-        resource_requirements={'gpus': 1, 'ranks': 1}
+        resource_requirements={'gpus': 1, 'ranks': 1},
+        config_buffer_size=10  # Only buffer 10 configs at a time
     )
     
-    # Run HPO on HPC (async only)
     results = await hpo.run_hpo(
-        asyncflow=flow,
+        asyncflow=asyncflow,
         max_concurrent_trials=5,
         total_trials=20
     )
-    
-    # Print results
-    print("\n" + "="*70)
-    print("FINAL RESULTS")
-    print("="*70)
-    print(f"Best Configuration: {results['best_config']}")
-    print(f"Best Score: {results['best_score']:.4f}")
-    print(f"Total Trials: {results['n_trials']}")
-    
-    # Shutdown AsyncFlow
-    await flow.shutdown()
+
+    logger.info("FINAL RESULTS")
+    logger.info(f"Best Configuration: {results['best_config']}")
+    logger.info(f"Best Score: {results['best_score']:.4f}")
+    logger.info(f"Total Trials: {results['n_trials']}")
+
+    await asyncflow.shutdown()
 
 
 if __name__ == "__main__":
