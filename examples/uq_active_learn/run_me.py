@@ -7,7 +7,7 @@ import asyncio
 import numpy as np
 #import shutil
 import subprocess
-from rose.uq.uq_activeLearner import ParallelUQLearner
+from rose.uq.uq_active_learner import ParallelUQLearner
 from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
 from rose import TaskConfig
 from rose.uq.uq_learner import UQLearnerConfig

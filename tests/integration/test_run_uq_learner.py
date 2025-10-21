@@ -7,7 +7,7 @@ from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQ_REGISTRY, register_uq
-from rose.uq.uq_activeLearner import ParallelUQLearner, SeqUQLearner
+from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 
 
 @pytest.mark.asyncio

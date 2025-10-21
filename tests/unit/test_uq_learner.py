@@ -7,9 +7,8 @@ import pytest
 from radical.asyncflow import WorkflowEngine
 
 from rose.uq import UQScorer
-from rose.uq.uq_activeLearner import ParallelUQLearner, SeqUQLearner
+from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_learner import UQLearnerConfig
-
 
 
 class TestParallelUQLearner:
@@ -81,7 +80,7 @@ class TestParallelUQLearner:
             if isinstance(val, str):
                 return {"name": val, "params": {}}
             return val
-        
+
         # Test with actual config
         mock_config = MagicMock(spec=UQLearnerConfig)
         sim = ensure_task("sim_params")
@@ -98,7 +97,7 @@ class TestParallelUQLearner:
         mock_config.prediction = pred
         mock_config.uncertainty = uncert
 
-        with patch("rose.uq.uq_activeLearner.UQLearnerConfig") as mock_lrnr_config:
+        with patch("rose.uq.uq_active_learner.UQLearnerConfig") as mock_lrnr_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_lrnr_config.assert_called_once_with(

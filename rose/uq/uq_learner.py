@@ -1,8 +1,10 @@
-import typeguard
-from typing import Any, Callable, Optional, Union
 from functools import wraps
+from typing import Any, Callable, Optional, Union
+
+import typeguard
 from radical.asyncflow import WorkflowEngine
-from ..learner import Learner, TaskConfig, LearnerConfig
+
+from ..learner import Learner, LearnerConfig, TaskConfig
 
 
 class UQLearnerConfig(LearnerConfig):
@@ -11,7 +13,7 @@ class UQLearnerConfig(LearnerConfig):
         uncertainty: Configuration for uncertainty quantification tasks.
             Can be a single TaskConfig
             or a dictionary mapping iteration numbers to TaskConfig objects.
-    """     
+    """
     uncertainty: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
 
 class UQLearner(Learner):
@@ -111,7 +113,7 @@ class UQLearner(Learner):
             return async_wrapper
 
         return decorator
-    
+
 
     def _check_uncertainty(self, uncertainty_task_result: Any) -> tuple[bool, float]:
         """Check if the uncertainty criterion is met based on task result.

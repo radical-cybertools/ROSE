@@ -137,7 +137,7 @@ class Learner:
             and submit decorated tasks.
         """
         self.criterion_function: dict[str, Any] = {}
-        
+
         self.training_function: dict[str, Any] = {}
         self.simulation_function: dict[str, Any] = {}
         self.active_learn_function: dict[str, Any] = {}
@@ -152,11 +152,11 @@ class Learner:
         self.simulation_task: Callable = self.register_decorator("simulation")
         self.active_learn_task: Callable = self.register_decorator("active_learn")
         self.prediction_task: Callable = self.register_decorator("prediction")
-        
+
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
-        
+
 
     def _get_iteration_task_config(
         self,

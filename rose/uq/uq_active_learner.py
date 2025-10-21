@@ -3,9 +3,12 @@ import copy
 import itertools
 from collections.abc import Iterator
 from typing import Any, Optional, Union
+
 from radical.asyncflow import WorkflowEngine
-from ..learner import TaskConfig
+
 from rose.uq.uq_learner import UQLearner, UQLearnerConfig
+
+from ..learner import TaskConfig
 
 
 class SeqUQLearner(UQLearner):

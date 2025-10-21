@@ -1,5 +1,5 @@
+from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_learner import UQLearner, UQLearnerConfig
-from rose.uq.uq_activeLearner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_scorer import UQ_REGISTRY, UQScorer, register_uq
 
 __all__ = [
