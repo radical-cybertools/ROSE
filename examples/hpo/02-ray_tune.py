@@ -13,12 +13,36 @@ import logging
 from rose.hpo import HPOBase
 
 logger = logging.getLogger(__name__)
-# ============================================================================
-# User's Ray Tune Adapter
-# ============================================================================
+
 
 class RayTuneAdapter(HPOBase):
-    """Adapter for Ray Tune with ROSE"""
+    """Adapter for Ray Tune with ROSE
+
+    Adapter for Ray Tune with ROSE
+    
+    Flow of events:
+        1 Ray Tune Study suggests N configs
+        N trials execute in parallel on different compute nodes via ROSE
+        Each trial can also be multi-node (e.g., 8 nodes per trial)
+    
+    Ray Tune's role:
+        Runs in one process
+        Suggests configs using chosen algorithm (Random, ASHA, Bayesian, etc.)
+        Updates scheduler state when results come back
+        Serial decision making
+    
+    ROSE's role:
+        Takes configs from Ray Tune
+        Distributes trials across HPC nodes
+        Manages parallel execution of N training models
+        Returns results to Ray Tune
+    
+    Without ROSE HPO:
+        Requires Ray cluster setup on HPC (complex)
+        No native SLURM/PBS integration
+        No MPI support for complex training code
+        Must pre-allocate all resources
+    """
     
     def __init__(self, trainable, search_space, max_trials=50, **kwargs):
         super().__init__(trainable, **kwargs)
@@ -65,10 +89,6 @@ class RayTuneAdapter(HPOBase):
         return self.trial_count >= self.max_trials
 
 
-# ============================================================================
-# Training Function
-# ============================================================================
-
 def train_pytorch_model(config):
     """Simulated PyTorch training"""
     lr = config['learning_rate']
@@ -86,10 +106,6 @@ def train_pytorch_model(config):
     
     return {'score': score, 'epochs': 50}
 
-
-# ============================================================================
-# Main
-# ============================================================================
 
 async def main():
     # Create AsyncFlow
