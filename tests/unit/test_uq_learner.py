@@ -77,26 +77,39 @@ class TestParallelUQLearner:
         result = parallel_learner._convert_to_sequential_config(None)
         assert result is None
 
+        def ensure_task(val):
+            if isinstance(val, str):
+                return {"name": val, "params": {}}
+            return val
+        
         # Test with actual config
         mock_config = MagicMock(spec=UQLearnerConfig)
-        mock_config.simulation = "sim_params"
-        mock_config.training = "train_params"
-        mock_config.active_learn = "active_params"
-        mock_config.criterion = "criterion_params"
-        mock_config.prediction = "prediction_params"
-        mock_config.uncertainty = "uncertainty_params"
+        sim = ensure_task("sim_params")
+        train = ensure_task("train_params")
+        active = ensure_task("active_params")
+        crit = ensure_task("criterion_params")
+        pred = ensure_task("prediction_params")
+        uncert = ensure_task("uncertainty_params")
 
-        with patch("rose.uq.uq_learner.UQLearnerConfig") as mock_learner_config:
+        mock_config.simulation = sim
+        mock_config.training = train
+        mock_config.active_learn = active
+        mock_config.criterion = crit
+        mock_config.prediction = pred
+        mock_config.uncertainty = uncert
+
+        with patch("rose.uq.parallel_uq_learner.UQLearnerConfig") as mock_learner_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_learner_config.assert_called_once_with(
-                simulation="sim_params",
-                training="train_params",
-                active_learn="active_params",
-                criterion="criterion_params",
-                prediction="prediction_params",
-                uncertainty="uncertainty_params",
+                simulation=sim,
+                training=train,
+                active_learn=active,
+                criterion=crit,
+                prediction=pred,
+                uncertainty=uncert,
             )
+
 
     @pytest.mark.asyncio
     async def test_teach_validation_errors(self, parallel_learner):
