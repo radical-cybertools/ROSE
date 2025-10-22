@@ -86,7 +86,7 @@ async def main():
         config_buffer_size=10  # Only buffer 10 configs at a time
     )
     
-    results = await hpo.run_hpo(
+    results = await hpo.optimize(
         asyncflow=asyncflow,
         max_concurrent_trials=5,
         total_trials=20

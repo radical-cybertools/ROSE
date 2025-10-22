@@ -129,7 +129,7 @@ async def main():
     )
     
     # Run HPO (async only)
-    results = await hpo.run_hpo(
+    results = await hpo.optimize(
         asyncflow=flow,
         max_concurrent_trials=10,
         total_trials=50

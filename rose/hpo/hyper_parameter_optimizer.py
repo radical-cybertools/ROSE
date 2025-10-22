@@ -98,7 +98,7 @@ class HPOBase(ABC):
             return float('-inf')
         return max(r.get('score', float('-inf')) for r in self._all_results)
     
-    async def run_hpo(self, 
+    async def optimize(self, 
                       asyncflow: WorkflowEngine,
                       max_concurrent_trials: int = 10,
                       total_trials: Optional[int] = None) -> Dict:
@@ -200,7 +200,7 @@ class HPOBase(ABC):
                     
                     # Report result immediately
                     self.report_results([result])
-                    
+
                     current_best = self.get_best_score()
                     logger.info(f"Trial {result['trial_id']} completed: "
                           f"score={result.get('score', 'N/A'):.4f} | "
