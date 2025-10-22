@@ -95,17 +95,33 @@ class TestParallelActiveLearner:
     async def test_teach_validation_errors(self, parallel_learner):
         """Test teach method validation and error cases."""
         # Test with parallel_learners < 2
+        parallel_learner.simulation_function = None
+        parallel_learner.training_function = None
+        parallel_learner.active_learn_function = None
+        parallel_learner.criterion_function = None
+
         with pytest.raises(
             ValueError, match="For single learner, use SequentialActiveLearner"
         ):
             await parallel_learner.teach(parallel_learners=1)
 
-        # Test with missing functions
+        # Test with missing simulation functions it should raise error about
+        # simulation first
         with pytest.raises(
-            Exception,
-            match="Simulation, Training, and Active Learning functions must be set!",
+            ValueError,
+            match="Simulation function must be set when not using simulation pool!",
         ):
             await parallel_learner.teach(parallel_learners=2, max_iter=1)
+
+        # Test with missing simulation functions and skip_simulation_step
+        # it should raise an error about missing train/active_learn tasks
+        with pytest.raises(
+            ValueError,
+            match="Training and Active Learning functions must be set!",
+        ):
+            await parallel_learner.teach(
+                parallel_learners=2, max_iter=1, skip_simulation_step=True
+            )
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()
@@ -114,7 +130,7 @@ class TestParallelActiveLearner:
 
         with pytest.raises(
             Exception,
-            match="Either max_iter or stop_criterion_function must be provided.",
+            match="Either max_iter > 0 or criterion_function must be provided.",
         ):
             await parallel_learner.teach(parallel_learners=2, max_iter=0)
 

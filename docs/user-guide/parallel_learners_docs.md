@@ -104,11 +104,11 @@ results = await acl.teach(
     parallel_learners=2,
     max_iter=10,
     learner_configs=[
-        ParallelLearnerConfig(
+        LearnerConfig(
             simulation=TaskConfig(kwargs={"--n_labeled": "200", "--n_features": 2}),
             training=TaskConfig(kwargs={"--learning_rate": "0.01"})
         ),
-        ParallelLearnerConfig(
+        LearnerConfig(
             simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4}),
             training=TaskConfig(kwargs={"--learning_rate": "0.005"})
         )
@@ -122,10 +122,10 @@ results = await acl.teach(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
-        ParallelLearnerConfig(
+        LearnerConfig(
             simulation=TaskConfig(kwargs={"--n_labeled": "200", "--n_features": 2})
         ),
-        ParallelLearnerConfig(
+        LearnerConfig(
             simulation={
                 0: TaskConfig(kwargs={"--n_labeled": "100"}),
                 5: TaskConfig(kwargs={"--n_labeled": "200"}),
@@ -170,8 +170,8 @@ results = await acl.teach(
     parallel_learners=2,
     max_iter=20,
     learner_configs=[
-        ParallelLearnerConfig(simulation=adaptive_sim, training=adaptive_train),
-        ParallelLearnerConfig(
+        LearnerConfig(simulation=adaptive_sim, training=adaptive_train),
+        LearnerConfig(
             simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4}),
             training=TaskConfig(kwargs={"--learning_rate": "0.005"})
         )
@@ -194,15 +194,15 @@ results = await acl.teach(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
-        ParallelLearnerConfig(simulation=adaptive_sim),  # Adaptive
-        ParallelLearnerConfig(                           # Per-iteration
+        LearnerConfig(simulation=adaptive_sim),  # Adaptive
+        LearnerConfig(                           # Per-iteration
             simulation={
                 0: TaskConfig(kwargs={"--n_labeled": "150", "--n_features": 3}),
                 7: TaskConfig(kwargs={"--n_labeled": "250", "--n_features": 3}),
                 -1: TaskConfig(kwargs={"--n_labeled": "400", "--n_features": 3})
             }
         ),
-        ParallelLearnerConfig(                           # Static
+        LearnerConfig(                           # Static
             simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4})
         )
     ]
