@@ -4,8 +4,6 @@ import os
 import json
 from pathlib import Path
 import asyncio
-import numpy as np
-#import shutil
 import subprocess
 from rose.uq.uq_active_learner import ParallelUQLearner
 from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
@@ -13,13 +11,16 @@ from rose import TaskConfig
 from rose.uq.uq_learner import UQLearnerConfig
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
-# from radical.asyncflow import DaskExecutionBackend
-#from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
 from radical.asyncflow import ConcurrentExecutionBackend
 
-#UQ_METRIC_NAME=PREDICTIVE_ENTROPY
-UQ_METRIC_NAME='custom_uq'   #if you want to use custom metric defined in check_uq.py
+TEST_RADICAL = False
+TEST_CUSTOM_UQ = False
+
+if TEST_CUSTOM_UQ:
+    UQ_METRIC_NAME = 'custom_uq'   #if you want to use custom metric defined in check_uq.py
+else:
+    UQ_METRIC_NAME = PREDICTIVE_ENTROPY
 
 
 ACC_THRESHOLD = 0.5
@@ -30,6 +31,7 @@ TASK_TYPE = 'classification'
 USECASE = 'ENSEMBLE'        
             # Options: 'Bayesian', 'SINGLE_MODEL', 'ENSEMBLE'
 UQ_QUERY_SIZE = 1
+
 
 RESOURCES = {
             'runtime': 300, 
@@ -54,11 +56,11 @@ async def uq_learner():
     else:
         return
     
-    #engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
-    engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
-    #engine = await RadicalExecutionBackend(RESOURCES)
-    #engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
-    #engine = await DaskExecutionBackend({'n_workers': 2, 'threads_per_worker': 1})
+    if TEST_RADICAL:
+        engine = await RadicalExecutionBackend(RESOURCES)
+    else:
+        engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
+
     asyncflow = await WorkflowEngine.create(engine)
 
     learner = ParallelUQLearner(asyncflow)
