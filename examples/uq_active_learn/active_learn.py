@@ -53,4 +53,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     active_learn(args.home_dir, "_pool.json", "_samples.json", "_uq_selection.json", learner_name=args.learner_name)
-   

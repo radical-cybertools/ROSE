@@ -77,6 +77,8 @@ async def prediction(*args):
 async def check_uq(*args):
     return f'{code_path}/check_uq.py'xs
 
+```
+
 #### Workflow Summary
 
 1. Launch multiple **prediction tasks** in parallel.
@@ -125,7 +127,7 @@ await learner.shutdown()
 
 #### Defining costom UQ metric
 
-```
+```python
 from rose.uq import UQScorer, register_uq, UQ_REGISTRY
 
 @register_uq("custom_uq")
