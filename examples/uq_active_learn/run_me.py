@@ -32,14 +32,6 @@ USECASE = 'ENSEMBLE'
             # Options: 'Bayesian', 'SINGLE_MODEL', 'ENSEMBLE'
 UQ_QUERY_SIZE = 1
 
-
-RESOURCES = {
-            'runtime': 300, 
-            'resource': 'local.localhost', 
-            #'resource': 'purdue.anvil',
-            'cores': 16
-        }
-
 home_dir = os.environ.get('ROSE_HOME', subprocess.check_output(["pwd"], text=True).strip())
 
 async def uq_learner():
@@ -57,6 +49,12 @@ async def uq_learner():
         return
     
     if TEST_RADICAL:
+        RESOURCES = {
+            'runtime': 300, 
+            'resource': 'local.localhost', 
+            #'resource': 'purdue.anvil',
+            'cores': 16
+        }
         engine = await RadicalExecutionBackend(RESOURCES)
     else:
         engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
