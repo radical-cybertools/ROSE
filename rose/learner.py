@@ -54,6 +54,7 @@ class LearnerConfig(BaseModel):
 
     simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    prediction: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     criterion: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
 
@@ -70,7 +71,7 @@ class LearnerConfig(BaseModel):
 
         Args:
             task_name: Name of the task ('simulation',
-            'training', 'active_learn', 'criterion').
+            'training', 'prediction', 'active_learn', 'criterion').
             iteration: The iteration number (0-based).
 
         Returns:
@@ -110,13 +111,16 @@ class Learner:
 
     Attributes:
         criterion_function: Configuration for criterion/stopping condition functions.
+        Quantification condition functions.
         training_function: Configuration for training functions.
+        prediction_function: Configuration for prediction functions.
         simulation_function: Configuration for simulation functions.
         active_learn_function: Configuration for active learning functions.
         asyncflow: The workflow engine for managing asynchronous task execution.
         register_and_submit: Whether to automatically register and submit tasks.
         utility_task: Decorator for utility tasks.
         training_task: Decorator for training tasks.
+        prediction_task: Decorator for prediction tasks.
         simulation_task: Decorator for simulation tasks.
         active_learn_task: Decorator for active learning tasks.
     """
@@ -133,9 +137,11 @@ class Learner:
             and submit decorated tasks.
         """
         self.criterion_function: dict[str, Any] = {}
+
         self.training_function: dict[str, Any] = {}
         self.simulation_function: dict[str, Any] = {}
         self.active_learn_function: dict[str, Any] = {}
+        self.prediction_function: dict[str, Any] = {}
 
         self.asyncflow: WorkflowEngine = asyncflow
 
@@ -145,6 +151,7 @@ class Learner:
         self.training_task: Callable = self.register_decorator("training")
         self.simulation_task: Callable = self.register_decorator("simulation")
         self.active_learn_task: Callable = self.register_decorator("active_learn")
+        self.prediction_task: Callable = self.register_decorator("prediction")
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
@@ -451,7 +458,10 @@ class Learner:
         """
         sim_task: Any = self._register_task(self.simulation_function)
         train_task: Any = self._register_task(self.training_function, deps=sim_task)
-        return sim_task, train_task
+        prediction_task: Any = self._register_task(
+            self.prediction_function_function, deps=train_task
+        )
+        return sim_task, train_task, prediction_task
 
     def _check_stop_criterion(self, stop_task_result: Any) -> tuple[bool, float]:
         """Check if the stopping criterion is met based on task result.
