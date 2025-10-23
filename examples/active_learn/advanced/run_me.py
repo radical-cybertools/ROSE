@@ -10,6 +10,12 @@ from radical.asyncflow import ConcurrentExecutionBackend
 
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    import numpy, sklearn
+except ImportError:
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
+    sys.exit(1)
+
 async def custom_al():
 
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())

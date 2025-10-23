@@ -8,6 +8,11 @@ from rose.al.active_learner import SequentialActiveLearner
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
+try:
+    import numpy, sklearn
+except ImportError:
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
+    sys.exit(1)
 
 async def rose_al():
 

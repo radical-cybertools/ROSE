@@ -10,6 +10,12 @@ from rose.learner import Learner
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
+try:
+    import numpy, sklearn
+except ImportError:
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
+    sys.exit(1)
+
 seed=20030
 num_sample=4500
 num_sample_val=((num_sample / 2))
@@ -35,7 +41,7 @@ ngpus=(NNODES * 4)
 
 async def bootstrap():
     os.system(f'{code_path}/prepare_data_dir_pm.py --seed {seed}')
-    
+
     bootstrap=[]
     base = sample_simulation(f'{num_sample} {seed} \
             {data_dir}/base/config/config_1001460_cubic.txt \

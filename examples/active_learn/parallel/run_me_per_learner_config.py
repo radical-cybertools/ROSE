@@ -12,6 +12,12 @@ from radical.asyncflow import ConcurrentExecutionBackend
 
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    import numpy, sklearn
+except ImportError:
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
+    sys.exit(1)
+
 async def run_al_parallel():
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
@@ -41,7 +47,7 @@ async def run_al_parallel():
     async def check_mse(*args, **kwargs):
         return f'{code_path}/check_mse.py'
 
-    adaptive_sim = al.create_adaptive_schedule('simulation', 
+    adaptive_sim = al.create_adaptive_schedule('simulation',
         lambda i: {
             'kwargs': {
                 '--n_labeled': str(100 + i * 50),  # Increase labeled data each iteration

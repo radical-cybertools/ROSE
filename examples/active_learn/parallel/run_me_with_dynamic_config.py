@@ -10,6 +10,12 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE
 from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
+try:
+    import numpy, sklearn
+except ImportError:
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
+    sys.exit(1)
+
 async def run_al_parallel():
     engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
     asyncflow = await WorkflowEngine.create(engine)
@@ -43,7 +49,7 @@ async def run_al_parallel():
 
 
     # Create adaptive simulation config
-    adaptive_sim = al.create_adaptive_schedule('simulation', 
+    adaptive_sim = al.create_adaptive_schedule('simulation',
         lambda i: {
             'kwargs': {
                 '--n_labeled': str(100 + i * 50),  # Increase labeled data each iteration

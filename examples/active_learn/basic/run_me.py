@@ -9,10 +9,9 @@ from radical.asyncflow import WorkflowEngine
 from radical.asyncflow import RadicalExecutionBackend
 
 try:
-    import numpy
-    import sklearn
+    import numpy, sklearn
 except ImportError:
-    print("\nThis code requires numpy - run 'pip install numpy scikit-learn'\n")
+    print("\nRun 'pip install numpy scikit-learn' to use this example.\n")
     sys.exit(1)
 
 async def rose_al():
