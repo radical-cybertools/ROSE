@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rose-tutorials"
+version = "0.1.0"
+description = "ROSE tutorials environment"
+requires-python = ">=3.9"
+
+# --------------------
+# Common dependencies (for all tutorials)
+# --------------------
+dependencies = [
+    "numpy",
+    "git+https://github.com/radical-cybertools/rose.git",
+]
+
+# --------------------
+# Optional dependencies for tutorials
+# --------------------
+[project.optional-dependencies]
+00al = [
+    "scikit-learn",
+    "scipy",
+]
+
+01rl = [
+    "torch",
+    "gymnasium",
+]
