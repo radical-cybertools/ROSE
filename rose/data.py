@@ -241,7 +241,7 @@ class DataClient:
             }
     
     async def export_stats(self, filepath: str):
-        """Export statistics to JSON file."""
+        """Export statistics to JSON file with all method details."""
         import json
         
         if not self._method_stats:
@@ -267,6 +267,7 @@ class DataClient:
                 },
                 'method_stats': {
                     name: {
+                        'category': self._categorize_method(name),
                         'call_count': stats.call_count,
                         'total_duration': stats.total_duration,
                         'avg_duration': stats.avg_duration,
