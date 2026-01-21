@@ -1,5 +1,6 @@
+from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import typeguard
 from pydantic import BaseModel
@@ -8,6 +9,98 @@ from radical.asyncflow import (
 )
 
 from .metrics import LearningMetrics as Metrics
+
+
+@dataclass
+class IterationState:
+    """State information yielded at each iteration for agent consumption.
+
+    This class provides a standardized view of the learner's state at each
+    iteration, enabling external agents to observe progress and make decisions.
+
+    Attributes:
+        iteration: Current iteration number (0-based).
+        metric_name: Name of the criterion metric being tracked.
+        metric_value: Current metric value (from criterion task).
+        metric_threshold: Target threshold for stopping criterion.
+        metric_history: List of all metric values from previous iterations.
+        should_stop: Whether the stopping criterion suggests stopping.
+        current_config: Current LearnerConfig being used.
+        labeled_count: Number of labeled samples (if registered via state registry).
+        unlabeled_count: Number of unlabeled samples (if registered via state registry).
+        uncertainty_scores: Uncertainty scores array (if registered via state registry).
+        custom_state: Additional custom state registered by user tasks.
+    """
+
+    iteration: int
+    metric_name: Optional[str] = None
+    metric_value: Optional[float] = None
+    metric_threshold: Optional[float] = None
+    metric_history: List[float] = field(default_factory=list)
+    should_stop: bool = False
+    current_config: Optional["LearnerConfig"] = None
+
+    # Extended state (populated from state registry)
+    labeled_count: int = 0
+    unlabeled_count: int = 0
+    uncertainty_scores: Optional[Any] = None
+    mean_uncertainty: Optional[float] = None
+    custom_state: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization.
+
+        Returns:
+            Dictionary representation of the iteration state.
+        """
+        return {
+            "iteration": self.iteration,
+            "metric_name": self.metric_name,
+            "metric_value": self.metric_value,
+            "metric_threshold": self.metric_threshold,
+            "metric_history": self.metric_history,
+            "should_stop": self.should_stop,
+            "labeled_count": self.labeled_count,
+            "unlabeled_count": self.unlabeled_count,
+            "mean_uncertainty": self.mean_uncertainty,
+            "custom_state": self.custom_state,
+        }
+
+    def to_prompt(self) -> str:
+        """Convert to natural language for LLM agents.
+
+        Returns:
+            Human-readable string representation of the state.
+        """
+        lines = [
+            f"## Iteration {self.iteration}",
+            "",
+            "**Metrics:**",
+        ]
+
+        if self.metric_name:
+            lines.append(f"- {self.metric_name}: {self.metric_value:.6f}"
+                        + (f" (target: {self.metric_threshold})"
+                           if self.metric_threshold else ""))
+
+        if self.metric_history:
+            recent = [f"{v:.4f}" for v in self.metric_history[-5:]]
+            lines.append(f"- History (last 5): {recent}")
+
+        lines.extend([
+            "",
+            "**Data:**",
+            f"- Labeled samples: {self.labeled_count}",
+            f"- Unlabeled samples: {self.unlabeled_count}",
+        ])
+
+        if self.mean_uncertainty is not None:
+            lines.append(f"- Mean uncertainty: {self.mean_uncertainty:.4f}")
+
+        if self.should_stop:
+            lines.extend(["", "**Status:** Stopping criterion met"])
+
+        return "\n".join(lines)
 
 
 class TaskConfig(BaseModel):
@@ -155,6 +248,9 @@ class Learner:
 
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
+
+        self._state_registry: Dict[str, Any] = {}
+        self._state_callbacks: List[Callable[[str, Any], None]] = []
 
     def _get_iteration_task_config(
         self,
@@ -538,6 +634,159 @@ class Learner:
             task information with 'future' and 'description' fields.
         """
         return self.metric_values_per_iteration
+
+
+    def register_state(self, key: str, value: Any) -> None:
+        """Register a state value for agent access.
+
+        Called by user tasks to expose internal state (uncertainty scores,
+        data counts, model info, etc.) to external entities or top components
+        like agents.
+
+        Args:
+            key: State identifier (e.g., 'uncertainty_scores', 'labeled_count').
+            value: State value to register.
+
+        Example:
+            In your active_learn task::
+
+                @learner.active_learn_task
+                async def active_learn(*args):
+                    uncertainty = model.predict_uncertainty(X_unlabeled)
+                    learner.register_state('uncertainty_scores', uncertainty)
+                    learner.register_state('mean_uncertainty', float(uncertainty.mean()))
+                    return 'python active.py'
+        """
+        self._state_registry[key] = value
+        for callback in self._state_callbacks:
+            try:
+                callback(key, value)
+            except Exception:
+                pass  # Don't let callback errors break the workflow
+
+    def get_state(self, key: str, default: Any = None) -> Any:
+        """Get a registered state value.
+
+        Args:
+            key: State identifier.
+            default: Default value if key not found.
+
+        Returns:
+            Registered state value or default.
+
+        Example::
+
+            uncertainty = learner.get_state('uncertainty_scores')
+            labeled_count = learner.get_state('labeled_count', default=0)
+        """
+        return self._state_registry.get(key, default)
+
+    def get_all_state(self) -> Dict[str, Any]:
+        """Get all registered state values.
+
+        Returns:
+            Copy of the state registry dictionary.
+        """
+        return self._state_registry.copy()
+
+    def clear_state(self) -> None:
+        """Clear all registered state.
+
+        Typically called between iterations to reset transient state.
+        """
+        self._state_registry.clear()
+
+    def on_state_update(self, callback: Callable[[str, Any], None]) -> None:
+        """Register a callback for state updates.
+
+        The callback is invoked each time register_state() is called.
+
+        Args:
+            callback: Function called with (key, value) on each state update.
+
+        Example::
+
+            def my_callback(key, value):
+                print(f"State updated: {key} = {value}")
+
+            learner.on_state_update(my_callback)
+        """
+        self._state_callbacks.append(callback)
+
+    def remove_state_callback(self, callback: Callable[[str, Any], None]) -> None:
+        """Remove a previously registered state callback.
+
+        Args:
+            callback: The callback function to remove.
+        """
+        if callback in self._state_callbacks:
+            self._state_callbacks.remove(callback)
+
+    def build_iteration_state(
+        self,
+        iteration: int,
+        metric_value: Optional[float] = None,
+        should_stop: bool = False,
+        current_config: Optional["LearnerConfig"] = None,
+    ) -> IterationState:
+        """Build an IterationState from current learner state.
+
+        Combines metric tracking with registered state to create a complete
+        snapshot for agent consumption.
+
+        Args:
+            iteration: Current iteration number.
+            metric_value: Current metric value (if available).
+            should_stop: Whether stopping criterion is met.
+            current_config: Current configuration being used.
+
+        Returns:
+            IterationState populated with all available information.
+        """
+        # Get metric info from criterion function
+        metric_name = None
+        metric_threshold = None
+        if self.criterion_function:
+            metric_name = self.criterion_function.get("metric_name")
+            metric_threshold = self.criterion_function.get("threshold")
+
+        # Build metric history
+        metric_history = list(self.metric_values_per_iteration.values())
+
+        # Get registered state
+        labeled_count = self.get_state("labeled_count", 0)
+        unlabeled_count = self.get_state("unlabeled_count", 0)
+        uncertainty_scores = self.get_state("uncertainty_scores")
+        mean_uncertainty = self.get_state("mean_uncertainty")
+
+        # Compute mean uncertainty if scores available but mean not registered
+        if mean_uncertainty is None and uncertainty_scores is not None:
+            try:
+                import numpy as np
+                mean_uncertainty = float(np.mean(uncertainty_scores))
+            except Exception:
+                pass
+
+        # Collect custom state (everything except known keys)
+        known_keys = {"labeled_count", "unlabeled_count", "uncertainty_scores",
+                      "mean_uncertainty"}
+        custom_state = {k: v for k, v in self._state_registry.items()
+                       if k not in known_keys}
+
+        return IterationState(
+            iteration=iteration,
+            metric_name=metric_name,
+            metric_value=metric_value,
+            metric_threshold=metric_threshold,
+            metric_history=metric_history,
+            should_stop=should_stop,
+            current_config=current_config,
+            labeled_count=labeled_count,
+            unlabeled_count=unlabeled_count,
+            uncertainty_scores=uncertainty_scores,
+            mean_uncertainty=mean_uncertainty,
+            custom_state=custom_state,
+        )
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
