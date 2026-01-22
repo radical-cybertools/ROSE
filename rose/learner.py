@@ -13,10 +13,13 @@ from .metrics import LearningMetrics as Metrics
 
 @dataclass
 class IterationState:
-    """State information yielded at each iteration for agent consumption.
+    """General-purpose state information yielded at each iteration.
 
     This class provides a standardized view of the learner's state at each
-    iteration, enabling external agents to observe progress and make decisions.
+    iteration, enabling external decision makers (LLM agents) to observe
+    progress and make decisions. All domain-specific state (e.g.,
+    labeled_count, uncertainty) is stored in the `state` dictionary and can
+    be accessed via attribute-style access.
 
     Attributes:
         iteration: Current iteration number (0-based).
@@ -26,10 +29,17 @@ class IterationState:
         metric_history: List of all metric values from previous iterations.
         should_stop: Whether the stopping criterion suggests stopping.
         current_config: Current LearnerConfig being used.
-        labeled_count: Number of labeled samples (if registered via state registry).
-        unlabeled_count: Number of unlabeled samples (if registered via state registry).
-        uncertainty_scores: Uncertainty scores array (if registered via state registry).
-        custom_state: Additional custom state registered by user tasks.
+        state: Dictionary containing all registered state from tasks.
+            Supports attribute-style access (e.g., state.labeled_count).
+
+    Example:
+        Access registered state via attributes::
+
+            async for state in learner.start(max_iter=10):
+                # These access the 'state' dict automatically
+                print(state.labeled_count)      # -> state.state['labeled_count']
+                print(state.mean_uncertainty)   # -> state.state['mean_uncertainty']
+                print(state.my_custom_value)    # -> state.state['my_custom_value']
     """
 
     iteration: int
@@ -40,12 +50,37 @@ class IterationState:
     should_stop: bool = False
     current_config: Optional["LearnerConfig"] = None
 
-    # Extended state (populated from state registry)
-    labeled_count: int = 0
-    unlabeled_count: int = 0
-    uncertainty_scores: Optional[Any] = None
-    mean_uncertainty: Optional[float] = None
-    custom_state: Dict[str, Any] = field(default_factory=dict)
+    # All domain-specific state goes here
+    state: Dict[str, Any] = field(default_factory=dict)
+
+    def __getattr__(self, name: str) -> Any:
+        """Allow attribute-style access to state dict.
+
+        Args:
+            name: Attribute name to look up.
+
+        Returns:
+            Value from state dict if found, None otherwise.
+        """
+        # Avoid infinite recursion for dataclass fields
+        if name == "state":
+            raise AttributeError(name)
+        state_dict = object.__getattribute__(self, "state")
+        if name in state_dict:
+            return state_dict[name]
+        return None
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from the state dict with a default.
+
+        Args:
+            key: Key to look up in state.
+            default: Default value if key not found.
+
+        Returns:
+            Value from state dict or default.
+        """
+        return self.state.get(key, default)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization.
@@ -53,54 +88,17 @@ class IterationState:
         Returns:
             Dictionary representation of the iteration state.
         """
-        return {
+        result = {
             "iteration": self.iteration,
             "metric_name": self.metric_name,
             "metric_value": self.metric_value,
             "metric_threshold": self.metric_threshold,
             "metric_history": self.metric_history,
             "should_stop": self.should_stop,
-            "labeled_count": self.labeled_count,
-            "unlabeled_count": self.unlabeled_count,
-            "mean_uncertainty": self.mean_uncertainty,
-            "custom_state": self.custom_state,
         }
-
-    def to_prompt(self) -> str:
-        """Convert to natural language for LLM agents.
-
-        Returns:
-            Human-readable string representation of the state.
-        """
-        lines = [
-            f"## Iteration {self.iteration}",
-            "",
-            "**Metrics:**",
-        ]
-
-        if self.metric_name:
-            lines.append(f"- {self.metric_name}: {self.metric_value:.6f}"
-                        + (f" (target: {self.metric_threshold})"
-                           if self.metric_threshold else ""))
-
-        if self.metric_history:
-            recent = [f"{v:.4f}" for v in self.metric_history[-5:]]
-            lines.append(f"- History (last 5): {recent}")
-
-        lines.extend([
-            "",
-            "**Data:**",
-            f"- Labeled samples: {self.labeled_count}",
-            f"- Unlabeled samples: {self.unlabeled_count}",
-        ])
-
-        if self.mean_uncertainty is not None:
-            lines.append(f"- Mean uncertainty: {self.mean_uncertainty:.4f}")
-
-        if self.should_stop:
-            lines.extend(["", "**Status:** Stopping criterion met"])
-
-        return "\n".join(lines)
+        # Merge in all state values
+        result.update(self.state)
+        return result
 
 
 class TaskConfig(BaseModel):
@@ -608,14 +606,14 @@ class Learner:
                 f"numerical value, got {type(metric_value)} instead"
             )
 
-    def teach(self) -> None:
-        """Teach method to be implemented by subclasses.
+    def start(self) -> None:
+        """Start method to be implemented by subclasses.
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
         raise NotImplementedError(
             "This is not supported, please define your "
-            "teach method and invoke it directly"
+            "Start method and invoke it directly"
         )
 
     def get_metric_results(self) -> list[float]:
@@ -637,7 +635,7 @@ class Learner:
 
 
     def register_state(self, key: str, value: Any) -> None:
-        """Register a state value for agent access.
+        """Register a state value to be accessed by external entity.
 
         Called by user tasks to expose internal state (uncertainty scores,
         data counts, model info, etc.) to external entities or top components
@@ -732,7 +730,7 @@ class Learner:
         """Build an IterationState from current learner state.
 
         Combines metric tracking with registered state to create a complete
-        snapshot for agent consumption.
+        snapshot for user consumption.
 
         Args:
             iteration: Current iteration number.
@@ -753,25 +751,8 @@ class Learner:
         # Build metric history
         metric_history = list(self.metric_values_per_iteration.values())
 
-        # Get registered state
-        labeled_count = self.get_state("labeled_count", 0)
-        unlabeled_count = self.get_state("unlabeled_count", 0)
-        uncertainty_scores = self.get_state("uncertainty_scores")
-        mean_uncertainty = self.get_state("mean_uncertainty")
-
-        # Compute mean uncertainty if scores available but mean not registered
-        if mean_uncertainty is None and uncertainty_scores is not None:
-            try:
-                import numpy as np
-                mean_uncertainty = float(np.mean(uncertainty_scores))
-            except Exception:
-                pass
-
-        # Collect custom state (everything except known keys)
-        known_keys = {"labeled_count", "unlabeled_count", "uncertainty_scores",
-                      "mean_uncertainty"}
-        custom_state = {k: v for k, v in self._state_registry.items()
-                       if k not in known_keys}
+        # Copy all registered state
+        state = self.get_all_state()
 
         return IterationState(
             iteration=iteration,
@@ -781,11 +762,7 @@ class Learner:
             metric_history=metric_history,
             should_stop=should_stop,
             current_config=current_config,
-            labeled_count=labeled_count,
-            unlabeled_count=unlabeled_count,
-            uncertainty_scores=uncertainty_scores,
-            mean_uncertainty=mean_uncertainty,
-            custom_state=custom_state,
+            state=state,
         )
 
     async def shutdown(self, *args, **kwargs) -> Any:

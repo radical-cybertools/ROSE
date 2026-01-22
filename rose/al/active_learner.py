@@ -13,10 +13,33 @@ class SequentialActiveLearner(Learner):
 
     This class implements a sequential active learning approach where each iteration
     consists of simulation, training, and active learning phases that run in sequence.
-    The learner can be configured with per-iteration parameters through LearnerConfig.
+    The learner must be started with the `start()` method, which returns an async
+    iterator that yields state at each iteration.
 
     Attributes:
         learner_id (Optional[int]): Identifier for the learner, used for logging.
+
+    Example:
+        Basic usage::
+
+            learner = SequentialActiveLearner(asyncflow)
+
+            @learner.simulation_task(as_executable=False)
+            async def simulation(*args):
+                ...
+
+            @learner.training_task(as_executable=False)
+            async def training(*args):
+                ...
+
+            @learner.active_learn_task(as_executable=False)
+            async def active_learn(*args):
+                ...
+
+            async for state in learner.start(max_iter=10):
+                print(f"Iteration {state.iteration}: {state.metric_value}")
+                if state.metric_value < 0.01:
+                    break
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -32,166 +55,18 @@ class SequentialActiveLearner(Learner):
         self._pending_config: Optional[LearnerConfig] = None
         self._max_iter: Optional[int] = None
 
-    async def teach(
-        self,
-        max_iter: int = 0,
-        skip_pre_loop: bool = False,
-        skip_simulation_step: bool = False,
-        learner_config: Optional[LearnerConfig] = None,
-    ) -> Any:
-        """Run sequential active learning with optional per-iteration configuration.
-
-        Executes the active learning loop sequentially, with each iteration containing
-        simulation, training, and active learning phases. Supports configurable
-        stopping criteria and per-iteration parameter customization.
-
-        Args:
-            max_iter: Maximum number of iterations to run. If 0, runs until
-                stop criterion is met (requires criterion_function to be set).
-            skip_pre_loop: If True, skips the initial simulation and training
-                phases before the main learning loop.
-            skip_simulation_step: If True, simulation tasks will be skipped and
-                managed externally. Defaults to False.
-            learner_config: Configuration object containing per-iteration
-                parameters for simulation, training, active learning, and
-                criterion functions.
-
-        Returns:
-            The result of the learning process. Type depends on the specific
-            implementation of the learning functions.
-
-        Raises:
-            ValueError: If required simulation function are not set when
-                when skip_simulation_step is not enabled
-            ValueError: If required functions (training_function,
-                active_learn_function) are not set.
-            ValueError: If neither max_iter nor criterion_function is provided.
-        """
-        # Validation: If not from simulation pool, simulation_function must be set
-        if not skip_simulation_step and self.simulation_function is None:
-            raise ValueError(
-                "Simulation function must be set when not using simulation pool!"
-            )
-
-        # Training and active learning functions always required
-        if self.training_function is None or self.active_learn_function is None:
-            raise ValueError("Training and Active Learning functions must be set!")
-
-        # Either max_iter or criterion_function must be provided
-        if max_iter == 0 and self.criterion_function is None:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
-
-        learner_suffix: str = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
-        )
-        print(f"Starting Active Learner{learner_suffix}")
-
-        # Initialize tasks for pre-loop
-        sim_task: tuple = ()
-        train_task: tuple = ()
-
-        if not skip_pre_loop:
-            # Always get training config
-            train_config: TaskConfig = self._get_iteration_task_config(
-                self.training_function, learner_config, "training", 0
-            )
-
-            if skip_simulation_step:
-                # No simulation task needed - training runs independently
-                train_task: asyncio.Future = self._register_task(train_config)
-            else:
-                # Get simulation config and register it as a dependency
-                sim_config: TaskConfig = self._get_iteration_task_config(
-                    self.simulation_function, learner_config, "simulation", 0
-                )
-
-                sim_task: asyncio.Future = self._register_task(sim_config)
-                train_task: asyncio.Future = self._register_task(
-                    train_config, deps=sim_task
-                )
-
-        # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
-        if max_iter == 0:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
-
-        # Main learning loop with per-iteration configuration
-        for i in iteration_range:
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
-            print(f"{learner_prefix}Starting Iteration-{i}")
-
-            # Get iteration-specific configurations
-            acl_config: TaskConfig = self._get_iteration_task_config(
-                self.active_learn_function, learner_config, "active_learn", i
-            )
-
-            # Register active learning task with appropriate dependencies
-            if skip_simulation_step:
-                # Only depend on training task (no simulation dependency)
-                acl_task: asyncio.Future = self._register_task(
-                    acl_config, deps=train_task
-                )
-            else:
-                # Depend on both simulation and training tasks
-                acl_task: asyncio.Future = self._register_task(
-                    acl_config, deps=(sim_task, train_task)
-                )
-
-            # Check stop criterion if configured
-            if self.criterion_function:
-                criterion_config: TaskConfig = self._get_iteration_task_config(
-                    self.criterion_function, learner_config, "criterion", i
-                )
-                stop_task: asyncio.Future = self._register_task(
-                    criterion_config, deps=acl_task
-                )
-                stop: Any = await stop_task
-
-                should_stop: bool
-                should_stop, _ = self._check_stop_criterion(stop)
-                if should_stop:
-                    break
-
-            # Prepare next iteration tasks with iteration-specific configs
-            next_train_config: TaskConfig = self._get_iteration_task_config(
-                self.training_function, learner_config, "training", i + 1
-            )
-
-            if skip_simulation_step:
-                # No simulation task for next iteration
-                sim_task = ()  # Keep empty tuple for consistency
-                train_task = self._register_task(next_train_config, deps=acl_task)
-            else:
-                # Create simulation task and make training depend on it
-                next_sim_config: TaskConfig = self._get_iteration_task_config(
-                    self.simulation_function, learner_config, "simulation", i + 1
-                )
-
-                sim_task = self._register_task(next_sim_config, deps=acl_task)
-                train_task = self._register_task(next_train_config, deps=sim_task)
-
-            # Wait for training to complete
-            await train_task
-
-
-    async def iterate(
+    async def start(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         initial_config: Optional[LearnerConfig] = None,
     ) -> AsyncIterator[IterationState]:
-        """Async generator that yields control at each iteration.
+        """Start the learner and yield state at each iteration.
 
-        This method enables external agents to observe state and modify
-        configuration between iterations, providing fine-grained control
-        over the active learning process.
+        This is the main entry point for running the learner. It returns an
+        async iterator that yields IterationState at each iteration, giving
+        the caller full control over the learning loop.
 
         Args:
             max_iter: Maximum number of iterations to run. If 0, runs until
@@ -205,37 +80,30 @@ class SequentialActiveLearner(Learner):
 
         Yields:
             IterationState containing current iteration info, metrics, and
-            registered state for agent consumption.
+            all registered state from tasks.
 
         Raises:
             ValueError: If required functions are not set or if neither
                 max_iter nor criterion_function is provided.
 
         Example:
-            Basic usage with agent control::
+            Basic usage::
 
-                async for state in learner.iterate(max_iter=20):
-                    # Observe state
+                async for state in learner.start(max_iter=20):
                     print(f"Iteration {state.iteration}, metric={state.metric_value}")
 
-                    # Agent decides to modify config
+                    # Stop early based on custom condition
+                    if state.metric_value and state.metric_value < 0.01:
+                        break
+
+            Modifying configuration between iterations::
+
+                async for state in learner.start(max_iter=20):
+                    # Adjust config based on state
                     if state.mean_uncertainty and state.mean_uncertainty < 0.2:
                         learner.set_next_config(LearnerConfig(
                             training=TaskConfig(kwargs={'--lr': '0.0001'})
                         ))
-
-                    # Agent decides to stop early
-                    if state.metric_value and state.metric_value < 0.01:
-                        break
-
-            With LLM agent::
-
-                async for state in learner.iterate(max_iter=20):
-                    action = llm_agent.decide(state.to_prompt())
-                    if action.type == 'stop':
-                        break
-                    elif action.type == 'set_config':
-                        learner.set_next_config(action.config)
         """
         # Validation
         if not skip_simulation_step and not self.simulation_function:
@@ -255,7 +123,7 @@ class SequentialActiveLearner(Learner):
         learner_suffix = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-        print(f"Starting Active Learner (iterate mode){learner_suffix}")
+        print(f"Starting Active Learner{learner_suffix}")
 
         # Initialize task references
         sim_task: Any = ()
@@ -285,7 +153,7 @@ class SequentialActiveLearner(Learner):
 
         # Main iteration loop
         for i in iteration_range:
-            # Check for pending config update from agent
+            # Check for pending config
             if self._pending_config is not None:
                 learner_config = self._pending_config
                 self._pending_config = None
@@ -309,6 +177,12 @@ class SequentialActiveLearner(Learner):
             else:
                 acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
 
+            # Await AL task and extract state from dict result
+            acl_result = await acl_task
+            if isinstance(acl_result, dict):
+                for k, v in acl_result.items():
+                    self.register_state(k, v)
+
             # Check stop criterion if configured
             metric_value: Optional[float] = None
             should_stop = False
@@ -317,11 +191,11 @@ class SequentialActiveLearner(Learner):
                 criterion_config = self._get_iteration_task_config(
                     self.criterion_function, learner_config, "criterion", i
                 )
-                stop_task = self._register_task(criterion_config, deps=acl_task)
+                stop_task = self._register_task(criterion_config)
                 stop_result = await stop_task
                 should_stop, metric_value = self._check_stop_criterion(stop_result)
 
-            # Build iteration state for agent
+            # Build iteration state
             self._iteration_state = self.build_iteration_state(
                 iteration=i,
                 metric_value=metric_value,
@@ -332,7 +206,7 @@ class SequentialActiveLearner(Learner):
             # YIELD CONTROL TO AGENT
             yield self._iteration_state
 
-            # Check if agent broke out or criterion met
+            # Check if user loop broke or criterion met
             if should_stop:
                 break
 
@@ -358,8 +232,8 @@ class SequentialActiveLearner(Learner):
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
 
-        Called by agents between iterations to modify hyperparameters,
-        sample selection strategy, or other task configurations.
+        Called between iterations to modify hyperparameters, sample selection
+        strategy, or other task configurations.
 
         Args:
             config: Configuration to apply in the next iteration. This will
@@ -367,7 +241,7 @@ class SequentialActiveLearner(Learner):
 
         Example::
 
-            async for state in learner.iterate(max_iter=20):
+            async for state in learner.start(max_iter=20):
                 if state.iteration > 10:
                     # Reduce learning rate after iteration 10
                     learner.set_next_config(LearnerConfig(
@@ -534,7 +408,7 @@ class ParallelActiveLearner(Learner):
             Args:
                 learner_id: Unique identifier for this learner instance.
             Returns:
-                The result from the sequential learner's teach method.
+                The final IterationState from the sequential learner.
 
             Raises:
                 Exception: Re-raises any exception from the sequential learner
@@ -553,20 +427,23 @@ class ParallelActiveLearner(Learner):
                     self._convert_to_sequential_config(learner_configs[learner_id])
                 )
 
-                # Run the sequential learner
-                learner_result = await sequential_learner.teach(
+                # Run the sequential learner by iterating through start()
+                final_state = None
+                async for state in sequential_learner.start(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
                     skip_simulation_step=skip_simulation_step,
-                    learner_config=sequential_config,
-                )
+                    initial_config=sequential_config,
+                ):
+                    final_state = state
+                    # Let the learner run to completion (stop on criterion)
 
                 # book keep the iteration value from each learner
                 self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                     sequential_learner.metric_values_per_iteration
                 )
 
-                return learner_result
+                return final_state
             except Exception as e:
                 print(f"ActiveLearner-{learner_id}] failed with error: {e}")
                 raise
