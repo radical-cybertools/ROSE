@@ -1,13 +1,14 @@
 import asyncio
 import itertools
-from collections.abc import Iterator
+import warnings
+from collections.abc import AsyncIterator, Coroutine, Iterator
 from functools import wraps
 from typing import Any, Callable, Optional, Union
 
 import typeguard
 from radical.asyncflow import WorkflowEngine
 
-from rose.learner import Learner, LearnerConfig, TaskConfig
+from rose.learner import IterationState, Learner, LearnerConfig, TaskConfig
 
 
 class ReinforcementLearner(Learner):
@@ -57,9 +58,9 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
     This class implements a sequential reinforcement learning loop where the learner
     interacts with the environment in a series of steps, updating its policy based
-    on the rewards received from the environment. It supports per-iteration
-    configuration through LearnerConfig. This approach is useful for implementing both
-    on-policy (PPO, A2C) and off-policy (DQN) learning algorithms.
+    on the rewards received from the environment. The learner must be started with
+    the `start()` method, which returns an async iterator that yields state at each
+    iteration.
 
     The learning process follows this sequential pattern:
 
@@ -71,17 +72,30 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         [Env] -> [Update] -> [Test]
                     |
                     v
-        Iteration 3:
-        [Env] -> [Update] -> [Test]
-                    |
-                    v
-        Iteration N:
-        [Env] -> [Update] -> [Test]
+        ...
 
     Each iteration consists of three sequential steps:
     1. Environment interaction to collect experiences
     2. Policy update based on collected experiences
     3. Testing/evaluation of the updated policy
+
+    Example:
+        Basic usage::
+
+            learner = SequentialReinforcementLearner(asyncflow)
+
+            @learner.environment_task(as_executable=False)
+            async def environment(*args):
+                ...
+
+            @learner.update_task(as_executable=False)
+            async def update(*args):
+                ...
+
+            async for state in learner.start(max_iter=100):
+                print(f"Iteration {state.iteration}: reward={state.episode_reward}")
+                if state.episode_reward > 200:
+                    break
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -92,6 +106,210 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             managing asynchronous tasks.
         """
         super().__init__(asyncflow, register_and_submit=True)
+        self._iteration_state: Optional[IterationState] = None
+        self._pending_config: Optional[LearnerConfig] = None
+        self._max_iter: Optional[int] = None
+
+    async def start(
+        self,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        skip_environment_step: bool = False,
+        initial_config: Optional[LearnerConfig] = None,
+    ) -> AsyncIterator[IterationState]:
+        """Start the learner and yield state at each iteration.
+
+        This is the main entry point for running the learner. It returns an
+        async iterator that yields IterationState at each iteration, giving
+        the caller full control over the learning loop.
+
+        Args:
+            max_iter: Maximum number of iterations to run. If 0, runs until
+                stop criterion is met (requires criterion_function to be set).
+            skip_pre_loop: If True, skips the initial environment and update
+                phases before the main learning loop.
+            skip_environment_step: If True, skips the environment task and assumes
+                experiences are provided externally. Defaults to False.
+            initial_config: Initial configuration object. Can be modified
+                between iterations via set_next_config().
+
+        Yields:
+            IterationState containing current iteration info, metrics, and
+            all registered state from tasks.
+
+        Raises:
+            ValueError: If environment function is not set when needed.
+            ValueError: If update function is not set.
+            ValueError: If neither max_iter nor criterion_function is provided.
+
+        Example:
+            Basic usage::
+
+                async for state in learner.start(max_iter=100):
+                    print(f"Iteration {state.iteration}, reward={state.episode_reward}")
+
+                    # Stop early based on custom condition
+                    if state.episode_reward and state.episode_reward > 200:
+                        break
+
+            Modifying configuration between iterations::
+
+                async for state in learner.start(max_iter=100):
+                    if state.iteration > 50:
+                        learner.set_next_config(LearnerConfig(
+                            update=TaskConfig(kwargs={'learning_rate': 0.0001})
+                        ))
+        """
+        # Validation
+        if not skip_environment_step and not self.environment_function:
+            raise ValueError(
+                "Environment function must be set unless using external experiences!"
+            )
+        if not self.update_function:
+            raise ValueError("Update function must be set!")
+        if not max_iter and not self.criterion_function:
+            raise ValueError(
+                "Either max_iter > 0 or criterion_function must be provided."
+            )
+
+        self._max_iter = max_iter if max_iter > 0 else None
+        learner_config = initial_config
+
+        learner_suffix = (
+            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
+        )
+        print(f"Starting Sequential RL Learner{learner_suffix}")
+
+        # Initialize task references
+        env_task: Any = ()
+        update_task: Any = ()
+
+        # Pre-loop phase
+        if not skip_pre_loop:
+            if skip_environment_step:
+                update_config = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
+                )
+                update_task = self._register_task(update_config)
+            else:
+                env_config = self._get_iteration_task_config(
+                    self.environment_function, learner_config, "environment", 0
+                )
+                update_config = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
+                )
+                env_task = self._register_task(env_config)
+                update_task = self._register_task(update_config, deps=env_task)
+
+        # Determine iteration range
+        iteration_range: Union[Iterator[int], range]
+        if max_iter == 0:
+            iteration_range = itertools.count()
+        else:
+            iteration_range = range(max_iter)
+
+        # Main iteration loop
+        for i in iteration_range:
+            # Check for pending config update
+            if self._pending_config is not None:
+                learner_config = self._pending_config
+                self._pending_config = None
+
+            # Clear transient state from previous iteration
+            self.clear_state()
+
+            learner_prefix = (
+                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
+            )
+            print(f"{learner_prefix}Starting Iteration-{i}")
+
+            # Check stop criterion if configured
+            metric_value: Optional[float] = None
+            should_stop = False
+
+            if self.criterion_function:
+                criterion_config = self._get_iteration_task_config(
+                    self.criterion_function, learner_config, "criterion", i
+                )
+                stop_task = self._register_task(criterion_config, deps=update_task)
+                stop_result = await stop_task
+
+                # Extract state from criterion result if it's a dict
+                if isinstance(stop_result, dict):
+                    for k, v in stop_result.items():
+                        if k not in ("metric_value", "should_stop"):
+                            self.register_state(k, v)
+
+                should_stop, metric_value = self._check_stop_criterion(stop_result)
+
+            # Build iteration state
+            self._iteration_state = self.build_iteration_state(
+                iteration=i,
+                metric_value=metric_value,
+                should_stop=should_stop,
+                current_config=learner_config,
+            )
+
+            # YIELD CONTROL TO CALLER
+            yield self._iteration_state
+
+            # Check if caller broke out or criterion met
+            if should_stop:
+                break
+
+            # Prepare next iteration using potentially updated config
+            next_config = self._pending_config or learner_config
+            next_update_config = self._get_iteration_task_config(
+                self.update_function, next_config, "update", i + 1
+            )
+
+            if skip_environment_step:
+                env_task = ()
+                update_task = self._register_task(next_update_config, deps=stop_task)
+            else:
+                next_env_config = self._get_iteration_task_config(
+                    self.environment_function, next_config, "environment", i + 1
+                )
+                env_task = self._register_task(next_env_config, deps=stop_task)
+                update_task = self._register_task(next_update_config, deps=env_task)
+
+            # Wait for update to complete before next iteration
+            await update_task
+
+    def set_next_config(self, config: LearnerConfig) -> None:
+        """Set configuration for the next iteration.
+
+        Called between iterations to modify hyperparameters or other
+        task configurations.
+
+        Args:
+            config: Configuration to apply in the next iteration.
+
+        Example::
+
+            async for state in learner.start(max_iter=100):
+                if state.iteration > 50:
+                    learner.set_next_config(LearnerConfig(
+                        update=TaskConfig(kwargs={'learning_rate': 0.0001})
+                    ))
+        """
+        self._pending_config = config
+
+    def get_current_state(self) -> Optional[IterationState]:
+        """Get the current iteration state.
+
+        Returns:
+            Current IterationState if in iteration loop, None otherwise.
+        """
+        return self._iteration_state
+
+    def get_max_iterations(self) -> Optional[int]:
+        """Get the maximum iterations configured for current run.
+
+        Returns:
+            Maximum iterations or None if running until criterion met.
+        """
+        return self._max_iter
 
     async def learn(
         self,
@@ -99,115 +317,38 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         learner_config: Optional[LearnerConfig] = None,
-    ) -> Any:
-        """Run the sequential reinforcement learning loop with configuration support.
+    ) -> Optional[IterationState]:
+        """Run reinforcement learning loop to completion.
 
-        Executes the reinforcement learning algorithm for a specified number of
-        iterations. Each iteration performs environment interaction, policy update,
-        and testing in sequence. The loop can be terminated early if stopping
-        criteria are met. Supports per-iteration parameter customization.
+        .. deprecated::
+            Use :meth:`start` instead. This method will be removed in a future
+            version. The `start()` method returns an async iterator giving you
+            full control over each iteration.
 
         Args:
-            max_iter (int, optional): The maximum number of iterations for the
-                reinforcement learning loop. If 0 or not provided, runs indefinitely.
-                Defaults to 0.
-            skip_pre_loop (bool): If True, skips the initial environment and update
-                phases before the main learning loop.
-            skip_simulation_step (bool): If True, skips the environment task and assumes
-                a simulation pool already exists. Defaults to False.
-            learner_config (Optional[LearnerConfig]): Configuration object containing
-                per-iteration parameters for environment, update, and test functions.
+            max_iter: Maximum number of iterations to run.
+            skip_pre_loop: If True, skips the initial environment and update phases.
+            skip_simulation_step: If True, skips environment tasks.
+            learner_config: Configuration for the learner.
 
         Returns:
-            The result of the learning process. Type depends on the specific
-            implementation of the learning functions.
-
-        Raises:
-            Exception: If environment, update, or test functions are not set.
-            Exception: If neither max_iter nor criterion_function is provided.
+            Final IterationState after completion, or None if no iterations ran.
         """
-        # Validate that required functions are set
-        if not skip_simulation_step and not self.environment_function:
-            raise Exception(
-                "Environment function must be set unless" + " using simulation pool!"
-            )
-        if not self.update_function:
-            raise Exception("Update function must be set!")
-        if not max_iter and not self.criterion_function:
-            mgs = "Either max_iter or stop_criterion_function must be provided."
-            raise Exception(mgs)
-
-        learner_suffix: str = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
+        warnings.warn(
+            "learn() is deprecated and will be removed in a future version. "
+            "Use start() instead which returns an async iterator for full control.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        print(f"Starting Sequential RL Learner{learner_suffix}")
-
-        # Initialize tasks for pre-loop
-        env_task: tuple = ()
-        update_task: tuple = ()
-
-        if not skip_pre_loop:
-            if skip_simulation_step:
-                # No environment task, only update
-                update_config: TaskConfig = self._get_iteration_task_config(
-                    self.update_function, learner_config, "update", 0
-                )
-                update_task = self._register_task(update_config)
-            else:
-                env_config: TaskConfig = self._get_iteration_task_config(
-                    self.environment_function, learner_config, "environment", 0
-                )
-                update_config: TaskConfig = self._get_iteration_task_config(
-                    self.update_function, learner_config, "update", 0
-                )
-                env_task = self._register_task(env_config)
-                update_task = self._register_task(update_config, deps=env_task)
-
-        # Setup iteration counter
-        iteration_range: Union[Iterator[int], range]
-        if not max_iter:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
-
-        # Execute the RL loop with per-iteration configuration
-        for i in iteration_range:
-            learner_prefix: str = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
-            print(f"{learner_prefix}Starting Iteration-{i}")
-
-            if self.criterion_function:
-                criterion_config: TaskConfig = self._get_iteration_task_config(
-                    self.criterion_function, learner_config, "criterion", i
-                )
-                stop_task: asyncio.Future = self._register_task(
-                    criterion_config, deps=update_task
-                )
-                stop: Any = await stop_task
-
-                should_stop: bool
-                should_stop, _ = self._check_stop_criterion(stop)
-                if should_stop:
-                    break
-
-            # Prepare next iteration tasks with iteration-specific configs
-            next_update_config: TaskConfig = self._get_iteration_task_config(
-                self.update_function, learner_config, "update", i + 1
-            )
-            if skip_simulation_step:
-                # No environment task, only update
-                update_task = self._register_task(next_update_config, deps=stop_task)
-                env_task = ()  # keep empty tuple for consistency
-            else:
-                next_env_config: TaskConfig = self._get_iteration_task_config(
-                    self.environment_function, learner_config, "environment", i + 1
-                )
-                env_task = self._register_task(next_env_config, deps=stop_task)
-                update_task = self._register_task(next_update_config, deps=env_task)
-
-            # Wait for update to complete
-            await update_task
+        final_state = None
+        async for state in self.start(
+            max_iter=max_iter,
+            skip_pre_loop=skip_pre_loop,
+            skip_environment_step=skip_simulation_step,
+            initial_config=learner_config,
+        ):
+            final_state = state
+        return final_state
 
 
 class ParallelExperience(ReinforcementLearner):
@@ -241,6 +382,26 @@ class ParallelExperience(ReinforcementLearner):
         environment_functions (dict[str, dict]): Dictionary mapping environment names
             to their function configurations.
         work_dir (str): Working directory for saving and loading experience banks.
+
+    Example:
+        Basic usage::
+
+            learner = ParallelExperience(asyncflow)
+
+            @learner.environment_task(name='env_1')
+            def environment_1(*args):
+                ...
+
+            @learner.environment_task(name='env_2')
+            def environment_2(*args):
+                ...
+
+            @learner.update_task(as_executable=False)
+            async def update(*args):
+                ...
+
+            async for state in learner.start(max_iter=100):
+                print(f"Iteration {state.iteration}")
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -253,6 +414,9 @@ class ParallelExperience(ReinforcementLearner):
         super().__init__(asyncflow, register_and_submit=False)
         self.environment_functions: dict[str, dict] = {}
         self.work_dir = "."
+        self._iteration_state: Optional[IterationState] = None
+        self._pending_config: Optional[LearnerConfig] = None
+        self._max_iter: Optional[int] = None
 
     def environment_task(self, name: str) -> Callable:
         """Decorator to register an environment task under a given name.
@@ -348,61 +512,58 @@ class ParallelExperience(ReinforcementLearner):
         merged.save(self.work_dir, "experience_bank.pkl")
         print(f"  Saved merged bank with {total} total experiences")
 
-    async def learn(
+    async def start(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_config: Optional[LearnerConfig] = None,
-    ) -> Any:
-        """Run the parallel reinforcement learning loop with configuration support.
+        initial_config: Optional[LearnerConfig] = None,
+    ) -> AsyncIterator[IterationState]:
+        """Start the learner and yield state at each iteration.
 
-        Executes the reinforcement learning algorithm with parallel experience
-        collection for a specified number of iterations. Each iteration runs
-        multiple environments in parallel, merges their experiences, updates
-        the policy, and tests performance. Supports per-iteration parameter
-        customization.
+        This is the main entry point for running the learner. It returns an
+        async iterator that yields IterationState at each iteration, giving
+        the caller full control over the learning loop.
 
         Args:
-            max_iter (int, optional): The maximum number of iterations for the
-                reinforcement learning loop. If 0 or not provided, runs indefinitely.
-                Defaults to 0.
-            skip_pre_loop (bool): If True, skips the initial environment collection
+            max_iter: Maximum number of iterations to run. If 0, runs until
+                stop criterion is met (requires criterion_function to be set).
+            skip_pre_loop: If True, skips the initial environment collection
                 and update phases before the main learning loop.
-            learner_config (Optional[LearnerConfig]): Configuration object containing
-                per-iteration parameters for environment, update, and test functions.
+            initial_config: Initial configuration object. Can be modified
+                between iterations via set_next_config().
 
-        Returns:
-            The result of the learning process. Type depends on the specific
-            implementation of the learning functions.
+        Yields:
+            IterationState containing current iteration info, metrics, and
+            all registered state from tasks.
 
         Raises:
-            Exception: If environment functions, update function, or test function
-                are not properly configured.
-            Exception: If neither max_iter nor criterion_function is provided.
+            ValueError: If environment functions or update function are not set.
+            ValueError: If neither max_iter nor criterion_function is provided.
         """
-
-        # Validate that required functions are set
+        # Validation
         if not self.environment_functions or not self.update_function:
-            raise Exception("Environment and Update functions must be set!")
+            raise ValueError("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise Exception(
-                "Either max_iter or stop_criterion_function must be provided."
+            raise ValueError(
+                "Either max_iter > 0 or criterion_function must be provided."
             )
 
-        learner_suffix: str = (
+        self._max_iter = max_iter if max_iter > 0 else None
+        learner_config = initial_config
+
+        learner_suffix = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
 
-        update_task: tuple = ()
+        update_task: Any = ()
 
         if not skip_pre_loop:
             # Pre-loop: collect experiences and update
             env_tasks = []
             for env_name, env_func in self.environment_functions.items():
-                env_config: TaskConfig = self._get_iteration_task_config(
+                env_config = self._get_iteration_task_config(
                     env_func, learner_config, f"environment_{env_name}", 0
                 )
                 env_task = self._register_task(env_config)
@@ -412,42 +573,74 @@ class ParallelExperience(ReinforcementLearner):
             await asyncio.gather(*env_tasks, return_exceptions=True)
             self.merge_banks()
 
-            update_config: TaskConfig = self._get_iteration_task_config(
+            update_config = self._get_iteration_task_config(
                 self.update_function, learner_config, "update", 0
             )
             update_task = self._register_task(update_config)
 
-        # Setup iteration counter
+        # Determine iteration range
         iteration_range: Union[Iterator[int], range]
-        if not max_iter:
+        if max_iter == 0:
             iteration_range = itertools.count()
         else:
             iteration_range = range(max_iter)
 
-        # Execute the parallel RL loop with per-iteration configuration
+        # Main iteration loop
         for i in iteration_range:
-            learner_prefix: str = (
+            # Check for pending config update
+            if self._pending_config is not None:
+                learner_config = self._pending_config
+                self._pending_config = None
+
+            # Clear transient state from previous iteration
+            self.clear_state()
+
+            learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
             print(f"{learner_prefix}Starting Iteration-{i}")
 
             # Check stop criterion if configured
+            metric_value: Optional[float] = None
+            should_stop = False
+            stop_task = None
+
             if self.criterion_function:
-                criterion_config: TaskConfig = self._get_iteration_task_config(
+                criterion_config = self._get_iteration_task_config(
                     self.criterion_function, learner_config, "criterion", i
                 )
                 stop_task = self._register_task(criterion_config, deps=update_task)
                 stop_result = await stop_task
 
-                should_stop, _ = self._check_stop_criterion(stop_result)
-                if should_stop:
-                    break
+                # Extract state from criterion result if it's a dict
+                if isinstance(stop_result, dict):
+                    for k, v in stop_result.items():
+                        if k not in ("metric_value", "should_stop"):
+                            self.register_state(k, v)
+
+                should_stop, metric_value = self._check_stop_criterion(stop_result)
+
+            # Build iteration state
+            self._iteration_state = self.build_iteration_state(
+                iteration=i,
+                metric_value=metric_value,
+                should_stop=should_stop,
+                current_config=learner_config,
+            )
+
+            # YIELD CONTROL TO CALLER
+            yield self._iteration_state
+
+            # Check if caller broke out or criterion met
+            if should_stop:
+                break
 
             # Collect experiences from parallel environments for next iteration
+            next_config = self._pending_config or learner_config
             env_tasks = []
             for env_name, env_func in self.environment_functions.items():
-                next_env_config: TaskConfig = self._get_iteration_task_config(
-                    env_func, learner_config, f"environment_{env_name}", i + 1
+                next_env_config = self._get_iteration_task_config(
+                    env_func, next_config, f"environment_{env_name}", i + 1
                 )
                 env_task = self._register_task(next_env_config, deps=stop_task)
                 env_tasks.append(env_task)
@@ -459,8 +652,8 @@ class ParallelExperience(ReinforcementLearner):
             self.merge_banks()
 
             # Prepare next iteration update with configuration
-            next_update_config: TaskConfig = self._get_iteration_task_config(
-                self.update_function, learner_config, "update", i + 1
+            next_update_config = self._get_iteration_task_config(
+                self.update_function, next_config, "update", i + 1
             )
             update_task = self._register_task(next_update_config)
 
@@ -468,6 +661,59 @@ class ParallelExperience(ReinforcementLearner):
             await update_task
 
             print(f"{learner_prefix}Finished Iteration-{i}")
+
+    def set_next_config(self, config: LearnerConfig) -> None:
+        """Set configuration for the next iteration.
+
+        Args:
+            config: Configuration to apply in the next iteration.
+        """
+        self._pending_config = config
+
+    def get_current_state(self) -> Optional[IterationState]:
+        """Get the current iteration state."""
+        return self._iteration_state
+
+    def get_max_iterations(self) -> Optional[int]:
+        """Get the maximum iterations configured for current run."""
+        return self._max_iter
+
+    async def learn(
+        self,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        learner_config: Optional[LearnerConfig] = None,
+    ) -> Optional[IterationState]:
+        """Run parallel experience RL loop to completion.
+
+        .. deprecated::
+            Use :meth:`start` instead. This method will be removed in a future
+            version. The `start()` method returns an async iterator giving you
+            full control over each iteration.
+
+        Args:
+            max_iter: Maximum number of iterations to run.
+            skip_pre_loop: If True, skips the initial environment collection
+                and update phases.
+            learner_config: Configuration for the learner.
+
+        Returns:
+            Final IterationState after completion, or None if no iterations ran.
+        """
+        warnings.warn(
+            "learn() is deprecated and will be removed in a future version. "
+            "Use start() instead which returns an async iterator for full control.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        final_state = None
+        async for state in self.start(
+            max_iter=max_iter,
+            skip_pre_loop=skip_pre_loop,
+            initial_config=learner_config,
+        ):
+            final_state = state
+        return final_state
 
 
 class ParallelReinforcementLearner(ReinforcementLearner):
@@ -557,7 +803,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             criterion=getattr(parallel_config, "criterion", None),
         )
 
-    async def learn(
+    async def start(
         self,
         parallel_learners: int = 2,
         max_iter: int = 0,
@@ -568,9 +814,9 @@ class ParallelReinforcementLearner(ReinforcementLearner):
            SequentialReinforcementLearners.
 
         Orchestrates multiple SequentialReinforcementLearner instances to
-        run concurrently,
-        each with potentially different configurations. All learners run
-        independently and their results are collected when all have completed.
+        run concurrently, each with potentially different configurations. All
+        learners run independently and their results are collected when all
+        have completed.
 
         Args:
             parallel_learners: Number of parallel learners to run concurrently.
@@ -585,15 +831,13 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                 match parallel_learners if provided.
 
         Returns:
-            list containing the results from each learner, in the same order
-            as the learners were launched. Result types depend on the specific
-            implementation of the learning functions.
+            list containing the final IterationState from each learner,
+            in the same order as the learners were launched.
 
         Raises:
-            ValueError: If parallel_learners < 2
-            (use SequentialReinforcementLearner instead).
-            Exception: If required base functions are not set.
-            Exception: If neither max_iter nor criterion_function is provided.
+            ValueError: If parallel_learners < 2.
+            ValueError: If required base functions are not set.
+            ValueError: If neither max_iter nor criterion_function is provided.
             ValueError: If learner_configs length doesn't match parallel_learners.
         """
         if parallel_learners < 2:
@@ -601,11 +845,11 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
         # Validate base functions are set
         if not self.environment_function or not self.update_function:
-            raise Exception("Environment and Update functions must be set!")
+            raise ValueError("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise Exception(
-                "Either max_iter or stop_criterion_function must be provided."
+            raise ValueError(
+                "Either max_iter > 0 or criterion_function must be provided."
             )
 
         # Prepare learner configurations
@@ -628,7 +872,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                 learner_id: Unique identifier for this learner instance.
 
             Returns:
-                The result from the sequential learner's learn method.
+                The final IterationState from the sequential learner.
 
             Raises:
                 Exception: Re-raises any exception from the sequential learner
@@ -647,25 +891,65 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                     self._convert_to_sequential_config(learner_configs[learner_id])
                 )
 
-                # Run the sequential learner
-                learner_result = await sequential_learner.learn(
+                # Run the sequential learner by iterating through start()
+                final_state = None
+                async for state in sequential_learner.start(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
-                    learner_config=sequential_config,
-                )
+                    initial_config=sequential_config,
+                ):
+                    final_state = state
+                    # Let the learner run to completion (stop on criterion)
 
                 # Store metrics per learner
                 self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                     sequential_learner.metric_values_per_iteration
                 )
 
-                return learner_result
+                return final_state
             except Exception as e:
                 print(f"RLLearner-{learner_id}] failed with error: {e}")
                 raise
 
         # Submit all learners asynchronously
-        futures: list[Any] = [rl_learner_workflow(i) for i in range(parallel_learners)]
+        futures: list[Coroutine] = [
+            rl_learner_workflow(i) for i in range(parallel_learners)
+        ]
 
         # Wait for all learners to complete and collect results
-        return await asyncio.gather(*[f for f in futures])
+        return await asyncio.gather(*futures)
+
+    async def learn(
+        self,
+        parallel_learners: int = 2,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+    ) -> list[Any]:
+        """Run parallel reinforcement learning to completion.
+
+        .. deprecated::
+            Use :meth:`start` instead. This method will be removed in a future
+            version.
+
+        Args:
+            parallel_learners: Number of parallel learners to run.
+            max_iter: Maximum number of iterations for each learner.
+            skip_pre_loop: If True, skips initial environment and update phases.
+            learner_configs: Configuration objects for each learner.
+
+        Returns:
+            list containing the final IterationState from each learner.
+        """
+        warnings.warn(
+            "learn() is deprecated and will be removed in a future version. "
+            "Use start() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self.start(
+            parallel_learners=parallel_learners,
+            max_iter=max_iter,
+            skip_pre_loop=skip_pre_loop,
+            learner_configs=learner_configs,
+        )

@@ -125,28 +125,31 @@ class TaskConfig(BaseModel):
 
 
 class LearnerConfig(BaseModel):
-    """Base configuration class for active learners with per-iteration support.
+    """Base configuration class for learners with per-iteration support.
 
     This class provides configuration management for different types of learning tasks
     across multiple iterations. Each task type can have either a single configuration
     applied to all iterations, or iteration-specific configurations.
 
     Attributes:
-        simulation: Configuration for simulation tasks. Can be a single TaskConfig
-            or a dictionary mapping iteration numbers to TaskConfig objects.
-        training: Configuration for training tasks. Can be a single TaskConfig
-            or a dictionary mapping iteration numbers to TaskConfig objects.
-        active_learn: Configuration for active learning tasks. Can be a single
-            TaskConfig or a dictionary mapping iteration numbers to TaskConfig
-            objects.
-        criterion: Configuration for criterion tasks. Can be a single TaskConfig
-            or a dictionary mapping iteration numbers to TaskConfig objects.
+        simulation: Configuration for simulation tasks (Active Learning).
+        training: Configuration for training tasks (Active Learning).
+        active_learn: Configuration for active learning tasks (Active Learning).
+        environment: Configuration for environment tasks (Reinforcement Learning).
+        update: Configuration for update tasks (Reinforcement Learning).
+        criterion: Configuration for criterion/stopping tasks.
+        prediction: Configuration for prediction tasks.
     """
 
+    # Active Learning fields
     simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     prediction: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
     active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    # Reinforcement Learning fields
+    environment: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    update: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    # Common fields
     criterion: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
 
     class Config:
@@ -161,8 +164,8 @@ class LearnerConfig(BaseModel):
         """Get the task configuration for a specific iteration.
 
         Args:
-            task_name: Name of the task ('simulation',
-            'training', 'prediction', 'active_learn', 'criterion').
+            task_name: Name of the task ('simulation', 'training', 'prediction',
+                'active_learn', 'environment', 'update', 'criterion').
             iteration: The iteration number (0-based).
 
         Returns:

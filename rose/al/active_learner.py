@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import warnings
 from collections.abc import AsyncIterator, Coroutine, Iterator
 from typing import Any, Optional, Union
 
@@ -266,6 +267,45 @@ class SequentialActiveLearner(Learner):
         """
         return self._max_iter
 
+    async def teach(
+        self,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        skip_simulation_step: bool = False,
+        learner_config: Optional[LearnerConfig] = None,
+    ) -> Optional[IterationState]:
+        """Run active learning loop to completion.
+
+        .. deprecated::
+            Use :meth:`start` instead. This method will be removed in a future
+            version. The `start()` method returns an async iterator giving you
+            full control over each iteration.
+
+        Args:
+            max_iter: Maximum number of iterations to run.
+            skip_pre_loop: If True, skips the initial simulation and training.
+            skip_simulation_step: If True, skips simulation tasks.
+            learner_config: Configuration for the learner.
+
+        Returns:
+            Final IterationState after completion, or None if no iterations ran.
+        """
+        warnings.warn(
+            "teach() is deprecated and will be removed in a future version. "
+            "Use start() instead which returns an async iterator for full control.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        final_state = None
+        async for state in self.start(
+            max_iter=max_iter,
+            skip_pre_loop=skip_pre_loop,
+            skip_simulation_step=skip_simulation_step,
+            initial_config=learner_config,
+        ):
+            final_state = state
+        return final_state
+
 
 class ParallelActiveLearner(Learner):
     """Parallel active learner that runs multiple
@@ -355,7 +395,7 @@ class ParallelActiveLearner(Learner):
             criterion=parallel_config.criterion,
         )
 
-    async def teach(
+    async def start(
         self,
         parallel_learners: int = 2,
         max_iter: int = 0,
@@ -383,9 +423,8 @@ class ParallelActiveLearner(Learner):
                 step and the learner will consider a simulation pool already exist.
 
         Returns:
-            list containing the results from each learner, in the same order
-            as the learners were launched. Result types depend on the specific
-            implementation of the learning functions.
+            list containing the final IterationState from each learner, in the
+            same order as the learners were launched.
 
         Raises:
             ValueError: If parallel_learners < 2 (use SequentialActiveLearner instead).
@@ -457,3 +496,41 @@ class ParallelActiveLearner(Learner):
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*learners)
+
+    async def teach(
+        self,
+        parallel_learners: int = 2,
+        max_iter: int = 0,
+        skip_pre_loop: bool = False,
+        skip_simulation_step: bool = False,
+        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+    ) -> list[Any]:
+        """Run parallel active learning loop to completion.
+
+        .. deprecated::
+            Use :meth:`start` instead. This method will be removed in a future
+            version.
+
+        Args:
+            parallel_learners: Number of parallel learners to run concurrently.
+            max_iter: Maximum number of iterations for each learner.
+            skip_pre_loop: If True, skips the initial simulation and training.
+            skip_simulation_step: If True, skips simulation tasks.
+            learner_configs: Configuration for each learner.
+
+        Returns:
+            List of final IterationState from each learner.
+        """
+        warnings.warn(
+            "teach() is deprecated and will be removed in a future version. "
+            "Use start() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self.start(
+            parallel_learners=parallel_learners,
+            max_iter=max_iter,
+            skip_pre_loop=skip_pre_loop,
+            skip_simulation_step=skip_simulation_step,
+            learner_configs=learner_configs,
+        )
