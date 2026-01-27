@@ -64,7 +64,7 @@ Now, lets express the core custom AL policy logic. The example below will:
 
 
 ```python
-async def teach():
+async def start():
     # 10 iterations of active learning
     for acl_iter in range(10):
         print(f'Starting Iteration-{acl_iter}')
@@ -87,6 +87,6 @@ async def teach():
 Now, lets submit 5 AL workflows for execution:
 
 ```python
-# invoke the custom/user-defined teach() method
-results = await asyncio.gather(*[teach() for _ in range(1024)])
+# invoke the custom/user-defined start() method
+results = await asyncio.gather(*[start() for _ in range(1024)])
 ```

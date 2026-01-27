@@ -1,16 +1,14 @@
 import asyncio
-import sys, os
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor
 
-from rose import TaskConfig
-from rose import LearnerConfig
+from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
+from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ConcurrentExecutionBackend
-
-from concurrent.futures import ThreadPoolExecutor
 
 async def run_al_parallel():
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
@@ -41,7 +39,7 @@ async def run_al_parallel():
     async def check_mse(*args, **kwargs):
         return f'{code_path}/check_mse.py'
 
-    adaptive_sim = al.create_adaptive_schedule('simulation', 
+    adaptive_sim = al.create_adaptive_schedule('simulation',
         lambda i: {
             'kwargs': {
                 '--n_labeled': str(100 + i * 50),  # Increase labeled data each iteration
@@ -49,7 +47,8 @@ async def run_al_parallel():
             }
         })
 
-    results = await al.teach(
+    # Start the parallel active learning process
+    results = await al.start(
         parallel_learners=2,
         learner_configs=[
             LearnerConfig(simulation=adaptive_sim),
@@ -57,6 +56,7 @@ async def run_al_parallel():
                                                         "--n_features": 4}))
         ]
     )
+    print(f"Parallel learning completed. Results: {results}")
 
     await al.shutdown()
 

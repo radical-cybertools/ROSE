@@ -98,12 +98,12 @@ from rose.uq.uq_active_learner import ParallelUQLearner
 learner = ParallelUQLearner(asyncflow)
 ```
 
-Run the Teaching (Active Learning Loop)
+Run the learning (Active Learning Loop)
 
 ```python
 PIPELINES = ['UQ_learner1', 'UQ_learner2']
 
-results = await learner.teach(
+results = await learner.start(
     learner_names=PIPELINES,
     model_names=MODELS,
     learner_configs=learner_configs,
@@ -116,7 +116,7 @@ Save Results to File and Shutdown the Learner
 
 ```python
 
-print('Teaching is done with Final Results:')
+print('Progress is done with Final Results:')
 print(results)
 
 with open(Path(os.getcwd(), 'UQ_training_results.json'), 'w') as f:

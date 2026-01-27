@@ -1,14 +1,13 @@
 import asyncio
-import sys, os
+import os
+import sys
 
-from rose import TaskConfig
-from rose import LearnerConfig
+from radical.asyncflow import RadicalExecutionBackend, WorkflowEngine
 
+from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
 
 async def run_al_parallel():
     engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
@@ -43,7 +42,7 @@ async def run_al_parallel():
 
 
     # Create adaptive simulation config
-    adaptive_sim = al.create_adaptive_schedule('simulation', 
+    adaptive_sim = al.create_adaptive_schedule('simulation',
         lambda i: {
             'kwargs': {
                 '--n_labeled': str(100 + i * 50),  # Increase labeled data each iteration
@@ -51,7 +50,8 @@ async def run_al_parallel():
             }
         })
 
-    results = await al.teach(
+    # Start the parallel active learning process
+    results = await al.start(
         max_iter=1,
         parallel_learners=2,
         learner_configs=[
@@ -60,6 +60,7 @@ async def run_al_parallel():
                                                         "--n_features": 2}))
         ]
     )
+    print(f"Parallel learning completed. Results: {results}")
 
     await al.shutdown()
 

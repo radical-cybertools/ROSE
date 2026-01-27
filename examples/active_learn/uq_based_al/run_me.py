@@ -1,12 +1,11 @@
+import asyncio
 import os
 import sys
-import asyncio
 
-from rose.metrics import MEAN_SQUARED_ERROR_MSE
+from radical.asyncflow import RadicalExecutionBackend, WorkflowEngine
+
 from rose.al.active_learner import SequentialActiveLearner
-
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 
 async def rose_al():
@@ -37,8 +36,10 @@ async def rose_al():
     async def check_mse(*args):
         return f'{code_path}/check_mse.py'
 
-    # Start the teaching process
-    await acl.teach()
+    # Start the active learning process
+    async for state in acl.start():
+        print(f"Iteration {state.iteration}: metric={state.metric_value}")
+
     await acl.shutdown()
 
 

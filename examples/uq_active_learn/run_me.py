@@ -1,18 +1,22 @@
 # run_me.py
-import sys
-import os
-import json
-from pathlib import Path
 import asyncio
+import json
+import os
 import subprocess
-from rose.uq.uq_active_learner import ParallelUQLearner
-from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
-from rose import TaskConfig
-from rose.uq.uq_learner import UQLearnerConfig
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+import sys
 from concurrent.futures import ProcessPoolExecutor
-from radical.asyncflow import ConcurrentExecutionBackend
+from pathlib import Path
+
+from radical.asyncflow import (
+    ConcurrentExecutionBackend,
+    RadicalExecutionBackend,
+    WorkflowEngine,
+)
+
+from rose import TaskConfig
+from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY
+from rose.uq.uq_active_learner import ParallelUQLearner
+from rose.uq.uq_learner import UQLearnerConfig
 
 TEST_RADICAL = False
 TEST_CUSTOM_UQ = False
@@ -28,7 +32,7 @@ UQ_THRESHOLD = 1.5
 ITERATIONS = 3
 PIPELINES = ['UQ1', 'UQ2']
 TASK_TYPE = 'classification'
-USECASE = 'ENSEMBLE'        
+USECASE = 'ENSEMBLE'
             # Options: 'Bayesian', 'SINGLE_MODEL', 'ENSEMBLE'
 UQ_QUERY_SIZE = 1
 
@@ -47,11 +51,11 @@ async def uq_learner():
         MODELS = ['MC_Dropout_CNN', 'MC_Dropout_MLP']
     else:
         return
-    
+
     if TEST_RADICAL:
         RESOURCES = {
-            'runtime': 300, 
-            'resource': 'local.localhost', 
+            'runtime': 300,
+            'resource': 'local.localhost',
             #'resource': 'purdue.anvil',
             'cores': 16
         }
@@ -110,13 +114,13 @@ async def uq_learner():
                f'--home_dir {home_dir}'
 
     # Defining the stop criterion with a metric (MODEL_ACCURACY in this case)
-    @learner.uncertainty_quantification(uq_metric_name=UQ_METRIC_NAME, 
-                                        threshold=UQ_THRESHOLD, 
+    @learner.uncertainty_quantification(uq_metric_name=UQ_METRIC_NAME,
+                                        threshold=UQ_THRESHOLD,
                                         query_size=UQ_QUERY_SIZE)
     async def check_uq(*args, **kwargs):
 
         home_dir = kwargs.get("--home_dir")
-        predict_dir = kwargs.get("--prediction_dir")  
+        predict_dir = kwargs.get("--prediction_dir")
         learner_name = kwargs.get("--learner_name")
         query_size = kwargs.get("--query_size")
         uq_metric_name = kwargs.get("--uq_metric_name")
@@ -124,29 +128,29 @@ async def uq_learner():
 
         return f'{code_path}/check_uq.py --learner_name {learner_name} --predict_dir {predict_dir} ' \
                f'--query_size {query_size} ' \
-               f'--uq_metric_name {uq_metric_name} --task_type {task_type} --home_dir {home_dir}'  
+               f'--uq_metric_name {uq_metric_name} --task_type {task_type} --home_dir {home_dir}'
 
 
 
     learner_configs = {}
     for PIPELINE in PIPELINES:
         learner_configs[PIPELINE] = UQLearnerConfig(
-                            simulation=TaskConfig(kwargs={                            
+                            simulation=TaskConfig(kwargs={
                             '--home_dir': home_dir,
                             '--train_batch': 50,
                             '--learner_name': f'{PIPELINE}'}),
 
-                            training=TaskConfig(kwargs={                            
+                            training=TaskConfig(kwargs={
                             '--epochs': 10,
                             '--home_dir': home_dir,
                             '--learner_name': f'{PIPELINE}'}),
- 
-                            prediction=TaskConfig(kwargs={                            
+
+                            prediction=TaskConfig(kwargs={
                             '--home_dir': home_dir,
                             '--learner_name': f'{PIPELINE}',
                             '--prediction_dir': f'{PIPELINE}_prediction'}),
 
-                            uncertainty=TaskConfig(kwargs={                            
+                            uncertainty=TaskConfig(kwargs={
                             '--uq_metric_name': UQ_METRIC_NAME,
                             '--task_type': TASK_TYPE,
                             '--query_size': UQ_QUERY_SIZE,
@@ -162,17 +166,18 @@ async def uq_learner():
                             '--home_dir': home_dir,
                             }))
 
-    
-    results = await learner.teach(
+
+    # Start the UQ active learning process
+    results = await learner.start(
         learner_names=PIPELINES,
         model_names=MODELS,
         learner_configs=learner_configs,
-        max_iter=ITERATIONS, 
+        max_iter=ITERATIONS,
         num_predictions=NUM_PREDICTION
     )
 
-    print('Teaching is done with Final Results:')
-    print(results)
+    print('Learning process is done.')
+    print(f"Results: {results}")
 
     with open(Path(os.getcwd(), 'UQ_training_results.json'), 'w') as f:
         json.dump(results, f, indent=4)

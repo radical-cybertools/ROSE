@@ -102,7 +102,7 @@ Finally invoke the tasks and register them with the active learner as a workflow
     In the Sequential Learner, the invocation order of the tasks is predefined order of tasks as follows: `simulation` --> `training` --> `active_learn`.
 
 ```python
-# Start the teaching loop and break if max_iter = 10 or stop condition is met
-await acl.teach(max_iter=10)
+# Start the learning loop and break if max_iter = 10 or stop condition is met
+await acl.start(max_iter=10)
 await asyncflow.shutdown()
 ```

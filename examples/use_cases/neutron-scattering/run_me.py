@@ -123,7 +123,7 @@ async def main():
         return f'{code_path}/replacement_sim.py'
 
     # Custom training loop using active learning
-    async def teach():
+    async def start():
         for acl_iter in range(4):
             print(f'Starting Iteration-{acl_iter}')
             simulations = []
@@ -152,7 +152,7 @@ async def main():
                 --shared_file_dir {data_dir}', *simulations)
             active = active_learn(f'--seed {seed+3} --num_new_sample {num_al_sample} --policy uncertainty', simulations, train)
             await active
-    # invoke the custom/user-defined teach() method
+    # invoke the custom/user-defined start() method
     await bootstrap()
-    await teach()
+    await start()
     await acl.shutdown()

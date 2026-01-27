@@ -53,8 +53,8 @@ async def main():
     async def active_learn(*args):
         return f'python3 active.py'
 
-    # Start the teaching loop and break if max_iter = 10
-    await acl.teach(max_iter=10)
+    # Start the learning loop and break if max_iter = 10
+    await acl.start(max_iter=10)
     await asyncflow.shutdown()
 
 if __name__ == "__main__":
