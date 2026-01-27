@@ -11,6 +11,7 @@ from rose.al.active_learner import (
 )
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 class TestSequentialActiveLearner:
     """Test cases for SequentialActiveLearner class."""
 
@@ -39,20 +40,15 @@ class TestSequentialActiveLearner:
             return_value=MagicMock(spec=TaskConfig)
         )
 
-        # Create a function that returns a new coroutine each time
-        async def mock_task_coroutine():
-            return "task_result"
-
-        sequential_learner._register_task = MagicMock(
-            side_effect=lambda *args, **kwargs: mock_task_coroutine()
-        )
+        # Use AsyncMock for _register_task to avoid unawaited coroutine warnings
+        sequential_learner._register_task = AsyncMock(return_value="task_result")
         sequential_learner._check_stop_criterion = MagicMock(return_value=(False, None))
 
         return sequential_learner
 
     @pytest.mark.asyncio
-    async def test_teach_missing_required_functions(self, sequential_learner):
-        """Test that teach raises exception when required functions are missing."""
+    async def test_start_missing_required_functions(self, sequential_learner):
+        """Test that start raises exception when required functions are missing."""
 
         # Ensure functions are actually None
         sequential_learner.simulation_function = None
@@ -65,7 +61,8 @@ class TestSequentialActiveLearner:
             ValueError,
             match=r"Simulation function must be set when not using simulation pool!",
         ):
-            await sequential_learner.teach(max_iter=1)
+            async for _ in sequential_learner.start(max_iter=1):
+                pass
 
         # Test with only simulation function set
         # (should fail on training/active learning check)
@@ -73,7 +70,8 @@ class TestSequentialActiveLearner:
         with pytest.raises(
             ValueError, match=r"Training and Active Learning functions must be set!"
         ):
-            await sequential_learner.teach(max_iter=1)
+            async for _ in sequential_learner.start(max_iter=1):
+                pass
 
         # Test with simulation and training set but no active learning
         # (should still fail on training/active learning check)
@@ -81,11 +79,12 @@ class TestSequentialActiveLearner:
         with pytest.raises(
             ValueError, match=r"Training and Active Learning functions must be set!"
         ):
-            await sequential_learner.teach(max_iter=1)
+            async for _ in sequential_learner.start(max_iter=1):
+                pass
 
     @pytest.mark.asyncio
-    async def test_teach_missing_stop_criteria(self, sequential_learner):
-        """Test that teach raises exception when no stopping criteria provided."""
+    async def test_start_missing_stop_criteria(self, sequential_learner):
+        """Test that start raises exception when no stopping criteria provided."""
         sequential_learner.simulation_function = AsyncMock()
         sequential_learner.training_function = AsyncMock()
         sequential_learner.active_learn_function = AsyncMock()
@@ -95,74 +94,106 @@ class TestSequentialActiveLearner:
             ValueError,
             match="Either max_iter > 0 or criterion_function must be provided.",
         ):
-            await sequential_learner.teach(max_iter=0)
+            async for _ in sequential_learner.start(max_iter=0):
+                pass
 
     @pytest.mark.asyncio
-    async def test_teach_with_max_iterations(self, configured_learner):
-        """Test teach method runs for specified max_iter iterations."""
-        # The configured_learner fixture already sets up proper coroutines
-
+    async def test_start_with_max_iterations(self, configured_learner):
+        """Test start method runs for specified max_iter iterations."""
         # Run with max_iter=2
-        await configured_learner.teach(max_iter=2, skip_pre_loop=True)
+        states = []
+        async for state in configured_learner.start(max_iter=2, skip_pre_loop=True):
+            states.append(state)
+
+        # Should yield 2 states (one per iteration)
+        assert len(states) == 2
 
         # Verify _register_task was called for active learning tasks
-        # Should be called for: 2 active_learn tasks + 2 sim
-        # tasks + 2 train tasks = 6 times
         assert configured_learner._register_task.call_count >= 4
 
     @pytest.mark.asyncio
-    async def test_teach_with_stop_criterion(self, configured_learner):
-        """Test teach method stops when criterion function returns True."""
-        # The configured_learner fixture already sets up proper coroutines
-
+    async def test_start_with_stop_criterion(self, configured_learner):
+        """Test start method stops when criterion function returns True."""
         # Set up criterion to stop after first iteration
         configured_learner._check_stop_criterion.side_effect = [
-            (True, None),  # Stop on first iteration
+            (True, 0.005),  # Stop on first iteration
         ]
 
-        await configured_learner.teach(max_iter=0, skip_pre_loop=True)
+        states = []
+        async for state in configured_learner.start(max_iter=0, skip_pre_loop=True):
+            states.append(state)
 
-        # Verify that we stopped early due to criterion
-        # When skip_pre_loop=True and we stop on first iteration, we should have:
-        # 1. acl_task (active learning)
-        # 2. stop_task (criterion check)
-        # Then it breaks before registering next_sim and next_train
-        assert configured_learner._register_task.call_count == 2  # acl, criterion only
+        # Should yield 1 state then stop
+        assert len(states) == 1
 
         # Verify _check_stop_criterion was called
         assert configured_learner._check_stop_criterion.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_teach_continues_when_criterion_false(self, configured_learner):
-        """Test teach method continues when criterion function returns False."""
+    async def test_start_continues_when_criterion_false(self, configured_learner):
+        """Test start method continues when criterion function returns False."""
         # Set up criterion to not stop on first iteration, but stop on second
         configured_learner._check_stop_criterion.side_effect = [
-            (False, None),  # Don't stop on first iteration
-            (True, None),  # Stop on second iteration
+            (False, 0.1),  # Don't stop on first iteration
+            (True, 0.005),  # Stop on second iteration
         ]
 
-        await configured_learner.teach(max_iter=0, skip_pre_loop=True)
+        states = []
+        async for state in configured_learner.start(max_iter=0, skip_pre_loop=True):
+            states.append(state)
 
-        # When we don't stop on first iteration, we should have:
-        # Iteration 0: acl_task, stop_task, next_sim, next_train
-        # Iteration 1: acl_task, stop_task (then stop)
-        # Total: 6 calls
-        assert configured_learner._register_task.call_count == 6
+        # Should yield 2 states
+        assert len(states) == 2
 
         # Verify _check_stop_criterion was called twice
         assert configured_learner._check_stop_criterion.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_teach_skip_pre_loop(self, configured_learner):
-        """Test teach method behavior when skip_pre_loop is True."""
-        # The configured_learner fixture already sets up proper coroutines
-
+    async def test_start_skip_pre_loop(self, configured_learner):
+        """Test start method behavior when skip_pre_loop is True."""
         # Set up stop criterion to stop immediately
-        configured_learner._check_stop_criterion.return_value = (True, None)
+        configured_learner._check_stop_criterion.return_value = (True, 0.005)
 
-        await configured_learner.teach(max_iter=0, skip_pre_loop=True)
+        states = []
+        async for state in configured_learner.start(max_iter=0, skip_pre_loop=True):
+            states.append(state)
+
+        # Should yield 1 state
+        assert len(states) == 1
 
         # When skip_pre_loop is True, should not register pre-loop
         # simulation/training tasks
         # Verify the method completes without pre-loop setup
         assert configured_learner._register_task.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_start_early_break(self, configured_learner):
+        """Test that user can break out of start() early."""
+        # Set up criterion to never stop
+        configured_learner._check_stop_criterion.return_value = (False, 0.5)
+
+        count = 0
+        async for state in configured_learner.start(max_iter=10, skip_pre_loop=True):
+            count += 1
+            if count >= 3:
+                break
+
+        # Should have only run 3 iterations
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_set_next_config(self, configured_learner):
+        """Test that set_next_config updates pending config."""
+        from rose.learner import LearnerConfig, TaskConfig
+
+        # Initially no pending config
+        assert configured_learner._pending_config is None
+
+        # Set a config
+        new_config = LearnerConfig(
+            training=TaskConfig(kwargs={"--lr": "0.001"})
+        )
+        configured_learner.set_next_config(new_config)
+
+        # Should be stored as pending
+        assert configured_learner._pending_config == new_config

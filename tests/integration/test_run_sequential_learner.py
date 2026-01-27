@@ -28,10 +28,11 @@ async def test_active_learning_pipeline_functions():
     @acl.as_stop_criterion(
         metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1, as_executable=False
     )
-    async def check_mse(val):
-        return val < 2.6
+    async def check_mse(*args):
+        return 0.05  # Return a metric value below threshold
 
-    await acl.teach(max_iter=5)
+    async for state in acl.start(max_iter=5):
+        pass  # Let it run to completion
 
     scores = acl.get_metric_results()
 

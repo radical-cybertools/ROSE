@@ -28,10 +28,10 @@ async def test_active_learning_pipeline_functions():
     @learner.as_stop_criterion(
         metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1, as_executable=False
     )
-    async def check_mse(val):
-        return val < 2.6
+    async def check_mse(*args):
+        return 0.05  # Return a metric value below threshold
 
-    await learner.teach(parallel_learners=5, max_iter=2)
+    await learner.start(parallel_learners=5, max_iter=2)
 
     scores = learner.get_metric_results()
 

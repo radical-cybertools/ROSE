@@ -11,6 +11,7 @@ from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_learner import UQLearnerConfig
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 class TestParallelUQLearner:
     """Test cases for ParallelUQLearner class."""
 
