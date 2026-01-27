@@ -172,7 +172,8 @@ class SequentialActiveLearner(Learner):
             # Clear transient state from previous iteration
             self.clear_state()
 
-            # Extract state from sim/train results (prepared in previous iteration or pre-loop)
+            # Extract state from sim/train results
+            # (prepared in previous iteration or pre-loop)
             if not skip_simulation_step and sim_result is not None:
                 self._extract_state_from_result(sim_result)
             if train_result is not None:

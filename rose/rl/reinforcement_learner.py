@@ -228,7 +228,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             # Clear transient state from previous iteration
             self.clear_state()
 
-            # Extract state from env/update results (prepared in previous iteration or pre-loop)
+            # Extract state from env/update results
+            # (prepared in previous iteration or pre-loop)
             if not skip_environment_step and env_result is not None:
                 self._extract_state_from_result(env_result)
             if update_result is not None:
@@ -623,7 +624,8 @@ class ParallelExperience(ReinforcementLearner):
             # Clear transient state from previous iteration
             self.clear_state()
 
-            # Extract state from env/update results (prepared in previous iteration or pre-loop)
+            # Extract state from env/update results
+            # (prepared in previous iteration or pre-loop)
             for env_result in env_results:
                 if not isinstance(env_result, BaseException):
                     self._extract_state_from_result(env_result)
