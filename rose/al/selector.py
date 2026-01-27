@@ -119,7 +119,7 @@ class AlgorithmSelector(Learner):
 
         return sequential_learner
 
-    async def teach_and_select(
+    async def start(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,

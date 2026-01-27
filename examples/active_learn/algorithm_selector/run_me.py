@@ -40,7 +40,7 @@ async def select_algorithm():
         return f'{code_path}/check_mse.py'
 
     # Start the learning process
-    await als.teach_and_select(max_iter=4)
+    await als.start(max_iter=4)
     await als.shutdown()
 
 if __name__ == "__main__":
