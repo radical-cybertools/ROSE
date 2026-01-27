@@ -5,10 +5,8 @@ import pytest
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
 
-from rose.al.active_learner import (
-    SequentialActiveLearner,
-    TaskConfig,
-)
+from rose.al.active_learner import SequentialActiveLearner
+from rose.learner import TaskConfig
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
@@ -173,7 +171,7 @@ class TestSequentialActiveLearner:
         configured_learner._check_stop_criterion.return_value = (False, 0.5)
 
         count = 0
-        async for state in configured_learner.start(max_iter=10, skip_pre_loop=True):
+        async for _state in configured_learner.start(max_iter=10, skip_pre_loop=True):
             count += 1
             if count >= 3:
                 break

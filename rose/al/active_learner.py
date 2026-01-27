@@ -6,7 +6,7 @@ from typing import Any, Optional, Union
 
 from radical.asyncflow import WorkflowEngine
 
-from ..learner import IterationState, Learner, LearnerConfig, TaskConfig
+from ..learner import IterationState, Learner, LearnerConfig
 
 
 class SequentialActiveLearner(Learner):

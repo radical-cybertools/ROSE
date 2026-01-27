@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from radical.asyncflow import WorkflowEngine
 
-from rose.learner import LearnerConfig, IterationState
+from rose.learner import IterationState, LearnerConfig
 from rose.rl.reinforcement_learner import (
     ParallelReinforcementLearner,
     SequentialReinforcementLearner,

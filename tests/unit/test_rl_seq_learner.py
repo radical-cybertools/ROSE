@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from radical.asyncflow import WorkflowEngine
 
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner, TaskConfig
+from rose.learner import TaskConfig
+from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
@@ -117,7 +118,7 @@ class TestSequentialReinforcementLearner:
         configured_learner._check_stop_criterion.return_value = (False, 0.5)
 
         count = 0
-        async for state in configured_learner.start(max_iter=10, skip_pre_loop=True):
+        async for _state in configured_learner.start(max_iter=10, skip_pre_loop=True):
             count += 1
             if count >= 3:
                 break

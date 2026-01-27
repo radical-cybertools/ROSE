@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Union
 import typeguard
 from radical.asyncflow import WorkflowEngine
 
-from rose.learner import IterationState, Learner, LearnerConfig, TaskConfig
+from rose.learner import IterationState, Learner, LearnerConfig
 
 
 class ReinforcementLearner(Learner):

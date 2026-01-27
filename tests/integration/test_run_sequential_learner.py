@@ -31,7 +31,7 @@ async def test_active_learning_pipeline_functions():
     async def check_mse(*args):
         return 0.05  # Return a metric value below threshold
 
-    async for state in acl.start(max_iter=5):
+    async for _state in acl.start(max_iter=5):
         pass  # Let it run to completion
 
     scores = acl.get_metric_results()
