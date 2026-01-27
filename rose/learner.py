@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import typeguard
 from pydantic import BaseModel
@@ -46,12 +46,12 @@ class IterationState:
     metric_name: Optional[str] = None
     metric_value: Optional[float] = None
     metric_threshold: Optional[float] = None
-    metric_history: List[float] = field(default_factory=list)
+    metric_history: list[float] = field(default_factory=list)
     should_stop: bool = False
     current_config: Optional["LearnerConfig"] = None
 
     # All domain-specific state goes here
-    state: Dict[str, Any] = field(default_factory=dict)
+    state: dict[str, Any] = field(default_factory=dict)
 
     def __getattr__(self, name: str) -> Any:
         """Allow attribute-style access to state dict.
@@ -82,7 +82,7 @@ class IterationState:
         """
         return self.state.get(key, default)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.
 
         Returns:
@@ -250,8 +250,8 @@ class Learner:
         self.iteration: int = 0
         self.metric_values_per_iteration: dict[int, dict[str, float]] = {}
 
-        self._state_registry: Dict[str, Any] = {}
-        self._state_callbacks: List[Callable[[str, Any], None]] = []
+        self._state_registry: dict[str, Any] = {}
+        self._state_callbacks: list[Callable[[str, Any], None]] = []
 
     def _get_iteration_task_config(
         self,
@@ -655,7 +655,9 @@ class Learner:
                 async def active_learn(*args):
                     uncertainty = model.predict_uncertainty(X_unlabeled)
                     learner.register_state('uncertainty_scores', uncertainty)
-                    learner.register_state('mean_uncertainty', float(uncertainty.mean()))
+                    learner.register_state(
+                        'mean_uncertainty', float(uncertainty.mean())
+                    )
                     return 'python active.py'
         """
         self._state_registry[key] = value
@@ -682,7 +684,7 @@ class Learner:
         """
         return self._state_registry.get(key, default)
 
-    def get_all_state(self) -> Dict[str, Any]:
+    def get_all_state(self) -> dict[str, Any]:
         """Get all registered state values.
 
         Returns:
