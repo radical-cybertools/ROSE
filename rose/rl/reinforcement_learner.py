@@ -184,7 +184,11 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         env_task: Any = ()
         update_task: Any = ()
 
-        # Pre-loop phase
+        # Pre-loop phase: register and await env/update, but don't extract state yet
+        # State extraction happens inside the loop after clear_state()
+        env_result: Any = None
+        update_result: Any = None
+
         if not skip_pre_loop:
             if skip_environment_step:
                 update_config = self._get_iteration_task_config(
@@ -200,6 +204,12 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 )
                 env_task = self._register_task(env_config)
                 update_task = self._register_task(update_config, deps=env_task)
+
+                # Await environment result (extract state later, inside loop)
+                env_result = await env_task
+
+            # Await update result (extract state later, inside loop)
+            update_result = await update_task
 
         # Determine iteration range
         iteration_range: Union[Iterator[int], range]
@@ -218,6 +228,12 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             # Clear transient state from previous iteration
             self.clear_state()
 
+            # Extract state from env/update results (prepared in previous iteration or pre-loop)
+            if not skip_environment_step and env_result is not None:
+                self._extract_state_from_result(env_result)
+            if update_result is not None:
+                self._extract_state_from_result(update_result)
+
             learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
@@ -234,11 +250,10 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 stop_task = self._register_task(criterion_config, deps=update_task)
                 stop_result = await stop_task
 
-                # Extract state from criterion result if it's a dict
-                if isinstance(stop_result, dict):
-                    for k, v in stop_result.items():
-                        if k not in ("metric_value", "should_stop"):
-                            self.register_state(k, v)
+                # Extract state from criterion result, excluding handled keys
+                self._extract_state_from_result(
+                    stop_result, exclude_keys={"metric_value", "should_stop"}
+                )
 
                 should_stop, metric_value = self._check_stop_criterion(stop_result)
 
@@ -265,6 +280,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
             if skip_environment_step:
                 env_task = ()
+                env_result = None
                 update_task = self._register_task(next_update_config, deps=stop_task)
             else:
                 next_env_config = self._get_iteration_task_config(
@@ -273,8 +289,11 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 env_task = self._register_task(next_env_config, deps=stop_task)
                 update_task = self._register_task(next_update_config, deps=env_task)
 
-            # Wait for update to complete before next iteration
-            await update_task
+                # Await environment result (extract state in next iteration)
+                env_result = await env_task
+
+            # Await update result (extract state in next iteration)
+            update_result = await update_task
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -559,6 +578,11 @@ class ParallelExperience(ReinforcementLearner):
 
         update_task: Any = ()
 
+        # Pre-loop phase: register and await env/update, but don't extract state yet
+        # State extraction happens inside the loop after clear_state()
+        env_results: list[Any] = []
+        update_result: Any = None
+
         if not skip_pre_loop:
             # Pre-loop: collect experiences and update
             env_tasks = []
@@ -569,14 +593,18 @@ class ParallelExperience(ReinforcementLearner):
                 env_task = self._register_task(env_config)
                 env_tasks.append(env_task)
 
-            # Wait for all environment tasks to complete
-            await asyncio.gather(*env_tasks, return_exceptions=True)
+            # Wait for all environment tasks (extract state later, inside loop)
+            env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+
             self.merge_banks()
 
             update_config = self._get_iteration_task_config(
                 self.update_function, learner_config, "update", 0
             )
             update_task = self._register_task(update_config)
+
+            # Await update result (extract state later, inside loop)
+            update_result = await update_task
 
         # Determine iteration range
         iteration_range: Union[Iterator[int], range]
@@ -595,6 +623,13 @@ class ParallelExperience(ReinforcementLearner):
             # Clear transient state from previous iteration
             self.clear_state()
 
+            # Extract state from env/update results (prepared in previous iteration or pre-loop)
+            for env_result in env_results:
+                if not isinstance(env_result, BaseException):
+                    self._extract_state_from_result(env_result)
+            if update_result is not None:
+                self._extract_state_from_result(update_result)
+
             learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
@@ -612,11 +647,10 @@ class ParallelExperience(ReinforcementLearner):
                 stop_task = self._register_task(criterion_config, deps=update_task)
                 stop_result = await stop_task
 
-                # Extract state from criterion result if it's a dict
-                if isinstance(stop_result, dict):
-                    for k, v in stop_result.items():
-                        if k not in ("metric_value", "should_stop"):
-                            self.register_state(k, v)
+                # Extract state from criterion result, excluding handled keys
+                self._extract_state_from_result(
+                    stop_result, exclude_keys={"metric_value", "should_stop"}
+                )
 
                 should_stop, metric_value = self._check_stop_criterion(stop_result)
 
@@ -645,8 +679,8 @@ class ParallelExperience(ReinforcementLearner):
                 env_task = self._register_task(next_env_config, deps=stop_task)
                 env_tasks.append(env_task)
 
-            # Wait for all environment tasks to complete
-            await asyncio.gather(*env_tasks, return_exceptions=True)
+            # Wait for all environment tasks (extract state in next iteration)
+            env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
 
             # Merge all collected experiences
             self.merge_banks()
@@ -657,8 +691,8 @@ class ParallelExperience(ReinforcementLearner):
             )
             update_task = self._register_task(next_update_config)
 
-            # Wait for update to complete
-            await update_task
+            # Await update result (extract state in next iteration)
+            update_result = await update_task
 
             print(f"{learner_prefix}Finished Iteration-{i}")
 

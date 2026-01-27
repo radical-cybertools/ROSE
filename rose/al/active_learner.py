@@ -130,7 +130,11 @@ class SequentialActiveLearner(Learner):
         sim_task: Any = ()
         train_task: Any = ()
 
-        # Pre-loop phase
+        # Pre-loop phase: register and await sim/train, but don't extract state yet
+        # State extraction happens inside the loop after clear_state()
+        sim_result: Any = None
+        train_result: Any = None
+
         if not skip_pre_loop:
             train_config = self._get_iteration_task_config(
                 self.training_function, learner_config, "training", 0
@@ -144,6 +148,12 @@ class SequentialActiveLearner(Learner):
                 )
                 sim_task = self._register_task(sim_config)
                 train_task = self._register_task(train_config, deps=sim_task)
+
+                # Await simulation result (extract state later, inside loop)
+                sim_result = await sim_task
+
+            # Await training result (extract state later, inside loop)
+            train_result = await train_task
 
         # Determine iteration range
         iteration_range: Union[Iterator[int], range]
@@ -161,6 +171,12 @@ class SequentialActiveLearner(Learner):
 
             # Clear transient state from previous iteration
             self.clear_state()
+
+            # Extract state from sim/train results (prepared in previous iteration or pre-loop)
+            if not skip_simulation_step and sim_result is not None:
+                self._extract_state_from_result(sim_result)
+            if train_result is not None:
+                self._extract_state_from_result(train_result)
 
             learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
@@ -180,9 +196,7 @@ class SequentialActiveLearner(Learner):
 
             # Await AL task and extract state from dict result
             acl_result = await acl_task
-            if isinstance(acl_result, dict):
-                for k, v in acl_result.items():
-                    self.register_state(k, v)
+            self._extract_state_from_result(acl_result)
 
             # Check stop criterion if configured
             metric_value: Optional[float] = None
@@ -219,6 +233,7 @@ class SequentialActiveLearner(Learner):
 
             if skip_simulation_step:
                 sim_task = ()
+                sim_result = None
                 train_task = self._register_task(next_train_config, deps=acl_task)
             else:
                 next_sim_config = self._get_iteration_task_config(
@@ -227,8 +242,11 @@ class SequentialActiveLearner(Learner):
                 sim_task = self._register_task(next_sim_config, deps=acl_task)
                 train_task = self._register_task(next_train_config, deps=sim_task)
 
-            # Wait for training to complete before next iteration
-            await train_task
+                # Await simulation result (extract state in next iteration)
+                sim_result = await sim_task
+
+            # Await training result (extract state in next iteration)
+            train_result = await train_task
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.

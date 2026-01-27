@@ -698,6 +698,43 @@ class Learner:
         """
         self._state_registry.clear()
 
+    def _extract_state_from_result(
+        self, result: Any, exclude_keys: Optional[set[str]] = None
+    ) -> None:
+        """Extract state from task result if it's a dict.
+
+        This method provides a universal way to extract state from task
+        results across all learner types (Active Learning, RL, UQ).
+        Each key-value pair in the dict is registered as state via
+        register_state().
+
+        Args:
+            result: Task result. If dict, each key-value pair is registered
+                as state. Non-dict results are ignored.
+            exclude_keys: Optional set of keys to exclude from extraction.
+                Useful for criterion results where certain keys (e.g.,
+                'metric_value', 'should_stop') are handled separately.
+
+        Example:
+            In a learner implementation::
+
+                train_result = await train_task
+                self._extract_state_from_result(train_result)
+                # If train_result is {"loss": 0.1, "accuracy": 0.95},
+                # both values are now accessible via state.loss, state.accuracy
+
+            With exclusions for criterion results::
+
+                stop_result = await stop_task
+                self._extract_state_from_result(
+                    stop_result, exclude_keys={"metric_value", "should_stop"}
+                )
+        """
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if exclude_keys is None or k not in exclude_keys:
+                    self.register_state(k, v)
+
     def on_state_update(self, callback: Callable[[str, Any], None]) -> None:
         """Register a callback for state updates.
 

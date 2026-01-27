@@ -113,7 +113,8 @@ async def training(*args, length_scale: float = 1.0) -> dict:
         model=model
     )
 
-    return {"length_scale": length_scale, "n_samples": len(data["X_labeled"])}
+    return {"length_scale": length_scale,
+            "n_samples": len(data["X_labeled"])}
 
 @typeguard.typechecked
 async def active_learn(*args, n_select: int = 5) -> dict:
@@ -198,8 +199,10 @@ async def main():
         print(f"[Iteration {state.iteration}]")
         print(f"MSE: {state.metric_value:.4f} (target: {state.metric_threshold})")
         print(f"Labeled: {state.labeled_count}, Pool: {state.unlabeled_count}")
-
         print(f"Mean uncertainty: {state.mean_uncertainty:.4f}")
+
+        # Access training task return values (now automatically extracted)
+        print(f"Training: length_scale={state.length_scale}, n_samples={state.n_samples}")
 
         # Dynamic adjustment: increase samples when uncertainty is low
         if state.mean_uncertainty and state.mean_uncertainty < 0.15:
