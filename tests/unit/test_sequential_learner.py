@@ -188,9 +188,7 @@ class TestSequentialActiveLearner:
         assert configured_learner._pending_config is None
 
         # Set a config
-        new_config = LearnerConfig(
-            training=TaskConfig(kwargs={"--lr": "0.001"})
-        )
+        new_config = LearnerConfig(training=TaskConfig(kwargs={"--lr": "0.001"}))
         configured_learner.set_next_config(new_config)
 
         # Should be stored as pending

@@ -152,6 +152,7 @@ class TestParallelActiveLearner:
         self, configured_parallel_learner
     ):
         """Test successful parallel execution of multiple learners."""
+
         # Create a mock that yields one state then stops (async generator)
         async def mock_start(*args, **kwargs):
             yield IterationState(iteration=0, metric_value=0.5, should_stop=True)
@@ -176,12 +177,10 @@ class TestParallelActiveLearner:
 
             # Verify metric collection
             assert (
-                "learner-0"
-                in configured_parallel_learner.metric_values_per_iteration
+                "learner-0" in configured_parallel_learner.metric_values_per_iteration
             )
             assert (
-                "learner-1"
-                in configured_parallel_learner.metric_values_per_iteration
+                "learner-1" in configured_parallel_learner.metric_values_per_iteration
             )
 
     @pytest.mark.asyncio
@@ -194,13 +193,17 @@ class TestParallelActiveLearner:
             mock_learner.metric_values_per_iteration = {}
 
             if learner_id == 0:
+
                 async def success_start(*args, **kwargs):
                     yield IterationState(iteration=0, should_stop=True)
+
                 mock_learner.start = success_start
             else:
+
                 async def fail_start(*args, **kwargs):
                     raise Exception("Learner failed")
                     yield  # Make it a generator
+
                 mock_learner.start = fail_start
 
             return mock_learner

@@ -636,7 +636,6 @@ class Learner:
         """
         return self.metric_values_per_iteration
 
-
     def register_state(self, key: str, value: Any) -> None:
         """Register a state value to be accessed by external entity.
 
