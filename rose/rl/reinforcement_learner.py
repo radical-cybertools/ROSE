@@ -220,6 +220,13 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
         # Main iteration loop
         for i in iteration_range:
+            learner_prefix = (
+                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
+            )
+            if self.is_stopped:
+                print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                break
+
             # Check for pending config update
             if self._pending_config is not None:
                 learner_config = self._pending_config
@@ -292,6 +299,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
                 # Await environment result (extract state in next iteration)
                 env_result = await env_task
+                if self.is_stopped:
+                    break
 
             # Await update result (extract state in next iteration)
             update_result = await update_task
@@ -683,6 +692,8 @@ class ParallelExperience(ReinforcementLearner):
 
             # Wait for all environment tasks (extract state in next iteration)
             env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+            if self.is_stopped:
+                break
 
             # Merge all collected experiences
             self.merge_banks()
@@ -935,7 +946,9 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                     initial_config=sequential_config,
                 ):
                     final_state = state
-                    # Let the learner run to completion (stop on criterion)
+                    # Let the learner run to completion
+                    if self.is_stopped:
+                        sequential_learner.stop()
 
                 # Store metrics per learner
                 self.metric_values_per_iteration[f"learner-{learner_id}"] = (

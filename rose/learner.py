@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Optional, Union
@@ -252,6 +253,17 @@ class Learner:
 
         self._state_registry: dict[str, Any] = {}
         self._state_callbacks: list[Callable[[str, Any], None]] = []
+
+        self._stop_event = asyncio.Event()
+
+    @property
+    def is_stopped(self) -> bool:
+        """Check if the learner has been requested to stop."""
+        return self._stop_event.is_set()
+
+    def stop(self) -> None:
+        """Signal the learner to stop execution as soon as possible."""
+        self._stop_event.set()
 
     def _get_iteration_task_config(
         self,

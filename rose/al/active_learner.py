@@ -164,6 +164,13 @@ class SequentialActiveLearner(Learner):
 
         # Main iteration loop
         for i in iteration_range:
+            learner_prefix = (
+                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
+            )
+            if self.is_stopped:
+                print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                break
+
             # Check for pending config
             if self._pending_config is not None:
                 learner_config = self._pending_config
@@ -179,9 +186,6 @@ class SequentialActiveLearner(Learner):
             if train_result is not None:
                 self._extract_state_from_result(train_result)
 
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
             print(f"{learner_prefix}Starting Iteration-{i}")
 
             # Get iteration-specific AL config
@@ -197,6 +201,8 @@ class SequentialActiveLearner(Learner):
 
             # Await AL task and extract state from dict result
             acl_result = await acl_task
+            if self.is_stopped:
+                break
             self._extract_state_from_result(acl_result)
 
             # Check stop criterion if configured
@@ -209,6 +215,8 @@ class SequentialActiveLearner(Learner):
                 )
                 stop_task = self._register_task(criterion_config)
                 stop_result = await stop_task
+                if self.is_stopped:
+                    break
                 should_stop, metric_value = self._check_stop_criterion(stop_result)
 
             # Build iteration state
@@ -245,9 +253,13 @@ class SequentialActiveLearner(Learner):
 
                 # Await simulation result (extract state in next iteration)
                 sim_result = await sim_task
+                if self.is_stopped:
+                    break
 
             # Await training result (extract state in next iteration)
             train_result = await train_task
+            if self.is_stopped:
+                break
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -494,7 +506,8 @@ class ParallelActiveLearner(Learner):
                     initial_config=sequential_config,
                 ):
                     final_state = state
-                    # Let the learner run to completion (stop on criterion)
+                    if self.is_stopped:
+                        sequential_learner.stop()
 
                 # book keep the iteration value from each learner
                 self.metric_values_per_iteration[f"learner-{learner_id}"] = (
