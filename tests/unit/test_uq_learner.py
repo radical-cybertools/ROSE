@@ -128,7 +128,7 @@ class TestParallelUQLearner:
             Exception,
             match="Simulation, Training, and Active Learning functions must be set!",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None, "l2": None},
                 model_names=["m1"],
@@ -147,7 +147,7 @@ class TestParallelUQLearner:
             Exception,
             match="learner_configs length must match learner_names",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None},
                 model_names=["m1"],
@@ -158,7 +158,7 @@ class TestParallelUQLearner:
             Exception,
             match="Either max_iter or stop_criterion_function must be provided.",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
             )
 
@@ -268,7 +268,7 @@ class TestParallelUQLearner:
                 "_convert_to_sequential_config",
                 return_value=None,
             ):
-                results = await configured_parallel_learner.teach(
+                results = await configured_parallel_learner.start(
                     learner_names=["l1", "l2"],
                     learner_configs={"l1": None, "l2": None},
                     model_names=["m1"],
@@ -327,7 +327,7 @@ class TestParallelUQLearner:
                 with patch("builtins.print") as mock_print:
                     # Should raise exception due to learner failure
                     with pytest.raises(Exception, match="Learner failed"):
-                        await configured_parallel_learner.teach(
+                        await configured_parallel_learner.start(
                             learner_names=["l1"],
                             model_names=["m1"],
                             learner_configs={"l1": None},

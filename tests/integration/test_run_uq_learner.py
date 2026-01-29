@@ -50,7 +50,6 @@ async def test_active_learning_pipeline_functions():
         # Calculate mean or just return a simple value for testing
         return 0.5
 
-    # Use the new start() method instead of teach()
     results = await learner.start(
         learner_names=["l1", "l2"],
         learner_configs={"l1": None, "l2": None},
