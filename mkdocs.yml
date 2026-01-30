@@ -94,6 +94,7 @@ nav:
       - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
   - Integrations:
       - MLflow: integrations/mlflow.md
+  - Changelog: changelog.md
 
 extra_css:
   - styles/custom.css
