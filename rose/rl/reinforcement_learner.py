@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import logging
 import warnings
 from collections.abc import AsyncIterator, Coroutine, Iterator
 from functools import wraps
@@ -9,6 +10,8 @@ import typeguard
 from radical.asyncflow import WorkflowEngine
 
 from rose.learner import IterationState, Learner, LearnerConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ReinforcementLearner(Learner):
@@ -178,7 +181,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         learner_suffix = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-        print(f"Starting Sequential RL Learner{learner_suffix}")
+        logger.info(f"Starting Sequential RL Learner{learner_suffix}")
 
         # Initialize task references
         env_task: Any = ()
@@ -224,7 +227,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
             if self.is_stopped:
-                print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                logger.info(f"{learner_prefix}Stop requested, exiting learning loop.")
                 break
 
             # Check for pending config update
@@ -245,7 +248,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
-            print(f"{learner_prefix}Starting Iteration-{i}")
+            logger.info(f"{learner_prefix}Starting Iteration-{i}")
 
             # Check stop criterion if configured
             metric_value: Optional[float] = None
@@ -512,10 +515,10 @@ class ParallelExperience(ReinforcementLearner):
                 bank_files.append(os.path.join(self.work_dir, filename))
 
         if not bank_files:
-            print("No experience banks found!")
+            logger.warning("No experience banks found!")
             return
 
-        print(f"Found {len(bank_files)} experience banks")
+        logger.info(f"Found {len(bank_files)} experience banks")
 
         # Create merged bank and load all files
         merged = ExperienceBank()
@@ -526,20 +529,20 @@ class ParallelExperience(ReinforcementLearner):
                 bank = ExperienceBank.load(bank_file)
                 merged.merge_inplace(bank)
                 total += len(bank)
-                print(f"  Merged {len(bank)} from {os.path.basename(bank_file)}")
+                logger.info(f"  Merged {len(bank)} from {os.path.basename(bank_file)}")
             except Exception as e:
-                print(f"  Failed to load {bank_file}: {e}")
+                logger.error(f"  Failed to load {bank_file}: {e}")
 
         # Clean up individual bank files
         for bank_file in bank_files:
             try:
                 os.remove(bank_file)
             except Exception as e:
-                print(f"  Failed to delete {bank_file}: {e}")
+                logger.error(f"  Failed to delete {bank_file}: {e}")
 
         # Save merged bank
         merged.save(self.work_dir, "experience_bank.pkl")
-        print(f"  Saved merged bank with {total} total experiences")
+        logger.info(f"  Saved merged bank with {total} total experiences")
 
     async def start(
         self,
@@ -584,7 +587,7 @@ class ParallelExperience(ReinforcementLearner):
         learner_suffix = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-        print(f"Starting Parallel Experience RL Learner{learner_suffix}")
+        logger.info(f"Starting Parallel Experience RL Learner{learner_suffix}")
 
         update_task: Any = ()
 
@@ -644,7 +647,7 @@ class ParallelExperience(ReinforcementLearner):
             learner_prefix = (
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
-            print(f"{learner_prefix}Starting Iteration-{i}")
+            logger.info(f"{learner_prefix}Starting Iteration-{i}")
 
             # Check stop criterion if configured
             metric_value: Optional[float] = None
@@ -707,7 +710,7 @@ class ParallelExperience(ReinforcementLearner):
             # Await update result (extract state in next iteration)
             update_result = await update_task
 
-            print(f"{learner_prefix}Finished Iteration-{i}")
+            logger.info(f"{learner_prefix}Finished Iteration-{i}")
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -904,7 +907,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
 
-        print(
+        logger.info(
             f"Starting Parallel Reinforcement Learning "
             f"with {parallel_learners} learners"
         )
@@ -957,7 +960,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
                 return final_state
             except Exception as e:
-                print(f"RLLearner-{learner_id}] failed with error: {e}")
+                logger.error(f"RLLearner-{learner_id}] failed with error: {e}")
                 raise
 
         # Submit all learners asynchronously

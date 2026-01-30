@@ -3,6 +3,7 @@ import asyncio
 import os
 import sys
 import json
+import logging
 from pathlib import Path
 
 from rose.service.manager import ServiceManager
@@ -16,15 +17,20 @@ def get_job_id():
 
 def cmd_launch(args):
     """Start the Service Manager."""
+    # Configure logging for the service
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    
     job_id = args.job_id or get_job_id()
     print(f"Launching ROSE Service for Job ID: {job_id}")
     
     manager = ServiceManager(job_id)
-    try:
-        asyncio.run(manager.run())
-    except KeyboardInterrupt:
-        print("Service stopping...")
-        # graceful shutdown could be added here
+    # The loop in manager.run() handles signals if radical.asyncflow does,
+    # and the finally block ensures manager.shutdown() is called.
+    asyncio.run(manager.run())
 
 def cmd_submit(args):
     """Submit a workflow."""
@@ -33,8 +39,10 @@ def cmd_submit(args):
     
     try:
         req_id = client.submit_workflow(args.workflow_file)
-        print(f"Submitted workflow request. Request ID: {req_id}")
-        print(f"Note: This is the request ID. The Workflow ID (wf_id) will be assigned by the service.")
+        wf_id = ServiceClient.get_wf_id(req_id)
+        print(f"Submitted workflow request.")
+        print(f"Request ID:  {req_id}")
+        print(f"Workflow ID: {wf_id}")
     except Exception as e:
         print(f"Error submitting workflow: {e}")
         sys.exit(1)
@@ -73,6 +81,17 @@ def cmd_status(args):
         print(f"Error getting status: {e}")
         sys.exit(1)
 
+def cmd_shutdown(args):
+    """Shutdown the service."""
+    job_id = args.job_id or get_job_id()
+    client = ServiceClient(job_id)
+    try:
+        client.shutdown()
+        print(f"Shutdown request sent to service (Job ID: {job_id})")
+    except Exception as e:
+        print(f"Error sending shutdown request: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="ROSE Service CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +118,10 @@ def main():
     p_status = subparsers.add_parser("status", parents=[parent_parser], help="Get workflow status")
     p_status.add_argument("wf_id", nargs="?", help="Optional Workflow ID")
     p_status.set_defaults(func=cmd_status)
+
+    # Shutdown
+    p_shutdown = subparsers.add_parser("shutdown", parents=[parent_parser], help="Shutdown the service")
+    p_shutdown.set_defaults(func=cmd_shutdown)
 
     args = parser.parse_args()
     args.func(args)

@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import itertools
+import logging
 import warnings
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional, Union
@@ -10,6 +11,8 @@ from radical.asyncflow import WorkflowEngine
 from rose.uq.uq_learner import UQLearner, UQLearnerConfig
 
 from ..learner import IterationState, TaskConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SeqUQLearner(UQLearner):
@@ -101,7 +104,7 @@ class SeqUQLearner(UQLearner):
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
 
-        print(f"[Learner {self.learner_name}] Starting execution...")
+        logger.info(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
             prefix = (
                 f"[Learner {self.learner_name}] starting training for "
@@ -111,7 +114,7 @@ class SeqUQLearner(UQLearner):
             prefix = (
                 f"[Learner {self.learner_name}] starting training for Single Model: "
             )
-        print(f"{prefix} {model_names}")
+        logger.info(f"{prefix} {model_names}")
 
         async def _training_stage(
             learning_config: TaskConfig, model_name: str, iteration_count: int
@@ -168,14 +171,14 @@ class SeqUQLearner(UQLearner):
                     )
                     prediction_tasks.append(prediction_task)
 
-                print(
+                logger.info(
                     f"[{self.learner_name}-{model_name}] Completed training "
                     f"for {iteration_count + 1} iteration(s) "
                 )
                 return await asyncio.gather(*prediction_tasks)
 
             except Exception as e:
-                print(
+                logger.error(
                     f"[{self.learner_name}-{model_name}] "
                     f"Failed train/prediction with error: {e}"
                 )
@@ -206,7 +209,7 @@ class SeqUQLearner(UQLearner):
         # Main learning loop
         for i in iteration_range:
             if self.is_stopped:
-                print(
+                logger.info(
                     f"[Learner {self.learner_name}] Stop requested, "
                     "exiting learning loop."
                 )
@@ -215,7 +218,7 @@ class SeqUQLearner(UQLearner):
             # Clear transient state from previous iteration
             self.clear_state()
 
-            print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
+            logger.info(f"[Learner {self.learner_name}] Starting Iteration-{i}")
 
             # Check uncertainty if configured
             uq_task: tuple = ()
@@ -229,13 +232,13 @@ class SeqUQLearner(UQLearner):
                 uq_value = await uq_task
                 if self.is_stopped:
                     break
-                print(f"[Learner {self.learner_name}] {uq_value}")
+                logger.info(f"[Learner {self.learner_name}] {uq_value}")
 
                 uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                 self.register_state("uq_value", uq_stop_value)
 
                 if uq_model_stop:
-                    print(
+                    logger.info(
                         f"[Learner {self.learner_name}] UQ value reached "
                         f"its threshold - Stopping training for all models"
                         f" at iteration {i} with value: "
@@ -264,7 +267,7 @@ class SeqUQLearner(UQLearner):
                 break
             self._extract_state_from_result(al_results)
 
-            print(f"[Learner {self.learner_name}] {al_results}")
+            logger.info(f"[Learner {self.learner_name}] {al_results}")
 
             # Check stop criterion if configured
             metric_value: Optional[float] = None
@@ -297,7 +300,7 @@ class SeqUQLearner(UQLearner):
                     if model_stop:
                         stop_training[model_name] = True
                         should_stop_count += 1
-                        print(
+                        logger.info(
                             f"[Learner {self.learner_name}] Model "
                             f"{model_name} will stop training"
                             f" as stop criterion is met at iteration {i}"
@@ -312,7 +315,7 @@ class SeqUQLearner(UQLearner):
 
                 if should_stop_count == len(stops):
                     should_stop = True
-                    print(
+                    logger.info(
                         f"[Learner {self.learner_name}] Stopping "
                         f"criterion met for all models at iteration {i} "
                         f"with value: {stop_value}"
@@ -343,7 +346,7 @@ class SeqUQLearner(UQLearner):
             if self.is_stopped:
                 break
 
-            print(
+            logger.info(
                 f"[Learner {self.learner_name}] Completed "
                 f"{iteration_count + 1} iteration(s)"
             )
@@ -541,7 +544,7 @@ class ParallelUQLearner(SeqUQLearner):
         if len(learner_configs) != len(learner_names):
             raise ValueError("learner_configs length must match learner_names")
 
-        print(
+        logger.info(
             f"Starting Parallel UQ Active Learning with {len(learner_names)} learners"
         )
 
@@ -571,7 +574,7 @@ class ParallelUQLearner(SeqUQLearner):
                 sequential_config: Optional[UQLearnerConfig] = (
                     self._convert_to_sequential_config(learner_configs[learner_name])
                 )
-                print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
+                logger.info(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
 
                 # Run the sequential learner by iterating through start()
                 final_state = None
@@ -596,7 +599,7 @@ class ParallelUQLearner(SeqUQLearner):
                 return final_state
 
             except Exception as e:
-                print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
+                logger.error(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
                 raise
 
         # Submit all learners asynchronously

@@ -14,6 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
 from .models import Workflow, WorkflowState
+from .client import ServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -140,17 +141,17 @@ class WorkflowLoader:
 
             # Register using the appropriate decorator
             if name == "simulation":
-                print(f"Registering simulation task for workflow {wf_id}")
+                logger.info(f"Registering simulation task for workflow {wf_id}")
                 learner.simulation_task(as_executable=as_executable)(task_func)
             elif name == "training":
-                print(f"Registering training task for workflow {wf_id}")
+                logger.info(f"Registering training task for workflow {wf_id}")
                 learner.training_task(as_executable=as_executable)(task_func)
             elif name == "active_learn":
-                print(f"Registering active_learn task for workflow {wf_id}")
+                logger.info(f"Registering active_learn task for workflow {wf_id}")
                 learner.active_learn_task(as_executable=as_executable)(task_func)
             elif name == "criterion":
                 # Special handling for criterion
-                print(f"Registering criterion task for workflow {wf_id}")
+                logger.info(f"Registering criterion task for workflow {wf_id}")
                 threshold = comp_def.get("threshold", 0.0)
                 metric = comp_def.get("metric", "CUSTOM")
                 learner.as_stop_criterion(metric_name=metric, threshold=threshold, as_executable=as_executable)(task_func)
@@ -185,12 +186,9 @@ class ServiceManager:
     async def initialize(self):
         """Setup directories and backend."""
         self.requests_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize AsyncFlow with Local Backend (or Slurm if needed, but 'service runs inside job')
-        # If running inside a job, we usually use Resource='local.localhost' or similar to spawn tasks 
-        # on the allocated resources.
-        engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
-        self.engine = await WorkflowEngine.create(engine)
+
+        backend = await ConcurrentExecutionBackend(ProcessPoolExecutor())
+        self.engine = await WorkflowEngine.create(backend)
         logger.info(f"Service initialized at {self.service_root}")
 
     async def _process_requests(self):
@@ -213,6 +211,9 @@ class ServiceManager:
                     await self._handle_submit(req.get("id"), payload)
                 elif action == "cancel":
                     await self._handle_cancel(payload)
+                elif action == "shutdown":
+                    logger.info("Shutdown request received via IPC")
+                    self._shutdown = True
                 
                 # Remove request file after processing
                 req_file.unlink()
@@ -234,7 +235,7 @@ class ServiceManager:
 
         # Use request ID as part of wf_id or generate new?
         # User goal: "assigned a unique workflow identifier (wf_id)"
-        wf_id = f"wf.{req_id[:8]}" 
+        wf_id = ServiceClient.get_wf_id(req_id)
         
         wf = Workflow(wf_id=wf_id, state=WorkflowState.INITIALIZING, workflow_file=wf_file)
         self.workflows[wf_id] = wf
@@ -272,6 +273,7 @@ class ServiceManager:
         """Driver loop for a single workflow."""
         wf.state = WorkflowState.RUNNING
         wf.start_time = asyncio.get_event_loop().time()
+        logger.info(f"Starting workflow {wf.wf_id} ({wf.workflow_file})")
         self._update_registry()
         
         try:
@@ -293,6 +295,7 @@ class ServiceManager:
                     max_iter=max_iter,
                     learner_configs=l_configs
                 )
+                logger.info(f"Workflow {wf.wf_id} - Parallel execution of {parallel_learners} learners finished")
                 
                 # Update stats once at the end for parallel (since it's not yielding)
                 final_results = []
@@ -311,14 +314,17 @@ class ServiceManager:
                     initial_config=initial_l_config
                 ):
                     wf.stats = state.to_dict()
+                    logger.info(f"Workflow {wf.wf_id} - Iteration {state.iteration} completed (metric: {state.metric_value})")
                     self._update_registry()
             
             wf.state = WorkflowState.COMPLETED
-            
+            logger.info(f"Workflow {wf.wf_id} completed successfully")
         except Exception as e:
-            logger.error(f"Workflow {wf.wf_id} failed: {e}")
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
+            logger.error(f"Workflow {wf.wf_id} failed: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             wf.end_time = asyncio.get_event_loop().time()
             self._update_registry()
@@ -333,31 +339,42 @@ class ServiceManager:
 
     async def run(self):
         """Main Service Loop."""
-        await self.initialize()
-        logger.info("Service Manager Running")
-        
-        while not self._shutdown:
-            await self._process_requests()
-            await asyncio.sleep(1) # Polling interval
+        try:
+            await self.initialize()
+            logger.info("Service Manager Running")
+            
+            while not self._shutdown:
+                await self._process_requests()
+                await asyncio.sleep(0.1) # Polling interval
+        finally:
+            await self.shutdown()
 
     async def shutdown(self):
         self._shutdown = True
-        logger.info("Service Shutting Down")
+        logger.info("Service Shutting Down...")
         
         # 1. Stop all learners
-        for wf in self.workflows.values():
-            if wf.learner_instance:
-                wf.learner_instance.stop()
+        if self.workflows:
+            logger.info(f"Stopping {len(self.workflows)} workflows")
+            for wf in self.workflows.values():
+                if wf.learner_instance:
+                    wf.learner_instance.stop()
         
         # 2. Cancel and wait for learner tasks
         if self._learner_tasks:
+            logger.info(f"Canceling {len(self._learner_tasks)} learner tasks")
             for task in self._learner_tasks:
                 if not task.done():
                     task.cancel()
             await asyncio.gather(*self._learner_tasks, return_exceptions=True)
             self._learner_tasks.clear()
+            logger.info("All learner tasks stopped")
 
         # 3. Shutdown engine
         if self.engine:
+            logger.info("Shutting down workflow engine")
             await self.engine.shutdown()
             self.engine = None
+            logger.info("Workflow engine shut down")
+        
+        logger.info("Service shutdown complete")

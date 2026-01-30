@@ -1,3 +1,4 @@
+import logging
 from functools import wraps
 from typing import Any, Callable, Optional, Union
 
@@ -5,6 +6,8 @@ import typeguard
 from radical.asyncflow import WorkflowEngine
 
 from ..learner import Learner, LearnerConfig, TaskConfig
+
+logger = logging.getLogger(__name__)
 
 
 class UQLearnerConfig(LearnerConfig):
@@ -148,14 +151,14 @@ class UQLearner(Learner):
             if self.compare_metric(
                 uq_metric_name, uncertainty_value, threshold, operator
             ):
-                print(
+                logger.info(
                     f"Stop uncertainty metric: {uq_metric_name} "
                     f"is met with value of: {uncertainty_value} "
                     ". Breaking the active learning loop"
                 )
                 return True, uncertainty_value
             else:
-                print(
+                logger.info(
                     f"Uncertainty metric: {uq_metric_name} "
                     f"is not met yet ({uncertainty_value})."
                 )

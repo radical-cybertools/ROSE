@@ -1,8 +1,11 @@
 import json
 import uuid
 import time
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, List
+
+logger = logging.getLogger(__name__)
 
 class ServiceClient:
     """Client for interacting with the ROSE Service via File-based IPC.
@@ -11,6 +14,11 @@ class ServiceClient:
         job_id (str): The SLURM job ID where the service is running.
         service_root (Path): Root directory for service IPC (~/.rose/services/<job_id>).
     """
+
+    @staticmethod
+    def get_wf_id(req_id: str) -> str:
+        """Derive Workflow ID from Request ID."""
+        return f"wf.{req_id[:8]}"
 
     def __init__(self, job_id: str):
         self.job_id = job_id
@@ -22,7 +30,7 @@ class ServiceClient:
             # It's possible the service hasn't started creating dirs yet, 
             # or the job ID is wrong. We don't raise immediately to allow 
             # retry logic in scripts, but warn if needed.
-            print(f"Warning: Service root {self.service_root} does not exist yet.")
+            logger.warning(f"Service root {self.service_root} does not exist yet.")
 
     def _write_request(self, action: str, payload: Dict[str, Any]) -> str:
         """Write a request file to the requests directory."""
@@ -64,6 +72,10 @@ class ServiceClient:
             wf_id (str): The workflow ID to cancel.
         """
         return self._write_request("cancel", {"wf_id": wf_id})
+
+    def shutdown(self) -> str:
+        """Request graceful shutdown of the service."""
+        return self._write_request("shutdown", {})
 
     def get_workflow_status(self, wf_id: str) -> Optional[Dict[str, Any]]:
         """Get the current status of a workflow from the registry.

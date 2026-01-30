@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Optional, Union
@@ -10,6 +11,8 @@ from radical.asyncflow import (
 )
 
 from .metrics import LearningMetrics as Metrics
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -603,14 +606,14 @@ class Learner:
             self.iteration += 1
 
             if self.compare_metric(metric_name, metric_value, threshold, operator):
-                print(
+                logger.info(
                     f"stop criterion metric: {metric_name} "
                     f"is met with value of: {metric_value} "
                     ". Breaking the active learning loop"
                 )
                 return True, metric_value
             else:
-                print(
+                logger.info(
                     f"stop criterion metric: {metric_name} "
                     f"is not met yet ({metric_value})."
                 )

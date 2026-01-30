@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import logging
 import warnings
 from collections.abc import AsyncIterator, Coroutine, Iterator
 from typing import Any, Optional, Union
@@ -7,6 +8,8 @@ from typing import Any, Optional, Union
 from radical.asyncflow import WorkflowEngine
 
 from ..learner import IterationState, Learner, LearnerConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SequentialActiveLearner(Learner):
@@ -124,7 +127,7 @@ class SequentialActiveLearner(Learner):
         learner_suffix = (
             f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         )
-        print(f"Starting Active Learner{learner_suffix}")
+        logger.info(f"Starting Active Learner{learner_suffix}")
 
         # Initialize task references
         sim_task: Any = ()
@@ -168,7 +171,7 @@ class SequentialActiveLearner(Learner):
                 f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             )
             if self.is_stopped:
-                print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                logger.info(f"{learner_prefix}Stop requested, exiting learning loop.")
                 break
 
             # Check for pending config
@@ -186,7 +189,7 @@ class SequentialActiveLearner(Learner):
             if train_result is not None:
                 self._extract_state_from_result(train_result)
 
-            print(f"{learner_prefix}Starting Iteration-{i}")
+            logger.info(f"{learner_prefix}Starting Iteration-{i}")
 
             # Get iteration-specific AL config
             acl_config = self._get_iteration_task_config(
@@ -516,10 +519,10 @@ class ParallelActiveLearner(Learner):
 
                 return final_state
             except Exception as e:
-                print(f"ActiveLearner-{learner_id}] failed with error: {e}")
+                logger.error(f"ActiveLearner-{learner_id}] failed with error: {e}")
                 raise
 
-        print(f"Starting Parallel Active Learning with {parallel_learners} learners")
+        logger.info(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
         # Submit all learners asynchronously
         learners: list[Coroutine] = [

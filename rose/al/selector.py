@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import logging
 from collections.abc import Iterator
 from typing import Any, Callable, Optional, Union
 
@@ -7,6 +8,8 @@ from radical.asyncflow import WorkflowEngine
 
 from ..learner import Learner, LearnerConfig, TaskConfig
 from .active_learner import SequentialActiveLearner
+
+logger = logging.getLogger(__name__)
 
 
 class AlgorithmSelector(Learner):
@@ -170,7 +173,7 @@ class AlgorithmSelector(Learner):
         # Initialize algorithm configs if not provided
         algorithm_configs = algorithm_configs or {}
 
-        print(
+        logger.info(
             f"Starting algorithm selection with "
             f"{len(self.active_learn_functions)} algorithms: "
             f"{list(self.active_learn_functions.keys())}"
@@ -207,7 +210,7 @@ class AlgorithmSelector(Learner):
                     )
                 )
 
-                print(f"[Algorithm-{algorithm_name}] Starting pipeline")
+                logger.info(f"[Algorithm-{algorithm_name}] Starting pipeline")
 
                 # Track iterations and results for this algorithm
                 iteration_count: int = 0
@@ -250,7 +253,7 @@ class AlgorithmSelector(Learner):
 
                 # Main learning loop
                 for i in iteration_range:
-                    print(f"[Algorithm-{algorithm_name}] Starting Iteration-{i}")
+                    logger.info(f"[Algorithm-{algorithm_name}] Starting Iteration-{i}")
 
                     # Get iteration-specific configurations
                     acl_config: TaskConfig = (
@@ -287,6 +290,11 @@ class AlgorithmSelector(Learner):
                         iteration_count = i + 1
 
                         if should_stop:
+                            logger.info(
+                                f"[Algorithm-{algorithm_name}] Stop criterion met "
+                                f"with value of: {final_result}. "
+                                "Breaking the active learning loop."
+                            )
                             break
 
                     # Prepare next iteration tasks
@@ -326,7 +334,7 @@ class AlgorithmSelector(Learner):
                 }
                 self.algorithm_results[algorithm_name] = result_dict
 
-                print(
+                logger.info(
                     f"[Algorithm-{algorithm_name}] Completed "
                     f" with {iteration_count} iterations, final result: {final_result}"
                 )
@@ -334,7 +342,7 @@ class AlgorithmSelector(Learner):
                 return self.algorithm_results[algorithm_name]
 
             except Exception as e:
-                print(f"[Algorithm-{algorithm_name}] Failed with error: {e}")
+                logger.error(f"[Algorithm-{algorithm_name}] Failed with error: {e}")
                 # Store failure information
                 error_dict: dict[str, Any] = {
                     "iterations": 0,
@@ -345,7 +353,7 @@ class AlgorithmSelector(Learner):
                 raise
 
         # Submit all algorithm pipelines asynchronously
-        print(self.active_learn_functions)
+        logger.debug(self.active_learn_functions)
         futures: list[Any] = [
             _run_algorithm_pipeline(al_name, al_task)
             for al_name, al_task in self.active_learn_functions.items()
@@ -360,7 +368,7 @@ class AlgorithmSelector(Learner):
                 zip(self.active_learn_functions.keys(), results)
             ):
                 if isinstance(result, Exception):
-                    print(f"[Algorithm-{algorithm_name}] Failed: {result}")
+                    logger.error(f"[Algorithm-{algorithm_name}] Failed: {result}")
                     self.algorithm_results[algorithm_name] = {
                         "iterations": 0,
                         "last_result": float("inf"),
@@ -377,7 +385,7 @@ class AlgorithmSelector(Learner):
             }
 
         except Exception as e:
-            print(f"Error during algorithm selection: {e}")
+            logger.error(f"Error during algorithm selection: {e}")
             raise
 
     def _select_best_algorithm(self) -> None:
@@ -415,7 +423,7 @@ class AlgorithmSelector(Learner):
 
         self.best_pipeline_name, self.best_pipeline_stats = sorted_algorithms[0]
 
-        print(
+        logger.info(
             f"Best algorithm is '{self.best_pipeline_name}' "
             f"with {self.best_pipeline_stats['iterations']} iteration(s) "
             f"and final metric result {self.best_pipeline_stats['last_result']}"
