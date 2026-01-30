@@ -282,7 +282,7 @@ class ServiceManager:
             
             # Identify learner type and call appropriately
             if isinstance(wf.learner_instance, ParallelActiveLearner):
-                parallel_learners = learner_cfg.get("parallel_learners", 2)
+                parallel_learners = learner_cfg.get("parallel_learners", workflow_def.get("parallel_learners", 2))
                 
                 # ParallelActiveLearner.start doesn't take initial_config, 
                 # but we can map it to learner_configs
