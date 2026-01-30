@@ -2,6 +2,10 @@
 
 All notable changes to the ROSE project will be documented in this file.
 
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
 ### Added
@@ -19,4 +23,3 @@ All notable changes to the ROSE project will be documented in this file.
 - `learner.teach()`: This method is deprecated and will be removed in a future version. Users should migrate to the `async for state in learner.start()` pattern.
 
 ---
-*Generated on 2026-01-30*
