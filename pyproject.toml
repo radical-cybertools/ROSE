@@ -24,6 +24,9 @@ Homepage = "https://github.com/radical-cybertools/ROSE"
 Issues = "https://github.com/radical-cybertools/ROSE/issues"
 Documentation = "https://radical-cybertools.github.io/ROSE/"
 
+[project.scripts]
+rose = "rose.service.api.cli:main"
+
 [project.optional-dependencies]
 lint = ["ruff"]
 
