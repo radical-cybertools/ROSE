@@ -1,20 +1,18 @@
 import asyncio
-import sys, os
+import os
+import sys
 
-from rose import TaskConfig
-from rose import LearnerConfig
+from radical.asyncflow import RadicalExecutionBackend, WorkflowEngine
 
+from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
 
 
 async def run_al_parallel():
     engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
     asyncflow = await WorkflowEngine.create(engine)
-    
+
     al = ParallelActiveLearner(asyncflow)
     code_path = f'{sys.executable} {os.getcwd()}'
 
@@ -41,8 +39,8 @@ async def run_al_parallel():
     async def check_mse(*args, **kwargs):
         return f'{code_path}/check_mse.py'
 
-    # Run with custom configs
-    results = await al.teach(
+    # Start the parallel active learning process with custom configs
+    results = await al.start(
         parallel_learners=3,
         learner_configs=[
             # Learner 0: Same config for all iterations (your current pattern)
@@ -55,12 +53,13 @@ async def run_al_parallel():
                     0: TaskConfig(kwargs={"--n_labeled": "100", "--n_features": 2}),
                     5: TaskConfig(kwargs={"--n_labeled": "200", "--n_features": 2}),
                     10: TaskConfig(kwargs={"--n_labeled": "400", "--n_features": 2}),
-                    -1: TaskConfig(kwargs={"--n_labeled": "500", "--n_features": 2})  # default
+                    -1: TaskConfig(kwargs={"--n_labeled": "500", "--n_features": 2}),
                 }
             ),
             None,
         ]
     )
+    print(f"Parallel learning completed. Results: {results}")
 
     await engine.shutdown()
 

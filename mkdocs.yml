@@ -92,6 +92,8 @@ nav:
       - 7.Reinforcement Learning: user-guide/basic-rl-workflow.md
       - 8.Experience Banks: user-guide/experience.md
       - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
+  - Integrations:
+      - MLflow: integrations/mlflow.md
 
 extra_css:
   - styles/custom.css

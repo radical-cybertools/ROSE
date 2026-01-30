@@ -37,7 +37,7 @@ async def custom_al():
     async def check_accuracy(*args):
         return f'{code_path}/check_accuracy.py'
 
-    async def teach():
+    async def start():
         # 10 iterations of active learn
         for acl_iter in range(10):
             print(f'Starting Iteration-{acl_iter}')
@@ -52,7 +52,7 @@ async def custom_al():
                 print(f"Accuracy ({metric_val}) met user's threshold, breaking...")
                 break
 
-    await teach()
+    await start()
     await learner.shutdown()
 
 if __name__ == "__main__":

@@ -1,11 +1,9 @@
+import asyncio
 import os
 import sys
-import asyncio
-
 from concurrent.futures import ThreadPoolExecutor
 
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ConcurrentExecutionBackend
+from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
 
 from rose.metrics import GREATER_THAN_THRESHOLD
 from rose.rl.reinforcement_learner import SequentialReinforcementLearner
@@ -37,7 +35,10 @@ async def rose_rl():
         return f'{code_path}/check_reward.py {data_path}'
 
 
-    await rl.learn()
+    # Start the reinforcement learning process
+    async for state in rl.start():
+        print(f"Iteration {state.iteration}: metric={state.metric_value}")
+
     await rl.shutdown()
 
 

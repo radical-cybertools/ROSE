@@ -100,7 +100,7 @@ async def check_mse(*args, **kwargs):
 
 ### Approach 1: Static Configuration
 ```python
-results = await acl.teach(
+results = await acl.start(
     parallel_learners=2,
     max_iter=10,
     learner_configs=[
@@ -118,7 +118,7 @@ results = await acl.teach(
 
 ### Approach 2: Per-Iteration Configuration
 ```python
-results = await acl.teach(
+results = await acl.start(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
@@ -166,7 +166,7 @@ adaptive_train = acl.create_adaptive_schedule('training',
         }
     })
 
-results = await acl.teach(
+results = await acl.start(
     parallel_learners=2,
     max_iter=20,
     learner_configs=[
@@ -190,7 +190,7 @@ adaptive_sim = acl.create_adaptive_schedule('simulation',
         }
     })
 
-results = await acl.teach(
+results = await acl.start(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[

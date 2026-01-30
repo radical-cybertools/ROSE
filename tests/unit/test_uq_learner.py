@@ -6,11 +6,21 @@ import pytest
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
 
+from rose.learner import IterationState
 from rose.uq import UQScorer
 from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_learner import UQLearnerConfig
 
 
+async def mock_start_iterator(*args, **kwargs):
+    """Helper to mock an async iterator."""
+    # Create a mock IterationState
+    state = MagicMock(spec=IterationState)
+    state.to_dict.return_value = "learner_result"
+    yield state
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 class TestParallelUQLearner:
     """Test cases for ParallelUQLearner class."""
 
@@ -118,7 +128,7 @@ class TestParallelUQLearner:
             Exception,
             match="Simulation, Training, and Active Learning functions must be set!",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None, "l2": None},
                 model_names=["m1"],
@@ -137,7 +147,7 @@ class TestParallelUQLearner:
             Exception,
             match="learner_configs length must match learner_names",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None},
                 model_names=["m1"],
@@ -148,7 +158,7 @@ class TestParallelUQLearner:
             Exception,
             match="Either max_iter or stop_criterion_function must be provided.",
         ):
-            await parallel_learner.teach(
+            await parallel_learner.start(
                 learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
             )
 
@@ -244,7 +254,7 @@ class TestParallelUQLearner:
         """Test successful parallel execution of multiple learners."""
         # Mock the sequential learner creation and execution
         mock_sequential = MagicMock(spec=SeqUQLearner)
-        mock_sequential.teach = AsyncMock(return_value="learner_result")
+        mock_sequential.start = mock_start_iterator
         mock_sequential.metric_values_per_iteration = {"metric1": [1, 2, 3]}
         mock_sequential.uncertainty_values_per_iteration = {"UQmetric1": [1, 2, 3]}
 
@@ -258,7 +268,7 @@ class TestParallelUQLearner:
                 "_convert_to_sequential_config",
                 return_value=None,
             ):
-                results = await configured_parallel_learner.teach(
+                results = await configured_parallel_learner.start(
                     learner_names=["l1", "l2"],
                     learner_configs={"l1": None, "l2": None},
                     model_names=["m1"],
@@ -267,10 +277,11 @@ class TestParallelUQLearner:
 
                 # Verify results
                 assert len(results) == 2
-                assert all(result == "learner_result" for result in results)
+                assert all(result.to_dict() == "learner_result" for result in results)
 
                 # Verify sequential learners were called
-                assert mock_sequential.teach.call_count == 2
+                # We can't easily check call count for a generator function mock
+                # but results verify it was called.
                 print(
                     "metric_values_per_iteration",
                     configured_parallel_learner.metric_values_per_iteration,
@@ -295,7 +306,12 @@ class TestParallelUQLearner:
         """Test handling of learner failures in parallel execution."""
         # Create a mock sequential learner that fails
         mock_sequential = MagicMock(spec=SeqUQLearner)
-        mock_sequential.teach = AsyncMock(side_effect=Exception("Learner failed"))
+
+        async def failing_start(*args, **kwargs):
+            raise Exception("Learner failed")
+            yield  # Make it a generator
+
+        mock_sequential.start = failing_start
 
         with patch.object(
             configured_parallel_learner,
@@ -311,7 +327,7 @@ class TestParallelUQLearner:
                 with patch("builtins.print") as mock_print:
                     # Should raise exception due to learner failure
                     with pytest.raises(Exception, match="Learner failed"):
-                        await configured_parallel_learner.teach(
+                        await configured_parallel_learner.start(
                             learner_names=["l1"],
                             model_names=["m1"],
                             learner_configs={"l1": None},

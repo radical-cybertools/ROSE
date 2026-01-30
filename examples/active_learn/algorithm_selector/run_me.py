@@ -1,12 +1,12 @@
+import asyncio
 import os
 import sys
-import asyncio
+
+from radical.asyncflow import RadicalExecutionBackend, WorkflowEngine
 
 from rose.al.selector import AlgorithmSelector
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
 
 async def select_algorithm():
     engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
@@ -39,8 +39,8 @@ async def select_algorithm():
     async def check_mse(*args):
         return f'{code_path}/check_mse.py'
 
-    # Start the teaching process
-    await als.teach_and_select(max_iter=4)
+    # Start the learning process
+    await als.start(max_iter=4)
     await als.shutdown()
 
 if __name__ == "__main__":
