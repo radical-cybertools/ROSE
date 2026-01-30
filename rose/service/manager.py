@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import shutil
-import importlib.util
+import importlib
 import sys
 import logging
 from pathlib import Path
@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, List, Callable
 from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
 from concurrent.futures import ProcessPoolExecutor
 
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
 from .models import Workflow, WorkflowState
 
@@ -75,17 +75,34 @@ class WorkflowLoader:
                      if v: cmd_parts.append(f"--{k}")
                 else:
                      cmd_parts.append(f"--{k} {v}")
-            
-            print(f"Task command: {' '.join(cmd_parts)}")
+
             return " ".join(cmd_parts)
         return task_func
 
     @classmethod
-    def create_learner(cls, wf_id: str, workflow_def: Dict[str, Any], asyncflow: WorkflowEngine) -> SequentialActiveLearner:
-        """Create and configure a SequentialActiveLearner."""
+    def create_learner(cls, wf_id: str, workflow_def: Dict[str, Any], asyncflow: WorkflowEngine):
+        """Create and configure a Learner based on the YAML definition."""
+        
+        learner_def = workflow_def.get("learner", {})
+        l_type = learner_def.get("type", "SequentialActiveLearner")
+        l_path = learner_def.get("path")
+        
+        # 1. Instantiate Learner Class
+        if l_path:
+            # Load custom learner class
+            try:
+                module_name, class_name = l_path.rsplit(".", 1)
+                module = importlib.import_module(module_name)
+                learner_cls = getattr(module, class_name)
+            except (ValueError, ImportError, AttributeError) as e:
+                raise ImportError(f"Could not import learner class '{l_path}': {e}")
+        elif l_type == "SequentialActiveLearner":
+            learner_cls = SequentialActiveLearner
+        else:
+            # Try to find it in rose.al or similar if we want to support more built-ins
+            raise ValueError(f"Unknown learner type '{l_type}' and no path provided.")
 
-        # 1. Create Learner
-        learner = SequentialActiveLearner(asyncflow)
+        learner = learner_cls(asyncflow)
         learner.learner_id = wf_id # Using wf_id (str) might need adaptation if learner_id expects int in some places? 
         # rose/active_learner.py: learner_id (Optional[int]). 
         # I should probably hash the wf_id or just set it if it accepts Any?
@@ -120,17 +137,20 @@ class WorkflowLoader:
                 # Script
                 task_func = cls._create_script_task_factory(cpath)
                 as_executable = True
-                
+
             # Register using the appropriate decorator
             if name == "simulation":
-                print(f"Registering simulation task: {task_func}")
+                print(f"Registering simulation task for workflow {wf_id}")
                 learner.simulation_task(as_executable=as_executable)(task_func)
             elif name == "training":
+                print(f"Registering training task for workflow {wf_id}")
                 learner.training_task(as_executable=as_executable)(task_func)
             elif name == "active_learn":
+                print(f"Registering active_learn task for workflow {wf_id}")
                 learner.active_learn_task(as_executable=as_executable)(task_func)
             elif name == "criterion":
                 # Special handling for criterion
+                print(f"Registering criterion task for workflow {wf_id}")
                 threshold = comp_def.get("threshold", 0.0)
                 metric = comp_def.get("metric", "CUSTOM")
                 learner.as_stop_criterion(metric_name=metric, threshold=threshold, as_executable=as_executable)(task_func)
@@ -248,21 +268,50 @@ class ServiceManager:
             wf.state = WorkflowState.CANCELED
             self._update_registry()
 
-    async def _run_learner(self, wf: Workflow, config: Dict[str, Any], initial_l_config: Optional[LearnerConfig] = None):
+    async def _run_learner(self, wf: Workflow, workflow_def: Dict[str, Any], initial_l_config: Optional[LearnerConfig] = None):
         """Driver loop for a single workflow."""
         wf.state = WorkflowState.RUNNING
         wf.start_time = asyncio.get_event_loop().time()
         self._update_registry()
         
         try:
-            max_iter = config.get("max_iterations", 0)
+            learner_cfg = workflow_def.get("learner", {})
+            max_iter = learner_cfg.get("max_iterations", workflow_def.get("max_iterations", 0))
             
-            async for state in wf.learner_instance.start(max_iter=max_iter, initial_config=initial_l_config):
-                # Update stats
-                wf.stats = state.to_dict()
-                # If we want to support granular status updates, update registry here
-                # (maybe throttled)
+            # Identify learner type and call appropriately
+            if isinstance(wf.learner_instance, ParallelActiveLearner):
+                parallel_learners = learner_cfg.get("parallel_learners", 2)
+                
+                # ParallelActiveLearner.start doesn't take initial_config, 
+                # but we can map it to learner_configs
+                l_configs = None
+                if initial_l_config:
+                    l_configs = [initial_l_config] * parallel_learners
+                
+                results = await wf.learner_instance.start(
+                    parallel_learners=parallel_learners,
+                    max_iter=max_iter,
+                    learner_configs=l_configs
+                )
+                
+                # Update stats once at the end for parallel (since it's not yielding)
+                final_results = []
+                for res in results:
+                    if hasattr(res, "to_dict"):
+                        final_results.append(res.to_dict())
+                    else:
+                        final_results.append(str(res))
+                
+                wf.stats = {"parallel_results": final_results}
                 self._update_registry()
+            else:
+                # SequentialActiveLearner or other async iterator
+                async for state in wf.learner_instance.start(
+                    max_iter=max_iter, 
+                    initial_config=initial_l_config
+                ):
+                    wf.stats = state.to_dict()
+                    self._update_registry()
             
             wf.state = WorkflowState.COMPLETED
             
