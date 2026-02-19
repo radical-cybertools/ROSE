@@ -1,0 +1,24 @@
+learner:
+  path: rose.al.active_learner.ParallelActiveLearner
+
+components:
+  simulation:
+    type: script
+    path: /home/aymen/ve/raas/bin/python3
+    config:
+      args: ["/home/aymen/RADICAL/ROSE-AS-A-SERVICE/ROSE/examples/active_learn/basic/sim.py"]
+  training:
+    type: script
+    path: /home/aymen/ve/raas/bin/python3
+    config:
+      args: ["/home/aymen/RADICAL/ROSE-AS-A-SERVICE/ROSE/examples/active_learn/basic/train.py"]
+  active_learn:
+    type: script
+    path: /home/aymen/ve/raas/bin/python3
+    config:
+      args: ["/home/aymen/RADICAL/ROSE-AS-A-SERVICE/ROSE/examples/active_learn/basic/active.py"]
+
+config:
+  parallel_learners: 4
+  max_iterations: 10
+  work_dir: /tmp/rose_test
