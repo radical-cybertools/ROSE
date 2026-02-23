@@ -64,7 +64,7 @@ The service starts and blocks, printing log output as workflows are received and
 To use a custom job ID (e.g. for running multiple isolated services):
 
 ```bash
-rose launch --job-id my_session
+rose launch --job-id job.000001
 ```
 
 ### Terminal 2 — Submit and Monitor a Workflow
@@ -72,7 +72,7 @@ rose launch --job-id my_session
 **Submit a workflow:**
 
 ```bash
-rose submit examples/service/service_test.yaml
+rose submit --job-id job.000001 examples/service/service_test.yaml
 ```
 
 Output:
