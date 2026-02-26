@@ -112,18 +112,14 @@ async def test_uqlearner_runs_with_mock_functions():
 
     # Patch internal helpers
     learner._get_iteration_task_config = MagicMock(return_value={"kwargs": {}})
-    learner._register_task = AsyncMock(
-        side_effect=lambda config, deps=None: {"result": 42}
-    )
+    learner._register_task = AsyncMock(side_effect=lambda config, deps=None: {"result": 42})
     learner._check_stop_criterion = MagicMock(return_value=(True, 0.1))
     learner._check_uncertainty = MagicMock(return_value=(False, 0.5))
     learner.build_iteration_state = MagicMock()
 
     # Use the new start() method
     iteration_count = 0
-    async for state in learner.start(
-        model_names=["modelA"], max_iter=1, num_predictions=1
-    ):
+    async for state in learner.start(model_names=["modelA"], max_iter=1, num_predictions=1):
         iteration_count += 1
         # Verify the iteration ran
         assert state is not None

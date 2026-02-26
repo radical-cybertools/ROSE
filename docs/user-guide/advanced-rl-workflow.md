@@ -1,33 +1,33 @@
-In addition to basic reinforcement learning (RL) workflows, ROSE supports advanced RL workflows that can run multiple environment instances in parallel. 
+In addition to basic reinforcement learning (RL) workflows, ROSE supports advanced RL workflows that can run multiple environment instances in parallel.
 
-The 'ParallelLearner' gives you the ability to run multiple environment tasks simultaneously, each with different parameters, and then merge their experiences for training. 
+The 'ParallelLearner' gives you the ability to run multiple environment tasks simultaneously, each with different parameters, and then merge their experiences for training.
 
 This is particularly useful for scenarios where you want to explore different configurations or hyperparameters in parallel, speeding up the learning process.
-```sh            
+```sh
 
                 +-------------------+
                 |        RL WF      |
                 +-------------------+
                             │
-  +-------------------------+---------------------------+  
-  |             (N Environment Tasks Parallel)          | 
-  +---------------+  +---------------+  +---------------+  
-  | Environment 1 |  | Environment 2 |  | Environment 3 |  
-  +---------------+  +---------------+  +---------------+  
+  +-------------------------+---------------------------+
+  |             (N Environment Tasks Parallel)          |
+  +---------------+  +---------------+  +---------------+
+  | Environment 1 |  | Environment 2 |  | Environment 3 |
+  +---------------+  +---------------+  +---------------+
           |                |                    |
           └────────────────┼────────────────────┘
                            │
-                    +------v------+ 
-                    |    Merge    | 
-                    +------+------+ 
-                           │        
-                    +------v------+ 
-                    |   Update    | 
-                    +------+------+ 
-                           │        
-                    +------v------+ 
-                    |    Test     | 
-                    +-------------+ 
+                    +------v------+
+                    |    Merge    |
+                    +------+------+
+                           │
+                    +------v------+
+                    |   Update    |
+                    +------+------+
+                           │
+                    +------v------+
+                    |    Test     |
+                    +-------------+
 ```
 Import ROSE parallel RL modules:
 

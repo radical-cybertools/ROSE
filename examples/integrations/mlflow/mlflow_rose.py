@@ -1,5 +1,4 @@
-"""
-MLflow + ROSE Integration Example: Complementary Relationship
+"""MLflow + ROSE Integration Example: Complementary Relationship.
 
 This example demonstrates how ROSE and MLflow work together:
 - ROSE: Orchestrates the active learning workflow (execution engine)
@@ -20,28 +19,27 @@ Usage:
 """
 
 import asyncio
-from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 import pickle
 import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
-
-import numpy as np
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from pathlib import Path
 
 # MLflow for experiment tracking
 import mlflow
+import numpy as np
 from mlflow.models import infer_signature
 
 # ROSE for workflow orchestration
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
 from rose.al import SequentialActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-
 
 # =============================================================================
 # Configuration
@@ -64,11 +62,7 @@ def target_function(X: np.ndarray) -> np.ndarray:
     This simulates a real-world scenario where we have an expensive
     simulation that we want to approximate with a surrogate model.
     """
-    return (
-        np.sin(2 * np.pi * X) +
-        0.5 * np.cos(4 * np.pi * X) +
-        0.1 * np.random.randn(*X.shape)
-    )
+    return np.sin(2 * np.pi * X) + 0.5 * np.cos(4 * np.pi * X) + 0.1 * np.random.randn(*X.shape)
 
 
 # =============================================================================
@@ -77,14 +71,17 @@ def target_function(X: np.ndarray) -> np.ndarray:
 def save_data(X_labeled, y_labeled, X_pool, y_pool, model=None, metadata=None):
     """Save data and model state to file."""
     with open(DATA_FILE, "wb") as f:
-        pickle.dump({
-            "X_labeled": X_labeled,
-            "y_labeled": y_labeled,
-            "X_pool": X_pool,
-            "y_pool": y_pool,
-            "model": model,
-            "metadata": metadata or {},
-        }, f)
+        pickle.dump(
+            {
+                "X_labeled": X_labeled,
+                "y_labeled": y_labeled,
+                "X_pool": X_pool,
+                "y_pool": y_pool,
+                "model": model,
+                "metadata": metadata or {},
+            },
+            f,
+        )
 
 
 def load_data():
@@ -96,12 +93,13 @@ def load_data():
 # =============================================================================
 # ROSE Task Functions
 # =============================================================================
-async def simulation(*args, n_initial: int = N_INITIAL_SAMPLES,
-                     n_pool: int = N_POOL_SAMPLES) -> dict:
+async def simulation(
+    *args, n_initial: int = N_INITIAL_SAMPLES, n_pool: int = N_POOL_SAMPLES
+) -> dict:
     """Generate initial labeled data and unlabeled pool.
 
-    In real applications, this would run expensive HPC simulations.
-    ROSE orchestrates when and where these simulations execute.
+    In real applications, this would run expensive HPC simulations. ROSE orchestrates when and where
+    these simulations execute.
     """
     np.random.seed(42)
 
@@ -122,8 +120,7 @@ async def simulation(*args, n_initial: int = N_INITIAL_SAMPLES,
     }
 
 
-async def training(*args, length_scale: float = 0.5,
-                   noise_level: float = 0.1) -> dict:
+async def training(*args, length_scale: float = 0.5, noise_level: float = 0.1) -> dict:
     """Train a Gaussian Process surrogate model.
 
     ROSE ensures this runs after simulation completes.
@@ -133,10 +130,7 @@ async def training(*args, length_scale: float = 0.5,
     # Build and train GP model
     kernel = RBF(length_scale=length_scale) + WhiteKernel(noise_level=noise_level)
     model = GaussianProcessRegressor(
-        kernel=kernel,
-        n_restarts_optimizer=5,
-        normalize_y=True,
-        random_state=42
+        kernel=kernel, n_restarts_optimizer=5, normalize_y=True, random_state=42
     )
     model.fit(data["X_labeled"], data["y_labeled"].ravel())
 
@@ -148,10 +142,12 @@ async def training(*args, length_scale: float = 0.5,
     learned_params = model.kernel_.get_params()
 
     save_data(
-        data["X_labeled"], data["y_labeled"],
-        data["X_pool"], data["y_pool"],
+        data["X_labeled"],
+        data["y_labeled"],
+        data["X_pool"],
+        data["y_pool"],
         model=model,
-        metadata={"train_mse": train_mse, "kernel_params": str(learned_params)}
+        metadata={"train_mse": train_mse, "kernel_params": str(learned_params)},
     )
 
     return {
@@ -162,8 +158,9 @@ async def training(*args, length_scale: float = 0.5,
     }
 
 
-async def active_learn(*args, n_select: int = N_SELECT_PER_ITERATION,
-                       strategy: str = "uncertainty") -> dict:
+async def active_learn(
+    *args, n_select: int = N_SELECT_PER_ITERATION, strategy: str = "uncertainty"
+) -> dict:
     """Select informative samples using active learning.
 
     ROSE manages the iteration loop and task dependencies.
@@ -263,27 +260,29 @@ class MLflowROSETracker:
         """Initialize MLflow experiment and run."""
         mlflow.set_experiment(self.experiment_name)
 
-        self.run = mlflow.start_run(
-            run_name=f"rose_al_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        self.run = mlflow.start_run(run_name=f"rose_al_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
         # Log configuration parameters
-        mlflow.log_params({
-            "max_iterations": config.get("max_iterations", MAX_ITERATIONS),
-            "mse_threshold": config.get("mse_threshold", MSE_THRESHOLD),
-            "n_initial_samples": config.get("n_initial", N_INITIAL_SAMPLES),
-            "n_pool_samples": config.get("n_pool", N_POOL_SAMPLES),
-            "n_select_per_iteration": config.get("n_select", N_SELECT_PER_ITERATION),
-            "orchestrator": "ROSE",
-            "learner_type": "SequentialActiveLearner",
-        })
+        mlflow.log_params(
+            {
+                "max_iterations": config.get("max_iterations", MAX_ITERATIONS),
+                "mse_threshold": config.get("mse_threshold", MSE_THRESHOLD),
+                "n_initial_samples": config.get("n_initial", N_INITIAL_SAMPLES),
+                "n_pool_samples": config.get("n_pool", N_POOL_SAMPLES),
+                "n_select_per_iteration": config.get("n_select", N_SELECT_PER_ITERATION),
+                "orchestrator": "ROSE",
+                "learner_type": "SequentialActiveLearner",
+            }
+        )
 
         # Tag the run
-        mlflow.set_tags({
-            "framework": "ROSE+MLflow",
-            "task_type": "active_learning",
-            "model_type": "GaussianProcessRegressor",
-        })
+        mlflow.set_tags(
+            {
+                "framework": "ROSE+MLflow",
+                "task_type": "active_learning",
+                "model_type": "GaussianProcessRegressor",
+            }
+        )
 
         print(f"MLflow Run ID: {self.run.info.run_id}")
         print(f"MLflow Experiment: {self.experiment_name}")
@@ -321,10 +320,7 @@ class MLflowROSETracker:
                 mlflow.log_metric(name, value, step=iteration)
 
         # Store for final summary
-        self.iteration_metrics.append({
-            "iteration": iteration,
-            **metrics
-        })
+        self.iteration_metrics.append({"iteration": iteration, **metrics})
 
     def log_model(self, model, X_sample, y_sample):
         """Log the trained model to MLflow model registry."""
@@ -366,7 +362,8 @@ class MLflowROSETracker:
         """Create and log learning curve visualization."""
         try:
             import matplotlib
-            matplotlib.use('Agg')
+
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
 
             iterations = [m["iteration"] for m in self.iteration_metrics]
@@ -376,32 +373,40 @@ class MLflowROSETracker:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
             # MSE over iterations
-            ax1.plot(iterations, mse_values, 'b-o', linewidth=2, markersize=6)
-            ax1.axhline(y=MSE_THRESHOLD, color='r', linestyle='--',
-                       label=f'Threshold ({MSE_THRESHOLD})')
-            ax1.set_xlabel('Iteration')
-            ax1.set_ylabel('MSE')
-            ax1.set_title('Active Learning: MSE vs Iteration')
+            ax1.plot(iterations, mse_values, "b-o", linewidth=2, markersize=6)
+            ax1.axhline(
+                y=MSE_THRESHOLD,
+                color="r",
+                linestyle="--",
+                label=f"Threshold ({MSE_THRESHOLD})",
+            )
+            ax1.set_xlabel("Iteration")
+            ax1.set_ylabel("MSE")
+            ax1.set_title("Active Learning: MSE vs Iteration")
             ax1.legend()
             ax1.grid(True, alpha=0.3)
-            ax1.set_yscale('log')
+            ax1.set_yscale("log")
 
             # MSE vs labeled samples
-            ax2.plot(labeled_counts, mse_values, 'g-s', linewidth=2, markersize=6)
-            ax2.axhline(y=MSE_THRESHOLD, color='r', linestyle='--',
-                       label=f'Threshold ({MSE_THRESHOLD})')
-            ax2.set_xlabel('Number of Labeled Samples')
-            ax2.set_ylabel('MSE')
-            ax2.set_title('Active Learning: MSE vs Sample Size')
+            ax2.plot(labeled_counts, mse_values, "g-s", linewidth=2, markersize=6)
+            ax2.axhline(
+                y=MSE_THRESHOLD,
+                color="r",
+                linestyle="--",
+                label=f"Threshold ({MSE_THRESHOLD})",
+            )
+            ax2.set_xlabel("Number of Labeled Samples")
+            ax2.set_ylabel("MSE")
+            ax2.set_title("Active Learning: MSE vs Sample Size")
             ax2.legend()
             ax2.grid(True, alpha=0.3)
-            ax2.set_yscale('log')
+            ax2.set_yscale("log")
 
             plt.tight_layout()
 
             # Save and log
             curve_path = Path(tempfile.gettempdir()) / "learning_curve.png"
-            plt.savefig(curve_path, dpi=150, bbox_inches='tight')
+            plt.savefig(curve_path, dpi=150, bbox_inches="tight")
             plt.close()
 
             mlflow.log_artifact(str(curve_path), artifact_path="plots")
@@ -433,13 +438,15 @@ async def main():
 
     # Initialize MLflow tracker
     tracker = MLflowROSETracker(EXPERIMENT_NAME)
-    tracker.start_experiment({
-        "max_iterations": MAX_ITERATIONS,
-        "mse_threshold": MSE_THRESHOLD,
-        "n_initial": N_INITIAL_SAMPLES,
-        "n_pool": N_POOL_SAMPLES,
-        "n_select": N_SELECT_PER_ITERATION,
-    })
+    tracker.start_experiment(
+        {
+            "max_iterations": MAX_ITERATIONS,
+            "mse_threshold": MSE_THRESHOLD,
+            "n_initial": N_INITIAL_SAMPLES,
+            "n_pool": N_POOL_SAMPLES,
+            "n_select": N_SELECT_PER_ITERATION,
+        }
+    )
 
     try:
         # Initialize ROSE workflow engine
@@ -471,8 +478,10 @@ async def main():
             print(f"  Labeled: {state.labeled_count}, Pool: {state.unlabeled_count}")
 
             if state.mean_uncertainty:
-                print(f"  Uncertainty - mean: {state.mean_uncertainty:.4f}, "
-                      f"max: {state.max_uncertainty:.4f}")
+                print(
+                    f"  Uncertainty - mean: {state.mean_uncertainty:.4f}, "
+                    f"max: {state.max_uncertainty:.4f}"
+                )
 
             # MLflow logs the iteration metrics
             tracker.log_iteration(state)
@@ -493,7 +502,7 @@ async def main():
 
             # Custom early stopping (in addition to ROSE's criterion)
             if state.metric_value and state.metric_value < MSE_THRESHOLD / 2:
-                print(f"  [Early Stop] MSE well below threshold")
+                print("  [Early Stop] MSE well below threshold")
                 break
 
         print("\n" + "-" * 60)
@@ -504,11 +513,7 @@ async def main():
             data = load_data()
             if data.get("model"):
                 print("\n[MLflow] Logging final model...")
-                tracker.log_model(
-                    data["model"],
-                    data["X_labeled"][:10],
-                    data["y_labeled"][:10]
-                )
+                tracker.log_model(data["model"], data["X_labeled"][:10], data["y_labeled"][:10])
 
                 print("[MLflow] Computing final evaluation metrics...")
                 final_metrics = tracker.log_final_evaluation(data["model"])

@@ -37,8 +37,8 @@ pip install -e ".[01rl]"
 # Tutorial 03hp (03-highly-parallel-surrogates)
 pip install -e ".[03hp]"
 
-# Tutorial 04als (04-al-algorithm-selector)
-pip install -e ".[04als]"
+# Tutorial 04also (04-al-algorithm-selector)
+pip install -e ".[04also]"
 ```
 
 ## Usage

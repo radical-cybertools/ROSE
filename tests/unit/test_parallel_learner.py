@@ -37,35 +37,20 @@ class TestParallelActiveLearner:
         return parallel_learner
 
     def test_create_sequential_learner(self, configured_parallel_learner):
-        """Test _create_sequential_learner
-        method creates properly configured learner."""
+        """Test _create_sequential_learner method creates properly configured learner."""
         learner_id = 1
         config = None
 
-        sequential = configured_parallel_learner._create_sequential_learner(
-            learner_id, config
-        )
+        sequential = configured_parallel_learner._create_sequential_learner(learner_id, config)
 
         # Verify it's a SequentialActiveLearner instance
         assert isinstance(sequential, SequentialActiveLearner)
 
         # Verify functions are copied
-        assert (
-            sequential.simulation_function
-            == configured_parallel_learner.simulation_function
-        )
-        assert (
-            sequential.training_function
-            == configured_parallel_learner.training_function
-        )
-        assert (
-            sequential.active_learn_function
-            == configured_parallel_learner.active_learn_function
-        )
-        assert (
-            sequential.criterion_function
-            == configured_parallel_learner.criterion_function
-        )
+        assert sequential.simulation_function == configured_parallel_learner.simulation_function
+        assert sequential.training_function == configured_parallel_learner.training_function
+        assert sequential.active_learn_function == configured_parallel_learner.active_learn_function
+        assert sequential.criterion_function == configured_parallel_learner.criterion_function
 
         # Verify learner_id is set
         assert sequential.learner_id == learner_id
@@ -102,9 +87,7 @@ class TestParallelActiveLearner:
         parallel_learner.active_learn_function = None
         parallel_learner.criterion_function = None
 
-        with pytest.raises(
-            ValueError, match="For single learner, use SequentialActiveLearner"
-        ):
+        with pytest.raises(ValueError, match="For single learner, use SequentialActiveLearner"):
             await parallel_learner.start(parallel_learners=1)
 
         # Test with missing simulation functions it should raise error about
@@ -121,9 +104,7 @@ class TestParallelActiveLearner:
             ValueError,
             match="Training and Active Learning functions must be set!",
         ):
-            await parallel_learner.start(
-                parallel_learners=2, max_iter=1, skip_simulation_step=True
-            )
+            await parallel_learner.start(parallel_learners=2, max_iter=1, skip_simulation_step=True)
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()
@@ -140,17 +121,13 @@ class TestParallelActiveLearner:
         parallel_learner.criterion_function = AsyncMock()
         learner_configs = [None]  # Only 1 config for 2 learners
 
-        with pytest.raises(
-            ValueError, match="learner_configs length must match parallel_learners"
-        ):
+        with pytest.raises(ValueError, match="learner_configs length must match parallel_learners"):
             await parallel_learner.start(
                 parallel_learners=2, max_iter=1, learner_configs=learner_configs
             )
 
     @pytest.mark.asyncio
-    async def test_start_successful_parallel_execution(
-        self, configured_parallel_learner
-    ):
+    async def test_start_successful_parallel_execution(self, configured_parallel_learner):
         """Test successful parallel execution of multiple learners."""
 
         # Create a mock that yields one state then stops (async generator)
@@ -166,9 +143,7 @@ class TestParallelActiveLearner:
             "_create_sequential_learner",
             return_value=mock_sequential,
         ):
-            results = await configured_parallel_learner.start(
-                parallel_learners=2, max_iter=1
-            )
+            results = await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
 
             # Verify results
             assert len(results) == 2
@@ -176,12 +151,8 @@ class TestParallelActiveLearner:
             assert all(isinstance(r, IterationState) for r in results)
 
             # Verify metric collection
-            assert (
-                "learner-0" in configured_parallel_learner.metric_values_per_iteration
-            )
-            assert (
-                "learner-1" in configured_parallel_learner.metric_values_per_iteration
-            )
+            assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
+            assert "learner-1" in configured_parallel_learner.metric_values_per_iteration
 
     @pytest.mark.asyncio
     async def test_start_learner_failure_handling(self, configured_parallel_learner):
@@ -217,11 +188,7 @@ class TestParallelActiveLearner:
             with patch("builtins.print") as mock_print:
                 # Should raise exception due to learner failure
                 with pytest.raises(Exception, match="Learner failed"):
-                    await configured_parallel_learner.start(
-                        parallel_learners=2, max_iter=1
-                    )
+                    await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
 
                 # Verify error was printed (learner 1 fails, not 0)
-                mock_print.assert_any_call(
-                    "ActiveLearner-1] failed with error: Learner failed"
-                )
+                mock_print.assert_any_call("ActiveLearner-1] failed with error: Learner failed")

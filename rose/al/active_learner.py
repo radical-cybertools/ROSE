@@ -108,22 +108,16 @@ class SequentialActiveLearner(Learner):
         """
         # Validation
         if not skip_simulation_step and not self.simulation_function:
-            raise ValueError(
-                "Simulation function must be set when not using simulation pool!"
-            )
+            raise ValueError("Simulation function must be set when not using simulation pool!")
         if not self.training_function or not self.active_learn_function:
             raise ValueError("Training and Active Learning functions must be set!")
         if max_iter == 0 and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
 
-        learner_suffix = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
-        )
+        learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
 
         # Initialize task references
@@ -164,9 +158,7 @@ class SequentialActiveLearner(Learner):
 
         # Main iteration loop
         for i in iteration_range:
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
+            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             if self.is_stopped:
                 print(f"{learner_prefix}Stop requested, exiting learning loop.")
                 break
@@ -339,17 +331,14 @@ class SequentialActiveLearner(Learner):
 
 
 class ParallelActiveLearner(Learner):
-    """Parallel active learner that runs multiple
-       SequentialActiveLearners concurrently.
+    """Parallel active learner that runs multiple SequentialActiveLearners concurrently.
 
-    This class orchestrates multiple SequentialActiveLearner
-    instances to run in parallel, allowing for concurrent exploration
-    of the learning space. Each learner can be configured independently
+    This class orchestrates multiple SequentialActiveLearner instances to run in parallel, allowing
+    for concurrent exploration of the learning space. Each learner can be configured independently
     through per-learner LearnerConfig objects.
 
-    The parallel learner manages the lifecycle of all sequential
-    learners and collects their results when all have completed their
-    learning processes.
+    The parallel learner manages the lifecycle of all sequential learners and collects their results
+    when all have completed their learning processes.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -381,9 +370,7 @@ class ParallelActiveLearner(Learner):
             independently in the parallel learning environment.
         """
         # Create a new sequential learner with the same asyncflow
-        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(
-            self.asyncflow
-        )
+        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(self.asyncflow)
 
         # Copy the base functions from the parent learner
         sequential_learner.simulation_function = self.simulation_function
@@ -486,15 +473,13 @@ class ParallelActiveLearner(Learner):
             """
             try:
                 # Create and configure the sequential learner
-                sequential_learner: SequentialActiveLearner = (
-                    self._create_sequential_learner(
-                        learner_id, learner_configs[learner_id]
-                    )
+                sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
+                    learner_id, learner_configs[learner_id]
                 )
 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[LearnerConfig] = (
-                    self._convert_to_sequential_config(learner_configs[learner_id])
+                sequential_config: Optional[LearnerConfig] = self._convert_to_sequential_config(
+                    learner_configs[learner_id]
                 )
 
                 # Run the sequential learner by iterating through start()
@@ -522,9 +507,7 @@ class ParallelActiveLearner(Learner):
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
         # Submit all learners asynchronously
-        learners: list[Coroutine] = [
-            active_learner_workflow(i) for i in range(parallel_learners)
-        ]
+        learners: list[Coroutine] = [active_learner_workflow(i) for i in range(parallel_learners)]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*learners)
@@ -554,8 +537,7 @@ class ParallelActiveLearner(Learner):
             List of final IterationState from each learner.
         """
         warnings.warn(
-            "teach() is deprecated and will be removed in a future version. "
-            "Use start() instead.",
+            "teach() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )

@@ -11,25 +11,23 @@ All tasks are Python functions (as_executable=False) running in a process pool.
 """
 
 import asyncio
+import logging
+import pickle
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-import pickle
-import typeguard
 
 import numpy as np
+import typeguard
+from radical.asyncflow import WorkflowEngine
+from radical.asyncflow.logging import init_default_logger
+from rhapsody.backends import ConcurrentExecutionBackend
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from sklearn.metrics import mean_squared_error
 
-from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import ConcurrentExecutionBackend
-
 from rose.al import SequentialActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-
-import logging
-from radical.asyncflow.logging import init_default_logger
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +45,16 @@ def target_function(X: np.ndarray) -> np.ndarray:
 def save_data(X_labeled, y_labeled, X_pool, y_pool, model=None):
     """Save data to file for cross-process access."""
     with open(DATA_FILE, "wb") as f:
-        pickle.dump({
-            "X_labeled": X_labeled,
-            "y_labeled": y_labeled,
-            "X_pool": X_pool,
-            "y_pool": y_pool,
-            "model": model,
-        }, f)
+        pickle.dump(
+            {
+                "X_labeled": X_labeled,
+                "y_labeled": y_labeled,
+                "X_pool": X_pool,
+                "y_pool": y_pool,
+                "model": model,
+            },
+            f,
+        )
 
 
 def load_data():
@@ -93,6 +94,7 @@ async def simulation(*args, n_initial: int = 10, n_pool: int = 100) -> dict:
         "unlabeled_count": n_pool,
     }
 
+
 @typeguard.typechecked
 async def training(*args, length_scale: float = 1.0) -> dict:
     """Train a Gaussian Process model.
@@ -109,13 +111,15 @@ async def training(*args, length_scale: float = 1.0) -> dict:
 
     # Save model
     save_data(
-        data["X_labeled"], data["y_labeled"],
-        data["X_pool"], data["y_pool"],
-        model=model
+        data["X_labeled"],
+        data["y_labeled"],
+        data["X_pool"],
+        data["y_pool"],
+        model=model,
     )
 
-    return {"length_scale": length_scale,
-            "n_samples": len(data["X_labeled"])}
+    return {"length_scale": length_scale, "n_samples": len(data["X_labeled"])}
+
 
 @typeguard.typechecked
 async def active_learn(*args, n_select: int = 5) -> dict:
@@ -207,9 +211,7 @@ async def main():
 
         # Dynamic adjustment: increase samples when uncertainty is low
         if state.mean_uncertainty and state.mean_uncertainty < 0.15:
-            learner.set_next_config(
-                LearnerConfig(active_learn=TaskConfig(kwargs={"n_select": 10}))
-            )
+            learner.set_next_config(LearnerConfig(active_learn=TaskConfig(kwargs={"n_select": 10})))
             print("Low uncertainty, selecting 10 samples next")
 
         # Custom early stopping (lower than ROSE's threshold of 0.01)

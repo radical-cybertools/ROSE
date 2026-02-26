@@ -6,7 +6,7 @@ ROSE is a Python package that provides tools to facilitate the development of ma
 
 ROSE also provides tools to facilitate the selection of the best surrogate model for a given simulation based on performance metrics.
 
-ROSE uses RADICAL-Cybertools -- middleware building blocks to facilitate the development of sophisticated scientific workflows on HPC resources. 
+ROSE uses RADICAL-Cybertools -- middleware building blocks to facilitate the development of sophisticated scientific workflows on HPC resources.
 
 ### How to install:
 

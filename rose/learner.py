@@ -221,9 +221,7 @@ class Learner:
     """
 
     @typeguard.typechecked
-    def __init__(
-        self, asyncflow: WorkflowEngine, register_and_submit: bool = True
-    ) -> None:
+    def __init__(self, asyncflow: WorkflowEngine, register_and_submit: bool = True) -> None:
         """Initialize the Learner.
 
         Args:
@@ -272,8 +270,8 @@ class Learner:
         task_key: str,
         iteration: int,
     ) -> dict[str, Any]:
-        """Get task configuration for a specific iteration,
-        merging base config with iteration-specific overrides."""
+        """Get task configuration for a specific iteration, merging base config with iteration-
+        specific overrides."""
 
         # Start with a copy of the base task (or empty dict if None)
         task_config = base_task.copy() if base_task else {}
@@ -319,9 +317,7 @@ class Learner:
             }
         """
         return {
-            iteration: TaskConfig(
-                args=config.get("args", ()), kwargs=config.get("kwargs", {})
-            )
+            iteration: TaskConfig(args=config.get("args", ()), kwargs=config.get("kwargs", {}))
             for iteration, config in schedule.items()
         }
 
@@ -559,8 +555,8 @@ class Learner:
             raise ValueError(f"Unknown comparison operator for metric {metric_name}")
 
     def _start_pre_loop(self) -> tuple[Any, Any]:
-        """Start the initial step for active learning by defining and
-           setting simulation and training tasks.
+        """Start the initial step for active learning by defining and setting simulation and
+        training tasks.
 
         Returns:
             tuple containing (simulation_task, training_task) futures.
@@ -589,9 +585,7 @@ class Learner:
         try:
             metric_value: float = float(stop_task_result)
         except Exception as e:
-            raise Exception(
-                f"Failed to obtain a numerical value from criterion task: {e}"
-            ) from e
+            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}") from e
 
         # check if the metric value is a number
         if isinstance(metric_value, (float, int)):
@@ -610,10 +604,7 @@ class Learner:
                 )
                 return True, metric_value
             else:
-                print(
-                    f"stop criterion metric: {metric_name} "
-                    f"is not met yet ({metric_value})."
-                )
+                print(f"stop criterion metric: {metric_name} is not met yet ({metric_value}).")
                 return False, metric_value
         else:
             raise TypeError(
@@ -623,12 +614,12 @@ class Learner:
 
     def start(self) -> None:
         """Start method to be implemented by subclasses.
+
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
         raise NotImplementedError(
-            "This is not supported, please define your "
-            "Start method and invoke it directly"
+            "This is not supported, please define your Start method and invoke it directly"
         )
 
     def get_metric_results(self) -> list[float]:

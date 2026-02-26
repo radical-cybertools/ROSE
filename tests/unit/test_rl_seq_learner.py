@@ -87,14 +87,12 @@ class TestSequentialReinforcementLearner:
 
     @pytest.mark.asyncio
     async def test_start_without_iterations_or_criterion(self, sequential_learner):
-        """Test that start raises exception when neither max_iter nor
-        criterion_function is provided."""
+        """Test that start raises exception when neither max_iter nor criterion_function is
+        provided."""
         sequential_learner.environment_function = AsyncMock()
         sequential_learner.update_function = AsyncMock()
 
-        with pytest.raises(
-            ValueError, match="Either max_iter > 0 or criterion_function"
-        ):
+        with pytest.raises(ValueError, match="Either max_iter > 0 or criterion_function"):
             async for _ in sequential_learner.start():
                 pass
 

@@ -3,12 +3,24 @@ name: tests
 on:
   push:
     branches: [main, test-me-*]
-    tags:
   pull_request:
   workflow_dispatch:
 
 jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
   unit:
+    needs: [pre-commit]
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -54,6 +66,7 @@ jobs:
         run: tox -e ${{ matrix.toxenv }} -- -vv
 
   integration:
+    needs: [pre-commit]
     timeout-minutes: 20
     strategy:
       fail-fast: false

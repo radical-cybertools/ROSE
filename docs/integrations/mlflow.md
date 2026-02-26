@@ -57,7 +57,7 @@ from rose.al import SequentialActiveLearner
 async def main():
     # 1. Initialize MLflow Run
     mlflow.set_experiment("ROSE_AL_Experiment")
-    
+
     with mlflow.start_run():
         # 2. Log Configuration
         mlflow.log_params({
@@ -74,7 +74,7 @@ async def main():
             # Log metrics at each iteration step
             mlflow.log_metric("mse", state.metric_value, step=state.iteration)
             mlflow.log_metric("labeled_count", state.labeled_count, step=state.iteration)
-            
+
             print(f"Iteration {state.iteration}: MSE {state.metric_value}")
 
         # 5. Log Final Artifacts

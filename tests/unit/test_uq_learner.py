@@ -40,42 +40,25 @@ class TestParallelUQLearner:
         parallel_learner.simulation_function = AsyncMock(return_value="sim_result")
         parallel_learner.training_function = AsyncMock(return_value="train_result")
         parallel_learner.active_learn_function = AsyncMock(return_value="active_result")
-        parallel_learner.prediction_function = AsyncMock(
-            return_value="prediction_result"
-        )
+        parallel_learner.prediction_function = AsyncMock(return_value="prediction_result")
         parallel_learner.criterion_function = AsyncMock(return_value=False)
         parallel_learner.uncertainty_function = AsyncMock(return_value=False)
         return parallel_learner
 
     def test_create_sequential_learner(self, configured_parallel_learner):
-        """Test _create_sequential_learner
-        method creates properly configured learner."""
+        """Test _create_sequential_learner method creates properly configured learner."""
         learner_name = "learner-0"
 
-        sequential = configured_parallel_learner._create_sequential_learner(
-            learner_name
-        )
+        sequential = configured_parallel_learner._create_sequential_learner(learner_name)
 
         # Verify it's a UQLearner instance
         assert isinstance(sequential, SeqUQLearner)
 
         # Verify functions are copied
-        assert (
-            sequential.simulation_function
-            == configured_parallel_learner.simulation_function
-        )
-        assert (
-            sequential.training_function
-            == configured_parallel_learner.training_function
-        )
-        assert (
-            sequential.active_learn_function
-            == configured_parallel_learner.active_learn_function
-        )
-        assert (
-            sequential.criterion_function
-            == configured_parallel_learner.criterion_function
-        )
+        assert sequential.simulation_function == configured_parallel_learner.simulation_function
+        assert sequential.training_function == configured_parallel_learner.training_function
+        assert sequential.active_learn_function == configured_parallel_learner.active_learn_function
+        assert sequential.criterion_function == configured_parallel_learner.criterion_function
 
         # Verify learner_name is set
         assert sequential.learner_name == learner_name
@@ -158,9 +141,7 @@ class TestParallelUQLearner:
             Exception,
             match="Either max_iter or stop_criterion_function must be provided.",
         ):
-            await parallel_learner.start(
-                learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
-            )
+            await parallel_learner.start(learner_names=["l1", "l2"], model_names=["m1"], max_iter=0)
 
         with pytest.raises(
             Exception,
@@ -183,15 +164,11 @@ class TestParallelUQLearner:
 
         mc_preds = [[1, 2], [3, 4, 5]]
         y_true = [[1, 2], [3, 4, 5]]
-        with pytest.raises(
-            TypeError, match="Fail to convert <class 'list'> mc_preds to numpy"
-        ):
+        with pytest.raises(TypeError, match="Fail to convert <class 'list'> mc_preds to numpy"):
             scorer._validate_inputs(mc_preds)
 
         mc_preds = np.ones((2, 3, 4))
-        with pytest.raises(
-            TypeError, match="Fail to convert <class 'list'> y_true to numpy"
-        ):
+        with pytest.raises(TypeError, match="Fail to convert <class 'list'> y_true to numpy"):
             scorer._validate_inputs(mc_preds, y_true)
 
         mc_preds = np.ones((2, 3))
@@ -218,15 +195,11 @@ class TestParallelUQLearner:
 
         mc_preds = mc_preds = [[1, 2], [3, 4, 5]]
         y_true = mc_preds = [[1, 2], [3, 4, 5]]
-        with pytest.raises(
-            TypeError, match="Fail to convert <class 'list'> mc_preds to numpy"
-        ):
+        with pytest.raises(TypeError, match="Fail to convert <class 'list'> mc_preds to numpy"):
             scorer._validate_inputs(mc_preds)
 
         mc_preds = np.ones((2, 3))
-        with pytest.raises(
-            TypeError, match="Fail to convert <class 'list'> y_true to numpy"
-        ):
+        with pytest.raises(TypeError, match="Fail to convert <class 'list'> y_true to numpy"):
             scorer._validate_inputs(mc_preds, y_true)
 
         mc_preds = np.ones((2, 3, 4))
@@ -248,9 +221,7 @@ class TestParallelUQLearner:
             scorer._validate_inputs(mc_preds, y_true)
 
     @pytest.mark.asyncio
-    async def test_teach_successful_parallel_execution(
-        self, configured_parallel_learner
-    ):
+    async def test_teach_successful_parallel_execution(self, configured_parallel_learner):
         """Test successful parallel execution of multiple learners."""
         # Mock the sequential learner creation and execution
         mock_sequential = MagicMock(spec=SeqUQLearner)
@@ -293,12 +264,10 @@ class TestParallelUQLearner:
 
                 # Verify metric collection
                 assert (
-                    "learner-l1"
-                    in configured_parallel_learner.metric_values_per_iteration.keys()
+                    "learner-l1" in configured_parallel_learner.metric_values_per_iteration.keys()
                 )
                 assert (
-                    "learner-l2"
-                    in configured_parallel_learner.metric_values_per_iteration.keys()
+                    "learner-l2" in configured_parallel_learner.metric_values_per_iteration.keys()
                 )
 
     @pytest.mark.asyncio
