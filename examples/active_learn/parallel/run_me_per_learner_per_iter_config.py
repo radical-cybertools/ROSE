@@ -19,7 +19,7 @@ async def run_al_parallel():
 
     # Define and register the simulation task
     @al.simulation_task
-    async def simulation(*args, **kwargs):
+    async def simulation(*args, task_description={'shell':True}, **kwargs):
         n_labeled = kwargs.get("--n_labeled", 100)
         n_features = kwargs.get("--n_features", 2)
 
@@ -27,17 +27,17 @@ async def run_al_parallel():
 
     # Define and register the training task
     @al.training_task
-    async def training(*args, **kwargs):
+    async def training(*args, task_description={'shell':True}, **kwargs):
         return f"{code_path}/train.py"
 
     # Define and register the active learning task
     @al.active_learn_task
-    async def active_learn(*args, **kwargs):
+    async def active_learn(*args, task_description={'shell':True}, **kwargs):
         return f"{code_path}/active.py"
 
     # Defining the stop criterion with a metric (MSE in this case)
     @al.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
-    async def check_mse(*args, **kwargs):
+    async def check_mse(*args, task_description={'shell':True}, **kwargs):
         return f"{code_path}/check_mse.py"
 
     # Start the parallel active learning process with custom configs
