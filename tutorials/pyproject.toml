@@ -29,3 +29,13 @@ dependencies = [
     "torch",
     "gymnasium",
 ]
+
+03hp = [
+    "scikit-learn",
+    "scipy",
+]
+
+04als = [
+    "pandas",
+    "matplotlib",
+]
