@@ -47,6 +47,9 @@ doc = [
     "mkdocs-minify-plugin"
 ]
 
+[tool.setuptools.packages.find]
+include = ["rose*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"
