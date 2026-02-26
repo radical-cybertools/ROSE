@@ -64,6 +64,11 @@ select = ["E", "F", "W", "B", "I", "N", "UP"]
 # N812/N813/N816/N817: allow ML import aliases (functional as F, etc.)
 ignore = ["UP007", "UP045", "N803", "N806", "N801", "N812", "N813", "N816", "N817"]
 
+[tool.ruff.lint.per-file-ignores]
+# task_description={"shell": True} is a ROSE API pattern introspected by decorators
+"examples/**/run_me.py" = ["B006"]
+"examples/**/run_me_*.py" = ["B006"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

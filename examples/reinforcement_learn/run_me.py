@@ -20,18 +20,18 @@ async def rose_rl():
 
     # Define and register the environment task
     @rl.environment_task
-    async def environment(*args):
+    async def environment(*args, task_description={"shell": True}):
         return f"{code_path}/environment.py {data_path} 0.1 5 experience_bank.pkl"
 
     # Define and register the policy update task
     @rl.update_task
-    async def update(*args):
+    async def update(*args, task_description={"shell": True}):
         return f"{code_path}/update.py {data_path}"
 
     @rl.as_stop_criterion(
         metric_name="MODEL_REWARD", threshold=200, operator=GREATER_THAN_THRESHOLD
     )
-    async def check_reward(*args):
+    async def check_reward(*args, task_description={"shell": True}):
         return f"{code_path}/check_reward.py {data_path}"
 
     # Start the reinforcement learning process
