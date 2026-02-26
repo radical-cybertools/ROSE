@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQ_REGISTRY, register_uq

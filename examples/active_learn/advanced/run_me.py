@@ -6,7 +6,7 @@ from rose.learner import Learner
 from rose.metrics import MODEL_ACCURACY
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import ConcurrentExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from concurrent.futures import ThreadPoolExecutor
 

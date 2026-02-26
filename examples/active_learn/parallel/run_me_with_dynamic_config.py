@@ -2,7 +2,8 @@ import asyncio
 import os
 import sys
 
-from radical.asyncflow import RadicalExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import RadicalExecutionBackend
 
 from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner

@@ -21,7 +21,8 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from sklearn.metrics import mean_squared_error
 
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.al import SequentialActiveLearner
 from rose.learner import LearnerConfig, TaskConfig

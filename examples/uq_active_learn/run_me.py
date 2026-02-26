@@ -7,11 +7,8 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from radical.asyncflow import (
-    ConcurrentExecutionBackend,
-    RadicalExecutionBackend,
-    WorkflowEngine,
-)
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend, RadicalExecutionBackend
 
 from rose import TaskConfig
 from rose.metrics import MODEL_ACCURACY, PREDICTIVE_ENTROPY

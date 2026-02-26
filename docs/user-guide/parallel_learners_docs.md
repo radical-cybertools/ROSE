@@ -61,7 +61,7 @@ from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 
 engine = await RadicalExecutionBackend(
     {'runtime': 30,

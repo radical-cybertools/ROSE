@@ -36,7 +36,8 @@ import mlflow
 from mlflow.models import infer_signature
 
 # ROSE for workflow orchestration
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 from rose.al import SequentialActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
 from rose.metrics import MEAN_SQUARED_ERROR_MSE

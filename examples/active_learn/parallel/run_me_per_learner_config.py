@@ -3,7 +3,8 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner

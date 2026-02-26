@@ -8,7 +8,7 @@ os.environ['RADICAL_PILOT_VERBOSE'] = verbose
 from rose.learner import Learner
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 
 seed=20030
 num_sample=4500
