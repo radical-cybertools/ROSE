@@ -1,0 +1,62 @@
+/* Change the banner background color to dark rose */
+.md-header {
+  background-color: #c2185b !important; /* Dark rose color */
+}
+
+/* Ensure the active navigation link is distinct */
+.md-nav__link--active {
+  color: #c2185b !important; /* Slightly darker black for active link */
+  font-weight: bold;
+}
+
+
+table#config {
+  font-family: monospace;
+  font-size: 13px;
+}
+table#config span.const {
+  filter: opacity(70%);
+}
+table#config span.example,
+table#config span.value {
+  font-size: 0.9em;
+  filter: opacity(70%);
+  display: inline-block;
+  padding: 0px 4px;
+  border-radius: 5px;
+}
+table#config span.example {
+  background-color: lightBlue;
+}
+table#config span.value {
+  background-color: lightGray;
+}
+table#config td.comment:nth-child(3) {
+  border-left: 2px solid whiteSmoke;
+}
+table#config td.type {
+  font-size: 0.8em;
+}
+table#config tr:hover code {
+  background-color: hsla(0, 0%, 100%, 1);
+}
+table#config td:first-child {
+  white-space: nowrap;
+  padding-right: 50px;
+}
+table#config td span.required a.key {
+  font-weight: bold;
+}
+table#config td .anchor:target::before {
+  margin-top: -3.4rem;
+  padding-top: 3.4rem;
+  content: "";
+  display: block;
+}
+table#config td.type {
+  filter: opacity(70%);
+  color: #999999;
+}
+.md-typeset__scrollwrap {
+  overflow-x: inherit;
+}
