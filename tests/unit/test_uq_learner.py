@@ -14,9 +14,8 @@ from rose.uq.uq_learner import UQLearnerConfig
 
 async def mock_start_iterator(*args, **kwargs):
     """Helper to mock an async iterator."""
-    # Create a mock IterationState
-    state = MagicMock(spec=IterationState)
-    state.to_dict.return_value = "learner_result"
+    # Yield a real IterationState so dataclasses.replace works in ParallelUQLearner
+    state = IterationState(iteration=0, should_stop=True)
     yield state
 
 
@@ -111,12 +110,13 @@ class TestParallelUQLearner:
             Exception,
             match="Simulation, Training, and Active Learning functions must be set!",
         ):
-            await parallel_learner.start(
+            async for _ in parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None, "l2": None},
                 model_names=["m1"],
                 max_iter=1,
-            )
+            ):
+                pass
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()
@@ -130,18 +130,22 @@ class TestParallelUQLearner:
             Exception,
             match="learner_configs length must match learner_names",
         ):
-            await parallel_learner.start(
+            async for _ in parallel_learner.start(
                 learner_names=["l1", "l2"],
                 learner_configs={"l1": None},
                 model_names=["m1"],
                 max_iter=1,
-            )
+            ):
+                pass
 
         with pytest.raises(
             Exception,
             match="Either max_iter or stop_criterion_function must be provided.",
         ):
-            await parallel_learner.start(learner_names=["l1", "l2"], model_names=["m1"], max_iter=0)
+            async for _ in parallel_learner.start(
+                learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
+            ):
+                pass
 
         with pytest.raises(
             Exception,
@@ -239,16 +243,20 @@ class TestParallelUQLearner:
                 "_convert_to_sequential_config",
                 return_value=None,
             ):
-                results = await configured_parallel_learner.start(
+                states = []
+                async for state in configured_parallel_learner.start(
                     learner_names=["l1", "l2"],
                     learner_configs={"l1": None, "l2": None},
                     model_names=["m1"],
                     max_iter=1,
-                )
+                ):
+                    states.append(state)
 
-                # Verify results
-                assert len(results) == 2
-                assert all(result.to_dict() == "learner_result" for result in results)
+                # Each learner yields one state, so 2 states total
+                assert len(states) == 2
+                assert all(isinstance(s, IterationState) for s in states)
+                # Each state has learner_id set to the learner name
+                assert {s.learner_id for s in states} == {"l1", "l2"}
 
                 # Verify sequential learners were called
                 # We can't easily check call count for a generator function mock
@@ -296,12 +304,13 @@ class TestParallelUQLearner:
                 with patch("builtins.print") as mock_print:
                     # Should raise exception due to learner failure
                     with pytest.raises(Exception, match="Learner failed"):
-                        await configured_parallel_learner.start(
+                        async for _ in configured_parallel_learner.start(
                             learner_names=["l1"],
                             model_names=["m1"],
                             learner_configs={"l1": None},
                             max_iter=1,
-                        )
+                        ):
+                            pass
 
                     # Verify error was printed
                     mock_print.assert_any_call(

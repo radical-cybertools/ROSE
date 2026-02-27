@@ -1,7 +1,8 @@
 import asyncio
+import dataclasses
 import itertools
 import warnings
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from functools import wraps
 from typing import Any
 
@@ -836,14 +837,17 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: list[LearnerConfig | None] | None = None,
-    ) -> list[Any]:
+    ) -> AsyncIterator[IterationState]:
         """Run parallel reinforcement learning by launching multiple
         SequentialReinforcementLearners.
 
         Orchestrates multiple SequentialReinforcementLearner instances to
-        run concurrently, each with potentially different configurations. All
-        learners run independently and their results are collected when all
-        have completed.
+        run concurrently, each with potentially different configurations. States
+        are streamed in real time as each learner completes an iteration — use
+        ``async for`` to consume them.
+
+        Each yielded ``IterationState`` includes a ``learner_id`` field (int)
+        indicating which parallel learner produced it.
 
         Args:
             parallel_learners: Number of parallel learners to run concurrently.
@@ -857,15 +861,21 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                 If None, all learners use default configuration. Length must
                 match parallel_learners if provided.
 
-        Returns:
-            list containing the final IterationState from each learner,
-            in the same order as the learners were launched.
+        Yields:
+            IterationState for each iteration of each learner, in arrival order.
+            Each state has ``learner_id`` set to the integer index of the learner.
 
         Raises:
             ValueError: If parallel_learners < 2.
             ValueError: If required base functions are not set.
             ValueError: If neither max_iter nor criterion_function is provided.
             ValueError: If learner_configs length doesn't match parallel_learners.
+            Exception: Re-raises any exception from a learner after all learners finish.
+
+        Example::
+
+            async for state in rl.start(parallel_learners=3, max_iter=100):
+                print(f"Learner {state.learner_id}, iter {state.iteration}: {state.metric_value}")
         """
         if parallel_learners < 2:
             raise ValueError("For single learner, use SequentialReinforcementLearner")
@@ -884,60 +894,51 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
         print(f"Starting Parallel Reinforcement Learning with {parallel_learners} learners")
 
-        async def rl_learner_workflow(learner_id: int) -> Any:
-            """Run a single SequentialReinforcementLearner.
+        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
 
-            Internal async function that manages the lifecycle of a single
-            SequentialReinforcementLearner within the parallel learning context.
-
-            Args:
-                learner_id: Unique identifier for this learner instance.
-
-            Returns:
-                The final IterationState from the sequential learner.
-
-            Raises:
-                Exception: Re-raises any exception from the sequential learner
-                    with additional context about which learner failed.
-            """
+        async def run_learner(learner_id: int) -> None:
             try:
-                # Create and configure the sequential learner
                 sequential_learner: SequentialReinforcementLearner = (
                     self._create_sequential_learner(learner_id, learner_configs[learner_id])
                 )
-
-                # Convert parallel config to sequential config
                 sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
                     learner_configs[learner_id]
                 )
-
-                # Run the sequential learner by iterating through start()
-                final_state = None
                 async for state in sequential_learner.start(
                     max_iter=max_iter,
                     skip_pre_loop=skip_pre_loop,
                     initial_config=sequential_config,
                 ):
-                    final_state = state
-                    # Let the learner run to completion
                     if self.is_stopped:
                         sequential_learner.stop()
+                    await queue.put(("state", dataclasses.replace(state, learner_id=learner_id)))
 
-                # Store metrics per learner
                 self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                     sequential_learner.metric_values_per_iteration
                 )
-
-                return final_state
             except Exception as e:
                 print(f"RLLearner-{learner_id}] failed with error: {e}")
-                raise
+                await queue.put(("error", e))
+            finally:
+                await queue.put(("done", None))
 
-        # Submit all learners asynchronously
-        futures: list[Coroutine] = [rl_learner_workflow(i) for i in range(parallel_learners)]
+        tasks = [asyncio.create_task(run_learner(i)) for i in range(parallel_learners)]
 
-        # Wait for all learners to complete and collect results
-        return await asyncio.gather(*futures)
+        completed = 0
+        first_error: Exception | None = None
+        while completed < parallel_learners:
+            kind, value = await queue.get()
+            if kind == "done":
+                completed += 1
+            elif kind == "state":
+                yield value
+            elif kind == "error":
+                if first_error is None:
+                    first_error = value
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if first_error is not None:
+            raise first_error
 
     async def learn(
         self,
@@ -966,9 +967,12 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             DeprecationWarning,
             stacklevel=2,
         )
-        return await self.start(
+        final_states: dict[int, IterationState | None] = {}
+        async for state in self.start(
             parallel_learners=parallel_learners,
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learner_configs=learner_configs,
-        )
+        ):
+            final_states[state.learner_id] = state
+        return [final_states.get(i) for i in range(parallel_learners)]

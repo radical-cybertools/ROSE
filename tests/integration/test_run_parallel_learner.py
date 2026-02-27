@@ -32,7 +32,8 @@ async def test_active_learning_pipeline_functions():
     async def check_mse(*args):
         return 0.05  # Return a metric value below threshold
 
-    await learner.start(parallel_learners=5, max_iter=2)
+    async for _ in learner.start(parallel_learners=5, max_iter=2):
+        pass
 
     scores = learner.get_metric_results()
 
