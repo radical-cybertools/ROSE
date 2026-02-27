@@ -1,7 +1,8 @@
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any, Optional
 
 import typeguard
 from pydantic import BaseModel
@@ -44,9 +45,9 @@ class IterationState:
     """
 
     iteration: int
-    metric_name: Optional[str] = None
-    metric_value: Optional[float] = None
-    metric_threshold: Optional[float] = None
+    metric_name: str | None = None
+    metric_value: float | None = None
+    metric_threshold: float | None = None
     metric_history: list[float] = field(default_factory=list)
     should_stop: bool = False
     current_config: Optional["LearnerConfig"] = None
@@ -143,15 +144,15 @@ class LearnerConfig(BaseModel):
     """
 
     # Active Learning fields
-    simulation: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
-    training: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
-    prediction: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
-    active_learn: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    simulation: TaskConfig | dict[int, TaskConfig] | None = None
+    training: TaskConfig | dict[int, TaskConfig] | None = None
+    prediction: TaskConfig | dict[int, TaskConfig] | None = None
+    active_learn: TaskConfig | dict[int, TaskConfig] | None = None
     # Reinforcement Learning fields
-    environment: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
-    update: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    environment: TaskConfig | dict[int, TaskConfig] | None = None
+    update: TaskConfig | dict[int, TaskConfig] | None = None
     # Common fields
-    criterion: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    criterion: TaskConfig | dict[int, TaskConfig] | None = None
 
     class Config:
         """Pydantic configuration for LearnerConfig."""
@@ -161,7 +162,7 @@ class LearnerConfig(BaseModel):
             tuple: list,
         }
 
-    def get_task_config(self, task_name: str, iteration: int) -> Optional[TaskConfig]:
+    def get_task_config(self, task_name: str, iteration: int) -> TaskConfig | None:
         """Get the task configuration for a specific iteration.
 
         Args:
@@ -177,9 +178,7 @@ class LearnerConfig(BaseModel):
             look for an exact iteration match, then fall back to default configs
             (key -1 or 'default').
         """
-        task_config: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = getattr(
-            self, task_name, None
-        )
+        task_config: TaskConfig | dict[int, TaskConfig] | None = getattr(self, task_name, None)
         if task_config is None:
             return None
 
@@ -266,7 +265,7 @@ class Learner:
     def _get_iteration_task_config(
         self,
         base_task: dict[str, Any],
-        config: Optional[LearnerConfig],
+        config: LearnerConfig | None,
         task_key: str,
         iteration: int,
     ) -> dict[str, Any]:
@@ -467,7 +466,7 @@ class Learner:
     def _register_task(
         self,
         task_obj: dict[str, Any],
-        deps: Optional[Union[Any, tuple[Any, ...]]] = None,
+        deps: Any | tuple[Any, ...] | None = None,
     ) -> Any:
         """Register and submit a task for execution.
 
@@ -701,9 +700,7 @@ class Learner:
         """
         self._state_registry.clear()
 
-    def _extract_state_from_result(
-        self, result: Any, exclude_keys: Optional[set[str]] = None
-    ) -> None:
+    def _extract_state_from_result(self, result: Any, exclude_keys: set[str] | None = None) -> None:
         """Extract state from task result if it's a dict.
 
         This method provides a universal way to extract state from task
@@ -767,7 +764,7 @@ class Learner:
     def build_iteration_state(
         self,
         iteration: int,
-        metric_value: Optional[float] = None,
+        metric_value: float | None = None,
         should_stop: bool = False,
         current_config: Optional["LearnerConfig"] = None,
     ) -> IterationState:

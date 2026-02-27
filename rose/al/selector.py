@@ -1,7 +1,7 @@
 import asyncio
 import itertools
-from collections.abc import Iterator
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
@@ -41,8 +41,8 @@ class AlgorithmSelector(Learner):
         # e.g. self.algorithm_results['algo_1'] = \
         # {'iterations': 5, 'last_result': 0.01}
         self.algorithm_results: dict[str, dict[str, Any]] = {}
-        self.best_pipeline_name: Optional[str] = None
-        self.best_pipeline_stats: Optional[dict[str, Any]] = None
+        self.best_pipeline_name: str | None = None
+        self.best_pipeline_stats: dict[str, Any] | None = None
 
         self.active_learn_task: Callable[[str], Callable] = self._algorithm_active_learn_task
 
@@ -84,7 +84,7 @@ class AlgorithmSelector(Learner):
         self,
         algorithm_name: str,
         algorithm_func: Callable,
-        config: Optional[LearnerConfig],
+        config: LearnerConfig | None,
     ) -> "SequentialActiveLearner":
         """Create a SequentialActiveLearner instance for a specific algorithm.
 
@@ -117,7 +117,7 @@ class AlgorithmSelector(Learner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        algorithm_configs: Optional[dict[str, LearnerConfig]] = None,
+        algorithm_configs: dict[str, LearnerConfig] | None = None,
     ) -> dict[str, Any]:
         """Run multiple active learning algorithms in parallel and select the best.
 
@@ -185,9 +185,7 @@ class AlgorithmSelector(Learner):
                 algorithm_func = al_task["func"]
 
                 # Create and configure the sequential learner for this algorithm
-                algorithm_config: Optional[LearnerConfig] = algorithm_configs.get(
-                    algorithm_name, None
-                )
+                algorithm_config: LearnerConfig | None = algorithm_configs.get(algorithm_name, None)
                 sequential_learner: SequentialActiveLearner = self._create_algorithm_learner(
                     algorithm_name, algorithm_func, algorithm_config
                 )
@@ -221,7 +219,7 @@ class AlgorithmSelector(Learner):
                     train_task = sequential_learner._register_task(train_config, deps=sim_task)
 
                 # Determine iteration range
-                iteration_range: Union[Iterator[int], range]
+                iteration_range: Iterator[int] | range
                 if not max_iter:
                     iteration_range = itertools.count()
                 else:
@@ -324,7 +322,7 @@ class AlgorithmSelector(Learner):
 
             # Process results and handle any exceptions
             for _, (algorithm_name, result) in enumerate(
-                zip(self.active_learn_functions.keys(), results)
+                zip(self.active_learn_functions.keys(), results, strict=False)
             ):
                 if isinstance(result, Exception):
                     print(f"[Algorithm-{algorithm_name}] Failed: {result}")
@@ -388,7 +386,7 @@ class AlgorithmSelector(Learner):
             f"and final metric result {self.best_pipeline_stats['last_result']}"
         )
 
-    def get_best_algorithm(self) -> tuple[Optional[str], Optional[dict[str, Any]]]:
+    def get_best_algorithm(self) -> tuple[str | None, dict[str, Any] | None]:
         """Get the best algorithm name and its statistics.
 
         Returns:

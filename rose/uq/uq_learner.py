@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import typeguard
 from radical.asyncflow import WorkflowEngine
@@ -15,7 +16,7 @@ class UQLearnerConfig(LearnerConfig):
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
 
-    uncertainty: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    uncertainty: TaskConfig | dict[int, TaskConfig] | None = None
 
 
 class UQLearner(Learner):

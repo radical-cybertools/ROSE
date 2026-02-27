@@ -15,9 +15,9 @@ maintainers = [
     {name = "Aymen Alsaadi", email = "aymen.alsaadi@rutgers.edu"},
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
-dependencies = ["numpy", "radical.asyncflow", "rhapsody-py"]
+dependencies = ["numpy", "radical.asyncflow", "rhapsody-py[radical_pilot, dragon]"]
 
 [project.urls]
 Homepage = "https://github.com/radical-cybertools/ROSE"
@@ -52,17 +52,16 @@ include = ["rose*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 fix = true
 exclude = ["examples/use_cases/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I", "N", "UP"]
-# UP007/UP045: allow Optional[X] and X | Y syntax for py3.9 compat
 # N803/N806: uppercase variable/arg names are standard ML convention (X, X_labeled, etc.)
 # N801: allow non-CapWords class names for ML acronyms (MC_Dropout_CNN, etc.)
 # N812/N813/N816/N817: allow ML import aliases (functional as F, etc.)
-ignore = ["UP007", "UP045", "N803", "N806", "N801", "N812", "N813", "N816", "N817"]
+ignore = ["N803", "N806", "N801", "N812", "N813", "N816", "N817"]
 
 [tool.ruff.lint.per-file-ignores]
 # task_description={"shell": True} is a ROSE API pattern introspected by decorators

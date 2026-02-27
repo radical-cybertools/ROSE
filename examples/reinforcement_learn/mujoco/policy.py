@@ -29,7 +29,7 @@ class ReinforcePolicy:
             G = exp.reward + gamma * G
             returns.insert(0, G)
 
-        for exp, R in zip(episode, returns):
+        for exp, R in zip(episode, returns, strict=False):
             state = np.array(exp.state)
             z = np.dot(self.weights, state)
             grad = (1 - np.tanh(z) ** 2) * state

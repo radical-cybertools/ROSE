@@ -3,7 +3,7 @@ import copy
 import itertools
 import warnings
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
@@ -40,7 +40,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the UQ learner and yield state at each iteration.
 
@@ -179,7 +179,7 @@ class SeqUQLearner(UQLearner):
             training_tasks = await asyncio.gather(*futures)
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if not max_iter:
             iteration_range = itertools.count()
         else:
@@ -198,7 +198,7 @@ class SeqUQLearner(UQLearner):
 
             # Check uncertainty if configured
             uq_task: tuple = ()
-            uq_stop_value: Optional[float] = None
+            uq_stop_value: float | None = None
             if self.uncertainty_function:
                 # Get iteration-specific configurations
                 uq_config: TaskConfig = self._get_iteration_task_config(
@@ -246,7 +246,7 @@ class SeqUQLearner(UQLearner):
             print(f"[Learner {self.learner_name}] {al_results}")
 
             # Check stop criterion if configured
-            metric_value: Optional[float] = None
+            metric_value: float | None = None
             should_stop = False
 
             if self.criterion_function:
@@ -263,7 +263,7 @@ class SeqUQLearner(UQLearner):
                 results = await asyncio.gather(*stop_tasks.values())
                 if self.is_stopped:
                     break
-                stops = dict(zip(stop_tasks.keys(), results))
+                stops = dict(zip(stop_tasks.keys(), results, strict=False))
 
                 model_stop: bool
                 stop_value: float
@@ -330,7 +330,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> list[dict[str, Any]]:
         """Run sequential UQ active learning loop to completion.
 
@@ -429,8 +429,8 @@ class ParallelUQLearner(SeqUQLearner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, parallel_config: Optional[UQLearnerConfig]
-    ) -> Optional[UQLearnerConfig]:
+        self, parallel_config: UQLearnerConfig | None
+    ) -> UQLearnerConfig | None:
         """Convert a UQLearnerConfig to a UQLearnerConfig.
         Note: This method currently performs a direct copy as both parallel and
         sequential learners use the same UQLearnerConfig type. This method exists
@@ -466,7 +466,7 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel UQ active learning by launching multiple SeqUQLearners.
 
@@ -535,7 +535,7 @@ class ParallelUQLearner(SeqUQLearner):
                 sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[UQLearnerConfig] = self._convert_to_sequential_config(
+                sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
                     learner_configs[learner_name]
                 )
                 print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
@@ -581,7 +581,7 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel UQ active learning loop to completion.
 

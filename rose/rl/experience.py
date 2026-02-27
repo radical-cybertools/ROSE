@@ -6,7 +6,7 @@ import uuid
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any
 
 
 @dataclass
@@ -45,7 +45,7 @@ class ExperienceBank:
         load(filepath, max_size): Load a bank from disk.
     """
 
-    def __init__(self, max_size: Optional[int] = None, session_id: Optional[str] = None):
+    def __init__(self, max_size: int | None = None, session_id: str | None = None):
         self.max_size = max_size
         self._experiences = deque(maxlen=max_size) if max_size else deque()
         self._rng = random.Random()
@@ -115,7 +115,7 @@ class ExperienceBank:
         return filepath
 
     @classmethod
-    def load(cls, filepath: str, max_size: Optional[int] = None) -> "ExperienceBank":
+    def load(cls, filepath: str, max_size: int | None = None) -> "ExperienceBank":
         """Load an ExperienceBank from a pickle file.
 
         Args:
@@ -149,7 +149,7 @@ class ExperienceBank:
     def __iter__(self) -> Iterator[Experience]:
         return iter(self._experiences)
 
-    def __getitem__(self, index: Union[int, slice]) -> Union[Experience, list[Experience]]:
+    def __getitem__(self, index: int | slice) -> Experience | list[Experience]:
         if isinstance(index, slice):
             return list(self._experiences)[index]
         return list(self._experiences)[index]

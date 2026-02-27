@@ -13,7 +13,9 @@ def simulate(output_file, sample_size=100):
     raw_dataset = load_dataset("rotten_tomatoes")
     dataset = [
         {"text": text, "label": label}
-        for text, label in zip(raw_dataset["train"]["text"], raw_dataset["train"]["label"])
+        for text, label in zip(
+            raw_dataset["train"]["text"], raw_dataset["train"]["label"], strict=False
+        )
     ]
 
     # Save the entire dataset to file

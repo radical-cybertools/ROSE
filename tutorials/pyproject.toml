@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rose-tutorials"
 version = "0.1.0"
 description = "ROSE tutorials environment"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 # --------------------
 # Common dependencies (for all tutorials)
