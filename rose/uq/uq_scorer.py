@@ -5,7 +5,7 @@ UQ_REGISTRY = {}
 
 
 def register_uq(name):
-    """Decorator to register a UQ metric"""
+    """Decorator to register a UQ metric."""
 
     def decorator(func):
         UQ_REGISTRY[name] = func
@@ -26,7 +26,7 @@ class UQScorer:
     #
     # *****************************
     def _validate_inputs(self, mc_preds, y_true=None):
-        """Safeguard to check input dimensions"""
+        """Safeguard to check input dimensions."""
         if not isinstance(mc_preds, np.ndarray):
             _type = type(mc_preds)
             try:
@@ -59,9 +59,7 @@ class UQScorer:
             try:
                 y_true = np.array(y_true)
             except Exception as err:
-                raise TypeError(
-                    f"Fail to convert {type(y_true)} y_true to numpy array"
-                ) from err
+                raise TypeError(f"Fail to convert {type(y_true)} y_true to numpy array") from err
             if self.task_type == "classification":
                 if y_true.ndim > 2:
                     y_true = np.squeeze(y_true)
@@ -112,9 +110,7 @@ class UQScorer:
         mc_preds, _ = self._validate_inputs(mc_preds)
         n_mc_samples = mc_preds.shape[0]
         votes = np.argmax(mc_preds, axis=2)  # [n_mc_samples, N]
-        mode_vote = np.apply_along_axis(
-            lambda x: np.bincount(x).argmax(), axis=0, arr=votes
-        )
+        mode_vote = np.apply_along_axis(lambda x: np.bincount(x).argmax(), axis=0, arr=votes)
         mode_count = np.sum(votes == mode_vote, axis=0)
         vr = 1.0 - mode_count / n_mc_samples
         return vr
@@ -159,17 +155,14 @@ class UQScorer:
         else:
             mean_pred = np.mean(mc_preds, axis=0).squeeze()
             var_pred = np.var(mc_preds, axis=0).squeeze() + 1e-8
-            nll = (
-                0.5 * np.log(2 * np.pi * var_pred)
-                + 0.5 * ((y_true - mean_pred) ** 2) / var_pred
-            )
+            nll = 0.5 * np.log(2 * np.pi * var_pred) + 0.5 * ((y_true - mean_pred) ** 2) / var_pred
 
         return nll
 
     #
     # *****************************
     def compute_uncertainty(self, mc_preds, y_true=None):
-        """Compute all registered UQ metrics"""
+        """Compute all registered UQ metrics."""
         mc_preds, y_true = self._validate_inputs(mc_preds, y_true)
 
         results = {}
@@ -189,8 +182,7 @@ class UQScorer:
     #
     # *****************************
     def select_top_uncertain(self, mc_preds, k=10, metric=None, y_true=None):
-        """
-        Select top-k most uncertain samples according to a registered metric.
+        """Select top-k most uncertain samples according to a registered metric.
 
         Args:
             mc_preds: numpy array of MC predictions
@@ -214,8 +206,7 @@ class UQScorer:
 
         if metric not in UQ_REGISTRY:
             raise ValueError(
-                f"Metric '{metric}' is not registered. "
-                f"Available: {list(UQ_REGISTRY.keys())}"
+                f"Metric '{metric}' is not registered. Available: {list(UQ_REGISTRY.keys())}"
             )
 
         func = UQ_REGISTRY[metric]

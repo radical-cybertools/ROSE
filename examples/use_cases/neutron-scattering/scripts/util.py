@@ -1,56 +1,60 @@
 import h5py
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-import torch
 import psutil
+import torch
+from sklearn.preprocessing import MinMaxScaler
+
 
 def print_memory_usage_template(caller, info):
     print(caller, " logging: ", info)
     print(torch.cuda.memory_summary())
 
     memory_info = psutil.virtual_memory()
-    print(f"CPU Memory Usage: {memory_info.used / (1024 ** 3):.2f} GB / {memory_info.total / (1024 ** 3):.2f} GB")
+    print(
+        f"CPU Memory Usage: {memory_info.used / (1024**3):.2f} GB / {memory_info.total / (1024**3):.2f} GB"
+    )
 
 
 def create_numpy_data(file_cubic, file_trigonal, file_tetragonal):
-    with h5py.File(file_cubic, 'r') as f:
-        dhisto = f['histograms']
+    with h5py.File(file_cubic, "r") as f:
+        dhisto = f["histograms"]
         x_cubic = dhisto[:, 1, :]
         x_shape = x_cubic.shape
-        dparams = f['parameters']
+        dparams = f["parameters"]
         y_cubic = dparams[:]
         y_shape = y_cubic.shape
         print(x_shape)
         print(y_shape)
-    with h5py.File(file_trigonal, 'r') as f:
-        dhisto = f['histograms']
+    with h5py.File(file_trigonal, "r") as f:
+        dhisto = f["histograms"]
         x_trigonal = dhisto[:, 1, :]
         x_shape = x_trigonal.shape
-        dparams = f['parameters']
+        dparams = f["parameters"]
         y_trigonal = dparams[:]
         y_shape = y_trigonal.shape
         print(x_shape)
         print(y_shape)
-    with h5py.File(file_tetragonal, 'r') as f:
-        dhisto = f['histograms']
+    with h5py.File(file_tetragonal, "r") as f:
+        dhisto = f["histograms"]
         x_tetragonal = dhisto[:, 1, :]
         x_shape = x_tetragonal.shape
-        dparams = f['parameters']
+        dparams = f["parameters"]
         y_tetragonal = dparams[:]
         y_shape = y_tetragonal.shape
         print(x_shape)
         print(y_shape)
-    
+
     x = np.concatenate([x_cubic, x_trigonal, x_tetragonal], axis=0)
     scaler_x = MinMaxScaler(copy=True)
     x = scaler_x.fit_transform(x.T).T
 
     y = np.concatenate([y_cubic, y_trigonal, y_tetragonal], axis=0)
-    y[:,0] = (y[:,0] - 3.5 )  / 1.0
-    y[:,1] = (y[:,1] - 3.5 )  / 1.0
-    y[:,2] = (y[:,2] - 30.0 ) / 90.0
+    y[:, 0] = (y[:, 0] - 3.5) / 1.0
+    y[:, 1] = (y[:, 1] - 3.5) / 1.0
+    y[:, 2] = (y[:, 2] - 30.0) / 90.0
 
     return x, y
+
 
 class EarlyStopping:
     def __init__(self, max_num, min_delta):

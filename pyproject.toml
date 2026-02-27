@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ROSE"
-version = "0.1.0"
+version = "0.2.0"
 description = "Toolkit to express and execute ML surrogate building workflows on HPC"
 
 authors = [
@@ -15,9 +15,14 @@ maintainers = [
     {name = "Aymen Alsaadi", email = "aymen.alsaadi@rutgers.edu"},
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
-dependencies = ["numpy", "radical.asyncflow", "radical.pilot"]
+dependencies = [
+    "numpy",
+    "radical.asyncflow",
+    "rhapsody-py[radical_pilot]",
+    'rhapsody-py[dragon]; python_version >= "3.10" and python_version <= "3.12"',
+]
 
 [project.urls]
 Homepage = "https://github.com/radical-cybertools/ROSE"
@@ -31,7 +36,8 @@ lint = ["ruff"]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "pytest-cov"
+    "pytest-cov",
+    "pre-commit",
 ]
 
 doc = [
@@ -46,14 +52,26 @@ doc = [
     "mkdocs-minify-plugin"
 ]
 
+[tool.setuptools.packages.find]
+include = ["rose*"]
+
 [tool.ruff]
-line-length = 88
-target-version = "py39"
+line-length = 100
+target-version = "py310"
 fix = true
+exclude = ["examples/use_cases/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I", "N", "UP"]
-ignore = ["UP007", "UP045"]
+# N803/N806: uppercase variable/arg names are standard ML convention (X, X_labeled, etc.)
+# N801: allow non-CapWords class names for ML acronyms (MC_Dropout_CNN, etc.)
+# N812/N813/N816/N817: allow ML import aliases (functional as F, etc.)
+ignore = ["N803", "N806", "N801", "N812", "N813", "N816", "N817"]
+
+[tool.ruff.lint.per-file-ignores]
+# task_description={"shell": True} is a ROSE API pattern introspected by decorators
+"examples/**/run_me.py" = ["B006"]
+"examples/**/run_me_*.py" = ["B006"]
 
 [tool.ruff.format]
 quote-style = "double"

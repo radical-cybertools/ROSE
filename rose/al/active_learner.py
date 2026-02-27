@@ -2,7 +2,7 @@ import asyncio
 import itertools
 import warnings
 from collections.abc import AsyncIterator, Coroutine, Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
@@ -50,18 +50,18 @@ class SequentialActiveLearner(Learner):
             asyncflow: The workflow engine instance used to manage async tasks.
         """
         super().__init__(asyncflow, register_and_submit=True)
-        self.learner_id: Optional[int] = None
+        self.learner_id: int | None = None
 
-        self._iteration_state: Optional[IterationState] = None
-        self._pending_config: Optional[LearnerConfig] = None
-        self._max_iter: Optional[int] = None
+        self._iteration_state: IterationState | None = None
+        self._pending_config: LearnerConfig | None = None
+        self._max_iter: int | None = None
 
     async def start(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
-        initial_config: Optional[LearnerConfig] = None,
+        initial_config: LearnerConfig | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -108,22 +108,16 @@ class SequentialActiveLearner(Learner):
         """
         # Validation
         if not skip_simulation_step and not self.simulation_function:
-            raise ValueError(
-                "Simulation function must be set when not using simulation pool!"
-            )
+            raise ValueError("Simulation function must be set when not using simulation pool!")
         if not self.training_function or not self.active_learn_function:
             raise ValueError("Training and Active Learning functions must be set!")
         if max_iter == 0 and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
 
-        learner_suffix = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
-        )
+        learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
 
         # Initialize task references
@@ -156,7 +150,7 @@ class SequentialActiveLearner(Learner):
             train_result = await train_task
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if max_iter == 0:
             iteration_range = itertools.count()
         else:
@@ -164,9 +158,7 @@ class SequentialActiveLearner(Learner):
 
         # Main iteration loop
         for i in iteration_range:
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
+            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             if self.is_stopped:
                 print(f"{learner_prefix}Stop requested, exiting learning loop.")
                 break
@@ -206,7 +198,7 @@ class SequentialActiveLearner(Learner):
             self._extract_state_from_result(acl_result)
 
             # Check stop criterion if configured
-            metric_value: Optional[float] = None
+            metric_value: float | None = None
             should_stop = False
 
             if self.criterion_function:
@@ -282,7 +274,7 @@ class SequentialActiveLearner(Learner):
         """
         self._pending_config = config
 
-    def get_current_state(self) -> Optional[IterationState]:
+    def get_current_state(self) -> IterationState | None:
         """Get the current iteration state.
 
         Returns:
@@ -290,7 +282,7 @@ class SequentialActiveLearner(Learner):
         """
         return self._iteration_state
 
-    def get_max_iterations(self) -> Optional[int]:
+    def get_max_iterations(self) -> int | None:
         """Get the maximum iterations configured for current run.
 
         Returns:
@@ -303,8 +295,8 @@ class SequentialActiveLearner(Learner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
-        learner_config: Optional[LearnerConfig] = None,
-    ) -> Optional[IterationState]:
+        learner_config: LearnerConfig | None = None,
+    ) -> IterationState | None:
         """Run active learning loop to completion.
 
         .. deprecated::
@@ -339,17 +331,14 @@ class SequentialActiveLearner(Learner):
 
 
 class ParallelActiveLearner(Learner):
-    """Parallel active learner that runs multiple
-       SequentialActiveLearners concurrently.
+    """Parallel active learner that runs multiple SequentialActiveLearners concurrently.
 
-    This class orchestrates multiple SequentialActiveLearner
-    instances to run in parallel, allowing for concurrent exploration
-    of the learning space. Each learner can be configured independently
+    This class orchestrates multiple SequentialActiveLearner instances to run in parallel, allowing
+    for concurrent exploration of the learning space. Each learner can be configured independently
     through per-learner LearnerConfig objects.
 
-    The parallel learner manages the lifecycle of all sequential
-    learners and collects their results when all have completed their
-    learning processes.
+    The parallel learner manages the lifecycle of all sequential learners and collects their results
+    when all have completed their learning processes.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -362,7 +351,7 @@ class ParallelActiveLearner(Learner):
         super().__init__(asyncflow, register_and_submit=False)
 
     def _create_sequential_learner(
-        self, learner_id: int, config: Optional[LearnerConfig]
+        self, learner_id: int, config: LearnerConfig | None
     ) -> SequentialActiveLearner:
         """Create a SequentialActiveLearner instance for a parallel learner.
 
@@ -381,9 +370,7 @@ class ParallelActiveLearner(Learner):
             independently in the parallel learning environment.
         """
         # Create a new sequential learner with the same asyncflow
-        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(
-            self.asyncflow
-        )
+        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(self.asyncflow)
 
         # Copy the base functions from the parent learner
         sequential_learner.simulation_function = self.simulation_function
@@ -397,8 +384,8 @@ class ParallelActiveLearner(Learner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, parallel_config: Optional[LearnerConfig]
-    ) -> Optional[LearnerConfig]:
+        self, parallel_config: LearnerConfig | None
+    ) -> LearnerConfig | None:
         """Convert a LearnerConfig to a LearnerConfig.
 
         Note: This method currently performs a direct copy as both parallel and
@@ -432,7 +419,7 @@ class ParallelActiveLearner(Learner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
-        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+        learner_configs: list[LearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel active learning by launching multiple SequentialActiveLearners.
 
@@ -486,15 +473,13 @@ class ParallelActiveLearner(Learner):
             """
             try:
                 # Create and configure the sequential learner
-                sequential_learner: SequentialActiveLearner = (
-                    self._create_sequential_learner(
-                        learner_id, learner_configs[learner_id]
-                    )
+                sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
+                    learner_id, learner_configs[learner_id]
                 )
 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[LearnerConfig] = (
-                    self._convert_to_sequential_config(learner_configs[learner_id])
+                sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
+                    learner_configs[learner_id]
                 )
 
                 # Run the sequential learner by iterating through start()
@@ -522,9 +507,7 @@ class ParallelActiveLearner(Learner):
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
         # Submit all learners asynchronously
-        learners: list[Coroutine] = [
-            active_learner_workflow(i) for i in range(parallel_learners)
-        ]
+        learners: list[Coroutine] = [active_learner_workflow(i) for i in range(parallel_learners)]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*learners)
@@ -535,7 +518,7 @@ class ParallelActiveLearner(Learner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
-        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+        learner_configs: list[LearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel active learning loop to completion.
 
@@ -554,8 +537,7 @@ class ParallelActiveLearner(Learner):
             List of final IterationState from each learner.
         """
         warnings.warn(
-            "teach() is deprecated and will be removed in a future version. "
-            "Use start() instead.",
+            "teach() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )

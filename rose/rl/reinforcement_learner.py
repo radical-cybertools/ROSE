@@ -1,9 +1,9 @@
 import asyncio
 import itertools
 import warnings
-from collections.abc import AsyncIterator, Coroutine, Iterator
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import typeguard
 from radical.asyncflow import WorkflowEngine
@@ -30,9 +30,7 @@ class ReinforcementLearner(Learner):
     """
 
     @typeguard.typechecked
-    def __init__(
-        self, asyncflow: WorkflowEngine, register_and_submit: bool = True
-    ) -> None:
+    def __init__(self, asyncflow: WorkflowEngine, register_and_submit: bool = True) -> None:
         """Initialize the ReinforcementLearner.
 
         Args:
@@ -45,7 +43,7 @@ class ReinforcementLearner(Learner):
 
         self.update_function = {}
         self.environment_function = {}
-        self.learner_id: Optional[int] = None
+        self.learner_id: int | None = None
         self.test_function = self.criterion_function
 
         # Create custom decorators that immediately register functions
@@ -106,16 +104,16 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             managing asynchronous tasks.
         """
         super().__init__(asyncflow, register_and_submit=True)
-        self._iteration_state: Optional[IterationState] = None
-        self._pending_config: Optional[LearnerConfig] = None
-        self._max_iter: Optional[int] = None
+        self._iteration_state: IterationState | None = None
+        self._pending_config: LearnerConfig | None = None
+        self._max_iter: int | None = None
 
     async def start(
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_environment_step: bool = False,
-        initial_config: Optional[LearnerConfig] = None,
+        initial_config: LearnerConfig | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -162,22 +160,16 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         # Validation
         if not skip_environment_step and not self.environment_function:
-            raise ValueError(
-                "Environment function must be set unless using external experiences!"
-            )
+            raise ValueError("Environment function must be set unless using external experiences!")
         if not self.update_function:
             raise ValueError("Update function must be set!")
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
 
-        learner_suffix = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
-        )
+        learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Sequential RL Learner{learner_suffix}")
 
         # Initialize task references
@@ -212,7 +204,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             update_result = await update_task
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if max_iter == 0:
             iteration_range = itertools.count()
         else:
@@ -220,9 +212,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
         # Main iteration loop
         for i in iteration_range:
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
+            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             if self.is_stopped:
                 print(f"{learner_prefix}Stop requested, exiting learning loop.")
                 break
@@ -242,13 +232,11 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             if update_result is not None:
                 self._extract_state_from_result(update_result)
 
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
+            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             print(f"{learner_prefix}Starting Iteration-{i}")
 
             # Check stop criterion if configured
-            metric_value: Optional[float] = None
+            metric_value: float | None = None
             should_stop = False
 
             if self.criterion_function:
@@ -324,7 +312,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         self._pending_config = config
 
-    def get_current_state(self) -> Optional[IterationState]:
+    def get_current_state(self) -> IterationState | None:
         """Get the current iteration state.
 
         Returns:
@@ -332,7 +320,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         """
         return self._iteration_state
 
-    def get_max_iterations(self) -> Optional[int]:
+    def get_max_iterations(self) -> int | None:
         """Get the maximum iterations configured for current run.
 
         Returns:
@@ -345,8 +333,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
-        learner_config: Optional[LearnerConfig] = None,
-    ) -> Optional[IterationState]:
+        learner_config: LearnerConfig | None = None,
+    ) -> IterationState | None:
         """Run reinforcement learning loop to completion.
 
         .. deprecated::
@@ -443,9 +431,9 @@ class ParallelExperience(ReinforcementLearner):
         super().__init__(asyncflow, register_and_submit=False)
         self.environment_functions: dict[str, dict] = {}
         self.work_dir = "."
-        self._iteration_state: Optional[IterationState] = None
-        self._pending_config: Optional[LearnerConfig] = None
-        self._max_iter: Optional[int] = None
+        self._iteration_state: IterationState | None = None
+        self._pending_config: LearnerConfig | None = None
+        self._max_iter: int | None = None
 
     def environment_task(self, name: str) -> Callable:
         """Decorator to register an environment task under a given name.
@@ -545,7 +533,7 @@ class ParallelExperience(ReinforcementLearner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        initial_config: Optional[LearnerConfig] = None,
+        initial_config: LearnerConfig | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -574,16 +562,12 @@ class ParallelExperience(ReinforcementLearner):
             raise ValueError("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
 
-        learner_suffix = (
-            f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
-        )
+        learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
 
         update_task: Any = ()
@@ -617,7 +601,7 @@ class ParallelExperience(ReinforcementLearner):
             update_result = await update_task
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if max_iter == 0:
             iteration_range = itertools.count()
         else:
@@ -641,13 +625,11 @@ class ParallelExperience(ReinforcementLearner):
             if update_result is not None:
                 self._extract_state_from_result(update_result)
 
-            learner_prefix = (
-                f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            )
+            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
             print(f"{learner_prefix}Starting Iteration-{i}")
 
             # Check stop criterion if configured
-            metric_value: Optional[float] = None
+            metric_value: float | None = None
             should_stop = False
             stop_task = None
 
@@ -717,11 +699,11 @@ class ParallelExperience(ReinforcementLearner):
         """
         self._pending_config = config
 
-    def get_current_state(self) -> Optional[IterationState]:
+    def get_current_state(self) -> IterationState | None:
         """Get the current iteration state."""
         return self._iteration_state
 
-    def get_max_iterations(self) -> Optional[int]:
+    def get_max_iterations(self) -> int | None:
         """Get the maximum iterations configured for current run."""
         return self._max_iter
 
@@ -729,8 +711,8 @@ class ParallelExperience(ReinforcementLearner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_config: Optional[LearnerConfig] = None,
-    ) -> Optional[IterationState]:
+        learner_config: LearnerConfig | None = None,
+    ) -> IterationState | None:
         """Run parallel experience RL loop to completion.
 
         .. deprecated::
@@ -764,17 +746,15 @@ class ParallelExperience(ReinforcementLearner):
 
 
 class ParallelReinforcementLearner(ReinforcementLearner):
-    """Parallel reinforcement learner that runs multiple
-    SequentialReinforcementLearners concurrently.
+    """Parallel reinforcement learner that runs multiple SequentialReinforcementLearners
+    concurrently.
 
-    This class orchestrates multiple SequentialReinforcementLearner
-    instances to run in parallel, allowing for concurrent exploration
-    of the learning space. Each learner can be configured independently
-    through per-learner LearnerConfig objects.
+    This class orchestrates multiple SequentialReinforcementLearner instances to run in parallel,
+    allowing for concurrent exploration of the learning space. Each learner can be configured
+    independently through per-learner LearnerConfig objects.
 
-    The parallel learner manages the lifecycle of all sequential
-    learners and collects their results when all have completed their
-    learning processes.
+    The parallel learner manages the lifecycle of all sequential learners and collects their results
+    when all have completed their learning processes.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
@@ -787,7 +767,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         super().__init__(asyncflow, register_and_submit=False)
 
     def _create_sequential_learner(
-        self, learner_id: int, config: Optional[LearnerConfig]
+        self, learner_id: int, config: LearnerConfig | None
     ) -> SequentialReinforcementLearner:
         """Create a SequentialReinforcementLearner instance for a parallel learner.
 
@@ -806,8 +786,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             independently in the parallel learning environment.
         """
         # Create a new sequential learner with the same asyncflow
-        sequential_learner: SequentialReinforcementLearner = (
-            SequentialReinforcementLearner(self.asyncflow)
+        sequential_learner: SequentialReinforcementLearner = SequentialReinforcementLearner(
+            self.asyncflow
         )
 
         # Copy the base functions from the parent learner
@@ -821,8 +801,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, parallel_config: Optional[LearnerConfig]
-    ) -> Optional[LearnerConfig]:
+        self, parallel_config: LearnerConfig | None
+    ) -> LearnerConfig | None:
         """Convert a LearnerConfig to a LearnerConfig.
 
         Note: This method currently performs a direct copy as both parallel and
@@ -855,10 +835,10 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         parallel_learners: int = 2,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+        learner_configs: list[LearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel reinforcement learning by launching multiple
-           SequentialReinforcementLearners.
+        SequentialReinforcementLearners.
 
         Orchestrates multiple SequentialReinforcementLearner instances to
         run concurrently, each with potentially different configurations. All
@@ -895,19 +875,14 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             raise ValueError("Environment and Update functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter > 0 or criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or [None] * parallel_learners
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
 
-        print(
-            f"Starting Parallel Reinforcement Learning "
-            f"with {parallel_learners} learners"
-        )
+        print(f"Starting Parallel Reinforcement Learning with {parallel_learners} learners")
 
         async def rl_learner_workflow(learner_id: int) -> Any:
             """Run a single SequentialReinforcementLearner.
@@ -928,14 +903,12 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             try:
                 # Create and configure the sequential learner
                 sequential_learner: SequentialReinforcementLearner = (
-                    self._create_sequential_learner(
-                        learner_id, learner_configs[learner_id]
-                    )
+                    self._create_sequential_learner(learner_id, learner_configs[learner_id])
                 )
 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[LearnerConfig] = (
-                    self._convert_to_sequential_config(learner_configs[learner_id])
+                sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
+                    learner_configs[learner_id]
                 )
 
                 # Run the sequential learner by iterating through start()
@@ -961,9 +934,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                 raise
 
         # Submit all learners asynchronously
-        futures: list[Coroutine] = [
-            rl_learner_workflow(i) for i in range(parallel_learners)
-        ]
+        futures: list[Coroutine] = [rl_learner_workflow(i) for i in range(parallel_learners)]
 
         # Wait for all learners to complete and collect results
         return await asyncio.gather(*futures)
@@ -973,7 +944,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         parallel_learners: int = 2,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[list[Optional[LearnerConfig]]] = None,
+        learner_configs: list[LearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel reinforcement learning to completion.
 
@@ -991,8 +962,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             list containing the final IterationState from each learner.
         """
         warnings.warn(
-            "learn() is deprecated and will be removed in a future version. "
-            "Use start() instead.",
+            "learn() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )

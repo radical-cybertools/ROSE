@@ -1,24 +1,24 @@
-import numpy as np
-import os
 import argparse
-from policy import ReinforcePolicy
-from rose.rl.experience import Experience, ExperienceBank
+import os
 import pickle
+
+from policy import ReinforcePolicy
+
+from rose.rl.experience import ExperienceBank
 
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-dir', type=str, default='.')
-    parser.add_argument('--memory-file', type=str, default='replay_memory.pkl')
-    parser.add_argument('--policy-file', type=str, default='trained_policy.pkl')
+    parser.add_argument("--data-dir", type=str, default=".")
+    parser.add_argument("--memory-file", type=str, default="replay_memory.pkl")
+    parser.add_argument("--policy-file", type=str, default="trained_policy.pkl")
 
     args, unknown = parser.parse_known_args()
 
-    
     # Construct full file paths
     memory_path = os.path.join(args.data_dir, args.memory_file)
     policy_path = os.path.join(args.data_dir, args.policy_file)
-    
+
     print(f"Loading replay memory from: {memory_path}")
     memory = ExperienceBank.load(memory_path)
 
@@ -30,9 +30,9 @@ if __name__ == "__main__":
     else:
         policy = ReinforcePolicy(state_dim=5)
         print("Initialized new policy.")
-    
+
     for epoch in range(200):
-        for i in range(5):
+        for _ in range(5):
             samples = memory.sample(64)
             policy.update(samples)
         print(f"Epoch {epoch}: updated policy with {len(samples)} samples")

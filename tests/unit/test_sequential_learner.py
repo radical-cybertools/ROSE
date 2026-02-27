@@ -28,9 +28,7 @@ class TestSequentialActiveLearner:
         """Create a fully configured SequentialActiveLearner for testing."""
         sequential_learner.simulation_function = AsyncMock(return_value="sim_result")
         sequential_learner.training_function = AsyncMock(return_value="train_result")
-        sequential_learner.active_learn_function = AsyncMock(
-            return_value="active_result"
-        )
+        sequential_learner.active_learn_function = AsyncMock(return_value="active_result")
         sequential_learner.criterion_function = AsyncMock(return_value=False)
 
         # Mock the parent class methods

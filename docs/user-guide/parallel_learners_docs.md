@@ -61,7 +61,7 @@ from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 
 engine = await RadicalExecutionBackend(
     {'runtime': 30,
@@ -149,7 +149,7 @@ Use numeric keys for specific iterations and -1 as a fallback.
 
 ### Approach 3: Adaptive Configuration
 ```python
-adaptive_sim = acl.create_adaptive_schedule('simulation', 
+adaptive_sim = acl.create_adaptive_schedule('simulation',
     lambda i: {
         'kwargs': {
             '--n_labeled': str(100 + i * 50),
@@ -182,7 +182,7 @@ results = await acl.start(
 ### Full Example: All Approaches Combined
 
 ```python
-adaptive_sim = acl.create_adaptive_schedule('simulation', 
+adaptive_sim = acl.create_adaptive_schedule('simulation',
     lambda i: {
         'kwargs': {
             '--n_labeled': str(100 + i * 50),

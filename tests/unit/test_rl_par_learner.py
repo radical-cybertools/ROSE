@@ -52,13 +52,9 @@ class TestParallelReinforcementLearner:
             sequential_learner.environment_function
             == configured_parallel_learner.environment_function
         )
+        assert sequential_learner.update_function == configured_parallel_learner.update_function
         assert (
-            sequential_learner.update_function
-            == configured_parallel_learner.update_function
-        )
-        assert (
-            sequential_learner.criterion_function
-            == configured_parallel_learner.criterion_function
+            sequential_learner.criterion_function == configured_parallel_learner.criterion_function
         )
 
     def test_convert_to_sequential_config(self, parallel_learner):
@@ -73,9 +69,7 @@ class TestParallelReinforcementLearner:
         mock_config.update = "upd_params"
         mock_config.criterion = "crit_params"
 
-        with patch(
-            "rose.rl.reinforcement_learner.LearnerConfig"
-        ) as mock_learner_config:
+        with patch("rose.rl.reinforcement_learner.LearnerConfig") as mock_learner_config:
             result = parallel_learner._convert_to_sequential_config(mock_config)
 
             mock_learner_config.assert_called_once_with(
@@ -103,23 +97,17 @@ class TestParallelReinforcementLearner:
             await parallel_learner.start(parallel_learners=2, max_iter=1)
 
     @pytest.mark.asyncio
-    async def test_start_invalid_parallel_learners_count(
-        self, configured_parallel_learner
-    ):
+    async def test_start_invalid_parallel_learners_count(self, configured_parallel_learner):
         """Test that start raises exception when parallel_learners < 2."""
         with pytest.raises(ValueError) as excinfo:
             await configured_parallel_learner.start(parallel_learners=1, max_iter=1)
 
-        assert "For single learner, use SequentialReinforcementLearner" in str(
-            excinfo.value
-        )
+        assert "For single learner, use SequentialReinforcementLearner" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_start_without_iterations_or_criterion(
-        self, configured_parallel_learner
-    ):
-        """Test that start raises exception when neither max_iter nor
-        criterion_function is provided."""
+    async def test_start_without_iterations_or_criterion(self, configured_parallel_learner):
+        """Test that start raises exception when neither max_iter nor criterion_function is
+        provided."""
         configured_parallel_learner.criterion_function = None
 
         with pytest.raises(ValueError, match="Either max_iter > 0 or criterion"):
@@ -127,8 +115,8 @@ class TestParallelReinforcementLearner:
 
     @pytest.mark.asyncio
     async def test_start_mismatched_config_length(self, configured_parallel_learner):
-        """Test that start raises exception when learner_configs length doesn't
-        match parallel_learners."""
+        """Test that start raises exception when learner_configs length doesn't match
+        parallel_learners."""
         learner_configs = [LearnerConfig(), LearnerConfig()]  # Length 2
 
         with pytest.raises(ValueError) as excinfo:
@@ -138,9 +126,7 @@ class TestParallelReinforcementLearner:
                 learner_configs=learner_configs,
             )
 
-        assert "learner_configs length must match parallel_learners" in str(
-            excinfo.value
-        )
+        assert "learner_configs length must match parallel_learners" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_start_successful_execution(self, configured_parallel_learner):
@@ -159,21 +145,15 @@ class TestParallelReinforcementLearner:
             "_create_sequential_learner",
             return_value=mock_sequential_learner,
         ):
-            results = await configured_parallel_learner.start(
-                parallel_learners=2, max_iter=1
-            )
+            results = await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
 
             assert len(results) == 2
             # Results are IterationState objects
             assert all(isinstance(r, IterationState) for r in results)
 
             # Verify metric storage
-            assert (
-                "learner-0" in configured_parallel_learner.metric_values_per_iteration
-            )
-            assert (
-                "learner-1" in configured_parallel_learner.metric_values_per_iteration
-            )
+            assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
+            assert "learner-1" in configured_parallel_learner.metric_values_per_iteration
 
     @pytest.mark.asyncio
     async def test_start_handles_learner_exceptions(self, configured_parallel_learner):

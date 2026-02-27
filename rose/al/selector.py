@@ -1,7 +1,7 @@
 import asyncio
 import itertools
-from collections.abc import Iterator
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
@@ -41,16 +41,12 @@ class AlgorithmSelector(Learner):
         # e.g. self.algorithm_results['algo_1'] = \
         # {'iterations': 5, 'last_result': 0.01}
         self.algorithm_results: dict[str, dict[str, Any]] = {}
-        self.best_pipeline_name: Optional[str] = None
-        self.best_pipeline_stats: Optional[dict[str, Any]] = None
+        self.best_pipeline_name: str | None = None
+        self.best_pipeline_stats: dict[str, Any] | None = None
 
-        self.active_learn_task: Callable[[str], Callable] = (
-            self._algorithm_active_learn_task
-        )
+        self.active_learn_task: Callable[[str], Callable] = self._algorithm_active_learn_task
 
-    def _algorithm_active_learn_task(
-        self, **decor_kwargs
-    ) -> Callable[[Callable], Callable]:
+    def _algorithm_active_learn_task(self, **decor_kwargs) -> Callable[[Callable], Callable]:
         """Create a decorator for registering active learning algorithms.
 
         Args:
@@ -88,7 +84,7 @@ class AlgorithmSelector(Learner):
         self,
         algorithm_name: str,
         algorithm_func: Callable,
-        config: Optional[LearnerConfig],
+        config: LearnerConfig | None,
     ) -> "SequentialActiveLearner":
         """Create a SequentialActiveLearner instance for a specific algorithm.
 
@@ -104,9 +100,7 @@ class AlgorithmSelector(Learner):
         from rose.al import SequentialActiveLearner
 
         # Create a new sequential learner with the same asyncflow
-        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(
-            self.asyncflow
-        )
+        sequential_learner: SequentialActiveLearner = SequentialActiveLearner(self.asyncflow)
 
         # Copy the base functions from the parent learner
         sequential_learner.simulation_function = self.simulation_function
@@ -123,7 +117,7 @@ class AlgorithmSelector(Learner):
         self,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        algorithm_configs: Optional[dict[str, LearnerConfig]] = None,
+        algorithm_configs: dict[str, LearnerConfig] | None = None,
     ) -> dict[str, Any]:
         """Run multiple active learning algorithms in parallel and select the best.
 
@@ -152,19 +146,14 @@ class AlgorithmSelector(Learner):
             or not self.training_function
             or not self.active_learn_functions
         ):
-            raise Exception(
-                "Simulation, Training, and at least one  AL function must be set!"
-            )
+            raise Exception("Simulation, Training, and at least one  AL function must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise Exception(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
+            raise Exception("Either max_iter or stop_criterion_function must be provided.")
 
         if not self.active_learn_functions:
             raise Exception(
-                "No active learning algorithms registered! "
-                "Use @active_learn_task decorator."
+                "No active learning algorithms registered! Use @active_learn_task decorator."
             )
 
         # Initialize algorithm configs if not provided
@@ -177,9 +166,7 @@ class AlgorithmSelector(Learner):
         )
 
         @self.asyncflow.block
-        async def _run_algorithm_pipeline(
-            al_name: str, al_task: dict
-        ) -> dict[str, Any]:
+        async def _run_algorithm_pipeline(al_name: str, al_task: dict) -> dict[str, Any]:
             """Run a single algorithm pipeline.
 
             Args:
@@ -198,13 +185,9 @@ class AlgorithmSelector(Learner):
                 algorithm_func = al_task["func"]
 
                 # Create and configure the sequential learner for this algorithm
-                algorithm_config: Optional[LearnerConfig] = algorithm_configs.get(
-                    algorithm_name, None
-                )
-                sequential_learner: SequentialActiveLearner = (
-                    self._create_algorithm_learner(
-                        algorithm_name, algorithm_func, algorithm_config
-                    )
+                algorithm_config: LearnerConfig | None = algorithm_configs.get(algorithm_name, None)
+                sequential_learner: SequentialActiveLearner = self._create_algorithm_learner(
+                    algorithm_name, algorithm_func, algorithm_config
                 )
 
                 print(f"[Algorithm-{algorithm_name}] Starting pipeline")
@@ -219,30 +202,24 @@ class AlgorithmSelector(Learner):
 
                 if not skip_pre_loop:
                     # Pre-loop: use iteration 0 configuration
-                    sim_config: TaskConfig = (
-                        sequential_learner._get_iteration_task_config(
-                            sequential_learner.simulation_function,
-                            algorithm_config,
-                            "simulation",
-                            0,
-                        )
+                    sim_config: TaskConfig = sequential_learner._get_iteration_task_config(
+                        sequential_learner.simulation_function,
+                        algorithm_config,
+                        "simulation",
+                        0,
                     )
-                    train_config: TaskConfig = (
-                        sequential_learner._get_iteration_task_config(
-                            sequential_learner.training_function,
-                            algorithm_config,
-                            "training",
-                            0,
-                        )
+                    train_config: TaskConfig = sequential_learner._get_iteration_task_config(
+                        sequential_learner.training_function,
+                        algorithm_config,
+                        "training",
+                        0,
                     )
 
                     sim_task = sequential_learner._register_task(sim_config)
-                    train_task = sequential_learner._register_task(
-                        train_config, deps=sim_task
-                    )
+                    train_task = sequential_learner._register_task(train_config, deps=sim_task)
 
                 # Determine iteration range
-                iteration_range: Union[Iterator[int], range]
+                iteration_range: Iterator[int] | range
                 if not max_iter:
                     iteration_range = itertools.count()
                 else:
@@ -253,10 +230,8 @@ class AlgorithmSelector(Learner):
                     print(f"[Algorithm-{algorithm_name}] Starting Iteration-{i}")
 
                     # Get iteration-specific configurations
-                    acl_config: TaskConfig = (
-                        sequential_learner._get_iteration_task_config(
-                            al_task, algorithm_config, "active_learn", i
-                        )
+                    acl_config: TaskConfig = sequential_learner._get_iteration_task_config(
+                        al_task, algorithm_config, "active_learn", i
                     )
 
                     acl_task = sequential_learner._register_task(
@@ -280,9 +255,7 @@ class AlgorithmSelector(Learner):
 
                         should_stop: bool
                         stop_value: float
-                        should_stop, stop_value = (
-                            sequential_learner._check_stop_criterion(stop)
-                        )
+                        should_stop, stop_value = sequential_learner._check_stop_criterion(stop)
                         final_result = stop_value
                         iteration_count = i + 1
 
@@ -290,29 +263,21 @@ class AlgorithmSelector(Learner):
                             break
 
                     # Prepare next iteration tasks
-                    next_sim_config: TaskConfig = (
-                        sequential_learner._get_iteration_task_config(
-                            sequential_learner.simulation_function,
-                            algorithm_config,
-                            "simulation",
-                            i + 1,
-                        )
+                    next_sim_config: TaskConfig = sequential_learner._get_iteration_task_config(
+                        sequential_learner.simulation_function,
+                        algorithm_config,
+                        "simulation",
+                        i + 1,
                     )
-                    next_train_config: TaskConfig = (
-                        sequential_learner._get_iteration_task_config(
-                            sequential_learner.training_function,
-                            algorithm_config,
-                            "training",
-                            i + 1,
-                        )
+                    next_train_config: TaskConfig = sequential_learner._get_iteration_task_config(
+                        sequential_learner.training_function,
+                        algorithm_config,
+                        "training",
+                        i + 1,
                     )
 
-                    sim_task = sequential_learner._register_task(
-                        next_sim_config, deps=acl_task
-                    )
-                    train_task = sequential_learner._register_task(
-                        next_train_config, deps=sim_task
-                    )
+                    sim_task = sequential_learner._register_task(next_sim_config, deps=acl_task)
+                    train_task = sequential_learner._register_task(next_train_config, deps=sim_task)
 
                     # Wait for training to complete
                     await train_task
@@ -357,7 +322,7 @@ class AlgorithmSelector(Learner):
 
             # Process results and handle any exceptions
             for _, (algorithm_name, result) in enumerate(
-                zip(self.active_learn_functions.keys(), results)
+                zip(self.active_learn_functions.keys(), results, strict=False)
             ):
                 if isinstance(result, Exception):
                     print(f"[Algorithm-{algorithm_name}] Failed: {result}")
@@ -421,7 +386,7 @@ class AlgorithmSelector(Learner):
             f"and final metric result {self.best_pipeline_stats['last_result']}"
         )
 
-    def get_best_algorithm(self) -> tuple[Optional[str], Optional[dict[str, Any]]]:
+    def get_best_algorithm(self) -> tuple[str | None, dict[str, Any] | None]:
         """Get the best algorithm name and its statistics.
 
         Returns:

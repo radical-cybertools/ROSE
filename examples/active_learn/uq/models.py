@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-#First example of non-deterministic model
+# First example of non-deterministic model
 class MC_Dropout_CNN(nn.Module):
     def __init__(self, dropout_p=0.5):
         super().__init__()
@@ -28,14 +28,16 @@ class MC_Dropout_CNN(nn.Module):
 
 # Second example of non-deterministic model
 class MC_Dropout_MLP(nn.Module):
-    def __init__(self, dropout_p=0.5, input_size=28*28, hidden_sizes=[256, 128], num_classes=10):
+    def __init__(self, dropout_p=0.5, input_size=28 * 28, hidden_sizes=None, num_classes=10):
+        if hidden_sizes is None:
+            hidden_sizes = [256, 128]
         super().__init__()
-        
+
         self.fc1 = nn.Linear(input_size, hidden_sizes[0])
         self.fc2 = nn.Linear(hidden_sizes[0], hidden_sizes[1])
         self.dropout1 = nn.Dropout(dropout_p)
         self.fc3 = nn.Linear(hidden_sizes[1], num_classes)
-        
+
     def forward(self, x):
         x = x.view(x.size(0), -1)  # Flatten input
         x = F.relu(self.fc1(x))
@@ -44,7 +46,8 @@ class MC_Dropout_MLP(nn.Module):
         x = self.fc3(x)
         return x
 
-# Bayesian base model 
+
+# Bayesian base model
 class BayesianLinear(nn.Module):
     def __init__(self, in_features, out_features, prior_std=1.0):
         super().__init__()
@@ -75,11 +78,16 @@ class BayesianLinear(nn.Module):
 
     def kl_divergence(self):
         # KL divergence between learned weight distribution and standard normal prior
-        kld_weight = -0.5 * torch.sum(1 + self.weight_logvar - self.weight_mu.pow(2) - self.weight_logvar.exp())
-        kld_bias = -0.5 * torch.sum(1 + self.bias_logvar - self.bias_mu.pow(2) - self.bias_logvar.exp())
+        kld_weight = -0.5 * torch.sum(
+            1 + self.weight_logvar - self.weight_mu.pow(2) - self.weight_logvar.exp()
+        )
+        kld_bias = -0.5 * torch.sum(
+            1 + self.bias_logvar - self.bias_mu.pow(2) - self.bias_logvar.exp()
+        )
         return kld_weight + kld_bias
 
-# Bayesian model 
+
+# Bayesian model
 class BayesianNN(nn.Module):
     def __init__(self, input_size=784, hidden_size=256, output_size=10):
         super().__init__()

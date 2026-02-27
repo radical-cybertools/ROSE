@@ -6,8 +6,10 @@ This folder contains tutorial environments for **ROSE**.
 
 ## Available Tutorials
 
-- **00-active-learning** – Active learning / Gaussian Process tutorials  
+- **00-active-learning** – Active learning / Gaussian Process tutorials
 - **01-reinforcement-learning** – Reinforcement learning / PyTorch + Gym tutorials
+- **03-highly-parallel-surrogates** – Highly parallel surrogate training with ensemble GP models
+- **04-al-algorithm-selector** – Running multiple AL algorithms in parallel and selecting the best
 
 Each tutorial has its own optional dependencies. The common dependencies are required for all tutorials.
 
@@ -31,6 +33,12 @@ pip install -e ".[00al]"
 
 # Tutorial 01rl (01-reinforcement-learning)
 pip install -e ".[01rl]"
+
+# Tutorial 03hp (03-highly-parallel-surrogates)
+pip install -e ".[03hp]"
+
+# Tutorial 04also (04-al-algorithm-selector)
+pip install -e ".[04also]"
 ```
 
 ## Usage

@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.al.active_learner import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE

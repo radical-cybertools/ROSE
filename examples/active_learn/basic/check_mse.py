@@ -1,14 +1,13 @@
 # check.py
-import sys
 import pickle
-import numpy as np
 
+import numpy as np
 from sklearn.metrics import mean_squared_error
 
 
-def check(input_file='acl_output.pkl'):
+def check(input_file="acl_output.pkl"):
     # Load the model after active learning
-    with open(input_file, 'rb') as f:
+    with open(input_file, "rb") as f:
         model = pickle.load(f)
 
     # Simulate evaluation (in practice, you would use a validation dataset)
@@ -20,6 +19,7 @@ def check(input_file='acl_output.pkl'):
     y_pred_eval = model.predict(X_eval)
     mse_eval = mean_squared_error(y_eval, y_pred_eval)
     print(mse_eval)
+
 
 if __name__ == "__main__":
     check()  # Running the check task

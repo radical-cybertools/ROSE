@@ -3,7 +3,7 @@ import copy
 import itertools
 import warnings
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
@@ -13,12 +13,10 @@ from ..learner import IterationState, TaskConfig
 
 
 class SeqUQLearner(UQLearner):
-    """UQ active learner that runs iterations one after another.
-    This class implements a sequential active learning approach based
-    on Uncertainty Quantification.
-    Each iteration consists of simulation, a set of training and prediction steps,
-    and active learning phases executed in sequence.
-    The learner can be configured with per-iteration parameters using UQLearnerConfig.
+    """UQ active learner that runs iterations one after another. This class implements a sequential
+    active learning approach based on Uncertainty Quantification. Each iteration consists of
+    simulation, a set of training and prediction steps, and active learning phases executed in
+    sequence. The learner can be configured with per-iteration parameters using UQLearnerConfig.
 
     Attributes:
         learner_name (Optional[str])    :   Identifier for the learner.
@@ -33,7 +31,6 @@ class SeqUQLearner(UQLearner):
 
         Args:
             asyncflow: The workflow engine instance for managing async tasks.
-
         """
         super().__init__(asyncflow)
 
@@ -43,7 +40,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the UQ learner and yield state at each iteration.
 
@@ -89,35 +86,28 @@ class SeqUQLearner(UQLearner):
             or not self.active_learn_function
         ):
             raise ValueError(
-                "Simulation, Training, prediction, and at least"
-                " one AL function must be set!"
+                "Simulation, Training, prediction, and at least one AL function must be set!"
             )
         # Validate exit criteria
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
 
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
 
         print(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
-            prefix = (
-                f"[Learner {self.learner_name}] starting training for "
-                "Ensemble of Models: "
-            )
+            prefix = f"[Learner {self.learner_name}] starting training for Ensemble of Models: "
         else:
-            prefix = (
-                f"[Learner {self.learner_name}] starting training for Single Model: "
-            )
+            prefix = f"[Learner {self.learner_name}] starting training for Single Model: "
         print(f"{prefix} {model_names}")
 
         async def _training_stage(
             learning_config: TaskConfig, model_name: str, iteration_count: int
         ) -> dict[str, Any]:
-            """Run a simulation, train of a single model, and generate a set of
-                predictions for that model.
+            """Run a simulation, train of a single model, and generate a set of predictions for that
+            model.
+
             Args:
                 learning_config:
                     Configuration object for retrieving task configurations.
@@ -149,9 +139,7 @@ class SeqUQLearner(UQLearner):
                 training_config["kwargs"]["--model_name"] = model_name
 
                 sim_task = self._register_task(sim_config)
-                training_task = await self._register_task(
-                    training_config, deps=sim_task
-                )
+                training_task = await self._register_task(training_config, deps=sim_task)
 
                 prediction_tasks = []
                 for i in range(num_predictions):
@@ -163,9 +151,7 @@ class SeqUQLearner(UQLearner):
                     )
                     prediction_config["kwargs"]["--model_name"] = model_name
                     prediction_config["kwargs"]["--iteration"] = i
-                    prediction_task = self._register_task(
-                        prediction_config, deps=training_task
-                    )
+                    prediction_task = self._register_task(prediction_config, deps=training_task)
                     prediction_tasks.append(prediction_task)
 
                 print(
@@ -175,10 +161,7 @@ class SeqUQLearner(UQLearner):
                 return await asyncio.gather(*prediction_tasks)
 
             except Exception as e:
-                print(
-                    f"[{self.learner_name}-{model_name}] "
-                    f"Failed train/prediction with error: {e}"
-                )
+                print(f"[{self.learner_name}-{model_name}] Failed train/prediction with error: {e}")
                 raise
 
         # Track iterations and results for this pipeline
@@ -190,14 +173,13 @@ class SeqUQLearner(UQLearner):
 
         if not skip_pre_loop:
             futures: list[Any] = [
-                _training_stage(learning_config, model_name, 0)
-                for model_name in model_names
+                _training_stage(learning_config, model_name, 0) for model_name in model_names
             ]
 
             training_tasks = await asyncio.gather(*futures)
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if not max_iter:
             iteration_range = itertools.count()
         else:
@@ -206,10 +188,7 @@ class SeqUQLearner(UQLearner):
         # Main learning loop
         for i in iteration_range:
             if self.is_stopped:
-                print(
-                    f"[Learner {self.learner_name}] Stop requested, "
-                    "exiting learning loop."
-                )
+                print(f"[Learner {self.learner_name}] Stop requested, exiting learning loop.")
                 break
 
             # Clear transient state from previous iteration
@@ -219,7 +198,7 @@ class SeqUQLearner(UQLearner):
 
             # Check uncertainty if configured
             uq_task: tuple = ()
-            uq_stop_value: Optional[float] = None
+            uq_stop_value: float | None = None
             if self.uncertainty_function:
                 # Get iteration-specific configurations
                 uq_config: TaskConfig = self._get_iteration_task_config(
@@ -267,7 +246,7 @@ class SeqUQLearner(UQLearner):
             print(f"[Learner {self.learner_name}] {al_results}")
 
             # Check stop criterion if configured
-            metric_value: Optional[float] = None
+            metric_value: float | None = None
             should_stop = False
 
             if self.criterion_function:
@@ -284,7 +263,7 @@ class SeqUQLearner(UQLearner):
                 results = await asyncio.gather(*stop_tasks.values())
                 if self.is_stopped:
                     break
-                stops = dict(zip(stop_tasks.keys(), results))
+                stops = dict(zip(stop_tasks.keys(), results, strict=False))
 
                 model_stop: bool
                 stop_value: float
@@ -343,10 +322,7 @@ class SeqUQLearner(UQLearner):
             if self.is_stopped:
                 break
 
-            print(
-                f"[Learner {self.learner_name}] Completed "
-                f"{iteration_count + 1} iteration(s)"
-            )
+            print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
 
     async def teach(
         self,
@@ -354,7 +330,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> list[dict[str, Any]]:
         """Run sequential UQ active learning loop to completion.
 
@@ -409,17 +385,17 @@ class SeqUQLearner(UQLearner):
 
 
 class ParallelUQLearner(SeqUQLearner):
-    """
-    Parallel active learner that runs multiple SeqUQLearners concurrently.
-    This class orchestrates multiple SeqUQLearner instances to run in parallel,
-    allowing for concurrent exploration of the learning space. Each learner can be
-    configured independently through per-learner UQLearnerConfig objects.
-    The parallel learner manages the lifecycle of all sequential learners and collects
-    their results when all have completed their learning processes.
+    """Parallel active learner that runs multiple SeqUQLearners concurrently.
+
+    This class orchestrates multiple SeqUQLearner instances to run in parallel, allowing for
+    concurrent exploration of the learning space. Each learner can be configured independently
+    through per-learner UQLearnerConfig objects. The parallel learner manages the lifecycle of all
+    sequential learners and collects their results when all have completed their learning processes.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the Parallel Active Learner.
+
         Args:
             asyncflow:      The workflow engine instance used to manage async tasks
                             across all parallel learners.
@@ -427,10 +403,9 @@ class ParallelUQLearner(SeqUQLearner):
         super().__init__(asyncflow)
 
     def _create_sequential_learner(self, learner_name: str) -> SeqUQLearner:
-        """Create a SeqUQLearner instance for a parallel learner.
-        Creates and configures a new SeqUQLearner with the same base
-        functions as the parent parallel learner, but with a unique identifier
-        for logging and debugging purposes.
+        """Create a SeqUQLearner instance for a parallel learner. Creates and configures a new
+        SeqUQLearner with the same base functions as the parent parallel learner, but with a unique
+        identifier for logging and debugging purposes.
 
         Args:
             learner_name: Unique identifier for the learner.
@@ -454,8 +429,8 @@ class ParallelUQLearner(SeqUQLearner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, parallel_config: Optional[UQLearnerConfig]
-    ) -> Optional[UQLearnerConfig]:
+        self, parallel_config: UQLearnerConfig | None
+    ) -> UQLearnerConfig | None:
         """Convert a UQLearnerConfig to a UQLearnerConfig.
         Note: This method currently performs a direct copy as both parallel and
         sequential learners use the same UQLearnerConfig type. This method exists
@@ -491,7 +466,7 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel UQ active learning by launching multiple SeqUQLearners.
 
@@ -527,23 +502,17 @@ class ParallelUQLearner(SeqUQLearner):
             or not self.training_function
             or not self.active_learn_function
         ):
-            raise ValueError(
-                "Simulation, Training, and Active Learning functions must be set!"
-            )
+            raise ValueError("Simulation, Training, and Active Learning functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or {name: None for name in learner_names}
         if len(learner_configs) != len(learner_names):
             raise ValueError("learner_configs length must match learner_names")
 
-        print(
-            f"Starting Parallel UQ Active Learning with {len(learner_names)} learners"
-        )
+        print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
         async def _run_sequential_learner(learner_name: str) -> Any:
             """Run a single SeqUQLearner.
@@ -563,13 +532,11 @@ class ParallelUQLearner(SeqUQLearner):
             """
             try:
                 # Create and configure the sequential learner
-                sequential_learner: SeqUQLearner = self._create_sequential_learner(
-                    learner_name
-                )
+                sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
 
                 # Convert parallel config to sequential config
-                sequential_config: Optional[UQLearnerConfig] = (
-                    self._convert_to_sequential_config(learner_configs[learner_name])
+                sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
+                    learner_configs[learner_name]
                 )
                 print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
 
@@ -614,7 +581,7 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel UQ active learning loop to completion.
 
@@ -635,8 +602,7 @@ class ParallelUQLearner(SeqUQLearner):
             compatibility).
         """
         warnings.warn(
-            "teach() is deprecated and will be removed in a future version. "
-            "Use start() instead.",
+            "teach() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )
