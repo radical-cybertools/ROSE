@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import dataclasses
 import itertools
 import warnings
 from collections.abc import AsyncIterator, Iterator
@@ -467,12 +468,16 @@ class ParallelUQLearner(SeqUQLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: dict[str, UQLearnerConfig | None] | None = None,
-    ) -> list[Any]:
+    ) -> AsyncIterator[IterationState]:
         """Run parallel UQ active learning by launching multiple SeqUQLearners.
 
         Orchestrates multiple SeqUQLearner instances to run concurrently,
-        each with potentially different configurations. All learners run
-        independently and their results are collected when all have completed.
+        each with potentially different configurations. States are streamed in
+        real time as each learner completes an iteration — use ``async for`` to
+        consume them.
+
+        Each yielded ``IterationState`` includes a ``learner_id`` field (str)
+        set to the learner's name.
 
         Args:
             learner_names: list of learner names to run concurrently.
@@ -487,14 +492,20 @@ class ParallelUQLearner(SeqUQLearner):
                 If provided, the length must match the number
                 of elements in learner_names.
 
-        Returns:
-            list containing the final IterationState from each learner, in the
-            same order as the learners were launched.
+        Yields:
+            IterationState for each iteration of each learner, in arrival order.
+            Each state has ``learner_id`` set to the learner's name (str).
 
         Raises:
             ValueError: If required base functions are not set.
             ValueError: If neither max_iter nor criterion_function is provided.
             ValueError: If learner_configs length doesn't match learner_names.
+            Exception: Re-raises any exception from a learner after all learners finish.
+
+        Example::
+
+            async for state in learner.start(learner_names=["a", "b"], model_names=[...]):
+                print(f"Learner {state.learner_id}, iter {state.iteration}: {state.metric_value}")
         """
         # Validate base functions are set
         if (
@@ -514,34 +525,15 @@ class ParallelUQLearner(SeqUQLearner):
 
         print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
-        async def _run_sequential_learner(learner_name: str) -> Any:
-            """Run a single SeqUQLearner.
+        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
 
-            Internal async function that manages the lifecycle of a single
-            SeqUQLearner within the parallel learning context.
-
-            Args:
-                learner_name: Unique identifier for this learner instance.
-
-            Returns:
-                The final IterationState from the sequential learner.
-
-            Raises:
-                Exception: Re-raises any exception from the sequential learner
-                    with additional context about which learner failed.
-            """
+        async def run_learner(learner_name: str) -> None:
             try:
-                # Create and configure the sequential learner
                 sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
-
-                # Convert parallel config to sequential config
                 sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
                     learner_configs[learner_name]
                 )
                 print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
-
-                # Run the sequential learner by iterating through start()
-                final_state = None
                 async for state in sequential_learner.start(
                     model_names=model_names,
                     num_predictions=num_predictions,
@@ -549,30 +541,39 @@ class ParallelUQLearner(SeqUQLearner):
                     skip_pre_loop=skip_pre_loop,
                     learning_config=sequential_config,
                 ):
-                    final_state = state
                     if self.is_stopped:
                         sequential_learner.stop()
+                    await queue.put(("state", dataclasses.replace(state, learner_id=learner_name)))
 
-                # Book keep the iteration value from each learner
                 self.metric_values_per_iteration[f"learner-{learner_name}"] = (
                     sequential_learner.metric_values_per_iteration
                 )
                 self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
                     sequential_learner.uncertainty_values_per_iteration
                 )
-                return final_state
-
             except Exception as e:
                 print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
-                raise
+                await queue.put(("error", e))
+            finally:
+                await queue.put(("done", None))
 
-        # Submit all learners asynchronously
-        futures: list[Any] = [
-            _run_sequential_learner(learner_name) for learner_name in learner_names
-        ]
+        tasks = [asyncio.create_task(run_learner(name)) for name in learner_names]
 
-        # Wait for all learners to complete and collect results
-        return await asyncio.gather(*futures)
+        completed = 0
+        first_error: Exception | None = None
+        while completed < len(learner_names):
+            kind, value = await queue.get()
+            if kind == "done":
+                completed += 1
+            elif kind == "state":
+                yield value
+            elif kind == "error":
+                if first_error is None:
+                    first_error = value
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if first_error is not None:
+            raise first_error
 
     async def teach(
         self,
@@ -598,22 +599,21 @@ class ParallelUQLearner(SeqUQLearner):
             learner_configs: Configuration for each learner.
 
         Returns:
-            List of results from each learner (in old format for backward
-            compatibility).
+            List of final IterationState from each learner, in learner_names order.
         """
         warnings.warn(
             "teach() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-
-        # Call start() and return the final states directly
-        # The old teach() returned the final states from each learner
-        return await self.start(
+        final_states: dict[str, IterationState | None] = {}
+        async for state in self.start(
             learner_names=learner_names,
             model_names=model_names,
             num_predictions=num_predictions,
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learner_configs=learner_configs,
-        )
+        ):
+            final_states[state.learner_id] = state
+        return [final_states.get(name) for name in learner_names]

@@ -51,16 +51,19 @@ async def test_active_learning_pipeline_functions():
         # Calculate mean or just return a simple value for testing
         return 0.5
 
-    results = await learner.start(
+    states = []
+    async for state in learner.start(
         learner_names=["l1", "l2"],
         learner_configs={"l1": None, "l2": None},
         model_names=["m1"],
         max_iter=2,
-    )
+    ):
+        states.append(state)
 
-    # Verify we got results from both learners
-    assert len(results) == 2
-    assert all(state is not None for state in results)
+    # Verify we got states from both learners (2 iterations each = 4 states)
+    assert len(states) > 0
+    assert all(state is not None for state in states)
+    assert {state.learner_id for state in states} == {"l1", "l2"}
 
     scores = learner.get_metric_results()
     uq_scores = learner.get_uncertainty_results()

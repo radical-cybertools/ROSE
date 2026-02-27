@@ -85,7 +85,8 @@ class TestParallelReinforcementLearner:
         parallel_learner.update_function = AsyncMock()
 
         with pytest.raises(ValueError, match="Environment and Update functions"):
-            await parallel_learner.start(parallel_learners=2, max_iter=1)
+            async for _ in parallel_learner.start(parallel_learners=2, max_iter=1):
+                pass
 
     @pytest.mark.asyncio
     async def test_start_missing_update_function(self, parallel_learner):
@@ -94,13 +95,15 @@ class TestParallelReinforcementLearner:
         parallel_learner.update_function = None
 
         with pytest.raises(ValueError, match="Environment and Update functions"):
-            await parallel_learner.start(parallel_learners=2, max_iter=1)
+            async for _ in parallel_learner.start(parallel_learners=2, max_iter=1):
+                pass
 
     @pytest.mark.asyncio
     async def test_start_invalid_parallel_learners_count(self, configured_parallel_learner):
         """Test that start raises exception when parallel_learners < 2."""
         with pytest.raises(ValueError) as excinfo:
-            await configured_parallel_learner.start(parallel_learners=1, max_iter=1)
+            async for _ in configured_parallel_learner.start(parallel_learners=1, max_iter=1):
+                pass
 
         assert "For single learner, use SequentialReinforcementLearner" in str(excinfo.value)
 
@@ -111,7 +114,8 @@ class TestParallelReinforcementLearner:
         configured_parallel_learner.criterion_function = None
 
         with pytest.raises(ValueError, match="Either max_iter > 0 or criterion"):
-            await configured_parallel_learner.start(parallel_learners=2)
+            async for _ in configured_parallel_learner.start(parallel_learners=2):
+                pass
 
     @pytest.mark.asyncio
     async def test_start_mismatched_config_length(self, configured_parallel_learner):
@@ -120,11 +124,12 @@ class TestParallelReinforcementLearner:
         learner_configs = [LearnerConfig(), LearnerConfig()]  # Length 2
 
         with pytest.raises(ValueError) as excinfo:
-            await configured_parallel_learner.start(
+            async for _ in configured_parallel_learner.start(
                 parallel_learners=3,  # Different length
                 max_iter=1,
                 learner_configs=learner_configs,
-            )
+            ):
+                pass
 
         assert "learner_configs length must match parallel_learners" in str(excinfo.value)
 
@@ -145,11 +150,16 @@ class TestParallelReinforcementLearner:
             "_create_sequential_learner",
             return_value=mock_sequential_learner,
         ):
-            results = await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+            states = []
+            async for state in configured_parallel_learner.start(parallel_learners=2, max_iter=1):
+                states.append(state)
 
-            assert len(results) == 2
+            # Each learner yields one state, so 2 states total
+            assert len(states) == 2
             # Results are IterationState objects
-            assert all(isinstance(r, IterationState) for r in results)
+            assert all(isinstance(s, IterationState) for s in states)
+            # Each state has learner_id set to the learner index
+            assert {s.learner_id for s in states} == {0, 1}
 
             # Verify metric storage
             assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
@@ -187,7 +197,8 @@ class TestParallelReinforcementLearner:
         ):
             # The exception should propagate up and be raised
             with pytest.raises(Exception) as excinfo:
-                await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+                async for _ in configured_parallel_learner.start(parallel_learners=2, max_iter=1):
+                    pass
 
             assert "Learner failed" in str(excinfo.value)
 
@@ -209,9 +220,10 @@ class TestParallelReinforcementLearner:
             "_create_sequential_learner",
             return_value=mock_sequential_learner,
         ):
-            await configured_parallel_learner.start(
+            async for _ in configured_parallel_learner.start(
                 parallel_learners=2, max_iter=1, skip_pre_loop=True
-            )
+            ):
+                pass
 
             # Verify that sequential learners were called with skip_pre_loop=True
             assert len(start_calls) == 2

@@ -51,6 +51,7 @@ class IterationState:
     metric_history: list[float] = field(default_factory=list)
     should_stop: bool = False
     current_config: Optional["LearnerConfig"] = None
+    learner_id: int | str | None = None
 
     # All domain-specific state goes here
     state: dict[str, Any] = field(default_factory=dict)
@@ -97,6 +98,7 @@ class IterationState:
             "metric_threshold": self.metric_threshold,
             "metric_history": self.metric_history,
             "should_stop": self.should_stop,
+            "learner_id": self.learner_id,
         }
         # Merge in all state values
         result.update(self.state)

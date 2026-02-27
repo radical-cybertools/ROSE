@@ -88,7 +88,8 @@ class TestParallelActiveLearner:
         parallel_learner.criterion_function = None
 
         with pytest.raises(ValueError, match="For single learner, use SequentialActiveLearner"):
-            await parallel_learner.start(parallel_learners=1)
+            async for _ in parallel_learner.start(parallel_learners=1):
+                pass
 
         # Test with missing simulation functions it should raise error about
         # simulation first
@@ -96,7 +97,8 @@ class TestParallelActiveLearner:
             ValueError,
             match="Simulation function must be set when not using simulation pool!",
         ):
-            await parallel_learner.start(parallel_learners=2, max_iter=1)
+            async for _ in parallel_learner.start(parallel_learners=2, max_iter=1):
+                pass
 
         # Test with missing simulation functions and skip_simulation_step
         # it should raise an error about missing train/active_learn tasks
@@ -104,7 +106,10 @@ class TestParallelActiveLearner:
             ValueError,
             match="Training and Active Learning functions must be set!",
         ):
-            await parallel_learner.start(parallel_learners=2, max_iter=1, skip_simulation_step=True)
+            async for _ in parallel_learner.start(
+                parallel_learners=2, max_iter=1, skip_simulation_step=True
+            ):
+                pass
 
         # Set functions but test missing stop criteria
         parallel_learner.simulation_function = AsyncMock()
@@ -115,16 +120,18 @@ class TestParallelActiveLearner:
             Exception,
             match="Either max_iter > 0 or criterion_function must be provided.",
         ):
-            await parallel_learner.start(parallel_learners=2, max_iter=0)
+            async for _ in parallel_learner.start(parallel_learners=2, max_iter=0):
+                pass
 
         # Test learner_configs length mismatch
         parallel_learner.criterion_function = AsyncMock()
         learner_configs = [None]  # Only 1 config for 2 learners
 
         with pytest.raises(ValueError, match="learner_configs length must match parallel_learners"):
-            await parallel_learner.start(
+            async for _ in parallel_learner.start(
                 parallel_learners=2, max_iter=1, learner_configs=learner_configs
-            )
+            ):
+                pass
 
     @pytest.mark.asyncio
     async def test_start_successful_parallel_execution(self, configured_parallel_learner):
@@ -143,12 +150,16 @@ class TestParallelActiveLearner:
             "_create_sequential_learner",
             return_value=mock_sequential,
         ):
-            results = await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+            states = []
+            async for state in configured_parallel_learner.start(parallel_learners=2, max_iter=1):
+                states.append(state)
 
-            # Verify results
-            assert len(results) == 2
+            # Each learner yields one state, so 2 states total
+            assert len(states) == 2
             # Results are IterationState objects
-            assert all(isinstance(r, IterationState) for r in results)
+            assert all(isinstance(s, IterationState) for s in states)
+            # Each state has learner_id set to the learner index
+            assert {s.learner_id for s in states} == {0, 1}
 
             # Verify metric collection
             assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
@@ -188,7 +199,10 @@ class TestParallelActiveLearner:
             with patch("builtins.print") as mock_print:
                 # Should raise exception due to learner failure
                 with pytest.raises(Exception, match="Learner failed"):
-                    await configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+                    async for _ in configured_parallel_learner.start(
+                        parallel_learners=2, max_iter=1
+                    ):
+                        pass
 
                 # Verify error was printed (learner 1 fails, not 0)
                 mock_print.assert_any_call("ActiveLearner-1] failed with error: Learner failed")
