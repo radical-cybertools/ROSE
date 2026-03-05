@@ -4,7 +4,6 @@ import os
 import sys
 import json
 import logging
-from pathlib import Path
 
 from rose.service.manager import ServiceManager
 from rose.service.client import ServiceClient

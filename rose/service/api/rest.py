@@ -1,3 +1,59 @@
+"""
+ROSE Plugin for RADICAL-Edge
+=============================
+
+This module provides a RADICAL-Edge plugin for ROSE (Remote Online Smart
+Experiment) workflow management. It enables submission, monitoring, and
+cancellation of Active Learning workflows through REST endpoints.
+
+Architecture
+------------
+The plugin embeds workflow execution directly within the Edge service,
+eliminating the need for a separate ServiceManager daemon. Each RoseSession
+maintains its own WorkflowEngine and executes learner loops as async tasks.
+
+::
+
+    Client (Python/curl/browser)
+        ↓ HTTP/REST
+    RADICAL-Edge Bridge
+        ↓ WebSocket
+    Edge Service (with ROSE plugin)
+        ↓
+    WorkflowEngine / Learners (embedded)
+
+Components
+----------
+- **PluginRose**: The plugin class registered with RADICAL-Edge. Defines REST
+  routes and UI configuration for portal integration.
+
+- **RoseSession**: Server-side session managing workflow execution. Each
+  session lazily initializes a WorkflowEngine and tracks all submitted
+  workflows.
+
+- **RoseClient**: Application-side client providing synchronous methods for
+  workflow operations.
+
+REST Endpoints
+--------------
+- ``POST /rose/register_session`` - Create a new session
+- ``POST /rose/submit/{sid}`` - Submit a workflow YAML
+- ``GET  /rose/status/{sid}/{wf_id}`` - Get workflow status
+- ``GET  /rose/workflows/{sid}`` - List all workflows
+- ``POST /rose/cancel/{sid}/{wf_id}`` - Cancel a workflow
+- ``POST /rose/unregister_session/{sid}`` - Close session
+
+Notifications
+-------------
+The plugin sends real-time notifications via SSE when workflow state changes.
+Clients can subscribe using ``RoseClient.on_workflow_state(callback)``.
+
+See Also
+--------
+- ``rose.service.manager.WorkflowLoader`` - YAML parsing and learner creation
+- ``rose.al.active_learner`` - SequentialActiveLearner, ParallelActiveLearner
+- ``radical.edge.plugin_base.Plugin`` - Base plugin class
+"""
 
 __author__    = 'RADICAL Development Team'
 __email__     = 'radical@radical-project.org'
@@ -24,7 +80,6 @@ from radical.edge.ui_schema           import UIConfig, UIForm, UIField, \
 from radical.asyncflow import WorkflowEngine, LocalExecutionBackend
 
 from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
-from rose.learner import LearnerConfig, TaskConfig
 from rose.service.models import Workflow, WorkflowState
 from rose.service.manager import WorkflowLoader
 

@@ -10,8 +10,10 @@ The service uses file-based IPC: the manager polls a local directory for request
 |------|-------------|
 | `service_test.yaml` | Minimal test workflow using `/bin/echo` (no dependencies required) |
 | `service_real.yaml` | Real workflow using `ParallelActiveLearner` with Python scripts |
+| `debug_workflow.yaml` | Fast test workflow for plugin testing (2 iterations) |
 | `run_service.py` | Integration example: launches, submits, monitors, and shuts down programmatically |
 | `verify_service.py` | Demonstrates workflow cancellation flow |
+| `example_rose_plugin.py` | REST API example using RADICAL-Edge plugin |
 
 ---
 
@@ -170,28 +172,100 @@ See [`verify_service.py`](verify_service.py) for an example of cancellation via 
 
 ---
 
-## Option 3 — REST API *(upcoming)*
+## Option 3 — REST API via RADICAL-Edge Plugin
 
-> **Not yet implemented.** A REST API for ROSE service is planned for a future release.
+The ROSE plugin for RADICAL-Edge provides a REST API for workflow management. This is the recommended approach for remote access and integration with other services.
 
-The REST API will expose the same operations as the CLI and Python client over HTTP, making it possible to submit and monitor workflows from any language or tool (e.g. `curl`, JavaScript, or remote machines).
-
-Planned endpoints:
-
+**Architecture:**
 ```
-POST   /workflows              Submit a new workflow
-GET    /workflows              List all workflows
-GET    /workflows/{wf_id}      Get status of a specific workflow
-DELETE /workflows/{wf_id}      Cancel a workflow
-POST   /shutdown               Gracefully stop the service
+Client (Python/curl/browser)
+    ↓ HTTP/REST
+RADICAL-Edge Bridge
+    ↓ WebSocket
+Edge Service (with ROSE plugin)
+    ↓
+WorkflowEngine / Learners (embedded)
 ```
 
-When available, a workflow submission will look like:
+The plugin embeds workflow execution directly — no separate `rose launch` daemon required.
+
+### Prerequisites
+
+1. RADICAL-Edge bridge running
+2. RADICAL-Edge service running with ROSE plugin loaded
+
+### REST Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/rose/register_session` | Register a new session |
+| `POST` | `/rose/submit/{sid}` | Submit a workflow |
+| `GET` | `/rose/status/{sid}/{wf_id}` | Get workflow status |
+| `GET` | `/rose/workflows/{sid}` | List all workflows |
+| `POST` | `/rose/cancel/{sid}/{wf_id}` | Cancel a workflow |
+| `POST` | `/rose/unregister_session/{sid}` | Close session |
+
+### Python Client Example
+
+See [`example_rose_plugin.py`](example_rose_plugin.py) for a complete working example.
+
+```python
+from radical.edge import BridgeClient
+import rose.service.api.rest  # Register plugin
+
+# Connect to bridge
+bc = BridgeClient(url='https://localhost:8000')
+edges = bc.list_edges()
+ec = bc.get_edge_client(edges[0])
+
+# Get ROSE plugin client
+rose = ec.get_plugin('rose')
+
+# Submit workflow
+result = rose.submit_workflow('/path/to/workflow.yaml')
+wf_id = result['wf_id']
+
+# Monitor status
+status = rose.get_workflow_status(wf_id)
+print(f"State: {status['state']}")
+
+# List all workflows
+workflows = rose.list_workflows()
+
+# Cancel if needed
+rose.cancel_workflow(wf_id)
+
+# Cleanup
+rose.close()
+bc.close()
+```
+
+### Notifications
+
+The plugin sends real-time notifications via SSE when workflow state changes:
+
+```python
+def on_state_change(topic, data):
+    print(f"Workflow {data['wf_id']}: {data['state']}")
+
+rose.on_workflow_state(on_state_change)
+```
+
+### Running the Example
 
 ```bash
-curl -X POST http://localhost:8080/workflows \
-     -H "Content-Type: application/json" \
-     -d '{"workflow_file": "/path/to/workflow.yaml"}'
+# Set bridge URL
+export RADICAL_BRIDGE_URL=https://localhost:8000
+
+# Run example
+python example_rose_plugin.py --workflow debug_workflow.yaml
 ```
 
-Stay tuned for updates.
+---
+
+## Additional Files
+
+| File | Description |
+|------|-------------|
+| `example_rose_plugin.py` | REST API example using RADICAL-Edge plugin |
+| `debug_workflow.yaml` | Fast test workflow (2 iterations, ~6 seconds) |

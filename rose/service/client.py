@@ -3,7 +3,7 @@ import uuid
 import time
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
