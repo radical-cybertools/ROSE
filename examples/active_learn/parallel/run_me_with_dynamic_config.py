@@ -52,15 +52,15 @@ async def run_al_parallel():
     )
 
     # Start the parallel active learning process
-    results = await al.start(
+    async for state in al.start(
         max_iter=1,
         parallel_learners=2,
         learner_configs=[
             LearnerConfig(simulation=adaptive_sim),
             LearnerConfig(simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 2})),
         ],
-    )
-    print(f"Parallel learning completed. Results: {results}")
+    ):
+        print(f"Learner {state.learner_id}, iteration {state.iteration}: {state.metric_value}")
 
     await al.shutdown()
 

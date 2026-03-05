@@ -31,10 +31,17 @@ async def test_rl_pipeline_functions():
     async def check_reward(val, *args):
         return val > 2
 
-    await rl.learn(parallel_learners=5, max_iter=2)
+    states = []
+    async for state in rl.start(parallel_learners=5, max_iter=2):
+        states.append(state)
+
+    assert len(states) > 0
+    assert all(state.learner_id is not None for state in states)
+    assert {state.learner_id for state in states} == {0, 1, 2, 3, 4}
 
     scores = rl.get_metric_results()
-
     assert scores != {}
+    for i in range(5):
+        assert f"learner-{i}" in scores
 
     await rl.shutdown()

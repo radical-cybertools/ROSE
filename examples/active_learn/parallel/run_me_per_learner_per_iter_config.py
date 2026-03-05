@@ -3,7 +3,7 @@ import os
 import sys
 
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose import LearnerConfig, TaskConfig
 from rose.al import ParallelActiveLearner
@@ -11,7 +11,7 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 
 async def run_al_parallel():
-    engine = await RadicalExecutionBackend({"resource": "local.localhost"})
+    engine = await ConcurrentExecutionBackend()
     asyncflow = await WorkflowEngine.create(engine)
 
     al = ParallelActiveLearner(asyncflow)
@@ -41,7 +41,7 @@ async def run_al_parallel():
         return f"{code_path}/check_mse.py"
 
     # Start the parallel active learning process with custom configs
-    results = await al.start(
+    async for state in al.start(
         parallel_learners=3,
         learner_configs=[
             # Learner 0: Same config for all iterations (your current pattern)
@@ -57,8 +57,8 @@ async def run_al_parallel():
             ),
             None,
         ],
-    )
-    print(f"Parallel learning completed. Results: {results}")
+    ):
+        print(f"Learner {state.learner_id}, iteration {state.iteration}: {state.metric_value}")
 
     await engine.shutdown()
 

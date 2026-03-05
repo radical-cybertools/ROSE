@@ -172,17 +172,20 @@ async def uq_learner():
         )
 
     # Start the UQ active learning process
-    results = await learner.start(
+    final_states = {}
+    async for state in learner.start(
         learner_names=PIPELINES,
         model_names=MODELS,
         learner_configs=learner_configs,
         max_iter=ITERATIONS,
         num_predictions=NUM_PREDICTION,
-    )
+    ):
+        print(f"Learner {state.learner_id}, iteration {state.iteration}: {state.metric_value}")
+        final_states[state.learner_id] = state
 
     print("Learning process is done.")
-    print(f"Results: {results}")
 
+    results = {lid: s.to_dict() for lid, s in final_states.items()}
     with open(Path(os.getcwd(), "UQ_training_results.json"), "w") as f:
         json.dump(results, f, indent=4)
 

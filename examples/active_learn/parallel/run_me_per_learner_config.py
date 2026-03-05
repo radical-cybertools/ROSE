@@ -36,7 +36,7 @@ async def run_al_parallel():
         return f"{code_path}/active.py"
 
     # Defining the stop criterion with a metric (MSE in this case)
-    @al.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
+    @al.as_stop_criterion(metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.01)
     async def check_mse(*args, task_description={"shell": True}, **kwargs):
         return f"{code_path}/check_mse.py"
 
@@ -51,14 +51,15 @@ async def run_al_parallel():
     )
 
     # Start the parallel active learning process
-    results = await al.start(
+    async for state in al.start(
+        max_iter=5,
         parallel_learners=2,
         learner_configs=[
             LearnerConfig(simulation=adaptive_sim),
             LearnerConfig(simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4})),
         ],
-    )
-    print(f"Parallel learning completed. Results: {results}")
+    ):
+        print(f"Learner {state.learner_id}, iteration {state.iteration}: {state.metric_value}")
 
     await al.shutdown()
 
