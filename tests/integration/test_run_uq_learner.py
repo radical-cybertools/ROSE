@@ -60,8 +60,8 @@ async def test_active_learning_pipeline_functions():
     ):
         states.append(state)
 
-    # Verify we got states from both learners (2 iterations each = 4 states)
-    assert len(states) > 0
+    # criterion returns 0.05 < threshold 0.1, so each learner stops after 1 iteration → 2 states
+    assert len(states) == 2
     assert all(state is not None for state in states)
     assert {state.learner_id for state in states} == {"l1", "l2"}
 

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Optional
@@ -103,6 +103,53 @@ class IterationState:
         # Merge in all state values
         result.update(self.state)
         return result
+
+
+async def _stream_parallel(
+    run_fns: list[Callable[[asyncio.Queue], Any]],
+) -> AsyncIterator[IterationState]:
+    """Run multiple learner coroutines in parallel and stream their IterationStates.
+
+    Each callable in ``run_fns`` must accept an ``asyncio.Queue`` and put exactly
+    three kinds of tuples into it during its lifetime:
+
+    * ``('state', IterationState)`` — for each iteration state to stream
+    * ``('error', Exception)`` — if the learner raises (before ``'done'``)
+    * ``('done', None)`` — exactly once, in a ``finally`` block, to signal completion
+
+    This function manages queue creation, task scheduling, result streaming, and
+    exception propagation so that parallel learner implementations only need to
+    provide the learner-specific ``run_fn`` logic.
+
+    Args:
+        run_fns: List of callables, one per parallel learner. Each callable takes
+            a shared ``asyncio.Queue`` and returns an awaitable coroutine.
+
+    Yields:
+        IterationState objects in arrival order across all parallel learners.
+
+    Raises:
+        Exception: The first exception raised by any learner, after all learners
+            have finished.
+    """
+    queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+    tasks = [asyncio.create_task(fn(queue)) for fn in run_fns]
+
+    completed = 0
+    first_error: Exception | None = None
+    while completed < len(run_fns):
+        kind, value = await queue.get()
+        if kind == "done":
+            completed += 1
+        elif kind == "state":
+            yield value
+        elif kind == "error":
+            if first_error is None:
+                first_error = value
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+    if first_error is not None:
+        raise first_error
 
 
 class TaskConfig(BaseModel):

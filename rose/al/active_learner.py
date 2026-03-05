@@ -7,7 +7,7 @@ from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
-from ..learner import IterationState, Learner, LearnerConfig
+from ..learner import IterationState, Learner, LearnerConfig, _stream_parallel
 
 
 class SequentialActiveLearner(Learner):
@@ -468,52 +468,39 @@ class ParallelActiveLearner(Learner):
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
-        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        def make_run_fn(learner_id: int):
+            async def run_learner(queue: asyncio.Queue) -> None:
+                try:
+                    sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
+                        learner_id, learner_configs[learner_id]
+                    )
+                    sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
+                        learner_configs[learner_id]
+                    )
+                    async for state in sequential_learner.start(
+                        max_iter=max_iter,
+                        skip_pre_loop=skip_pre_loop,
+                        skip_simulation_step=skip_simulation_step,
+                        initial_config=sequential_config,
+                    ):
+                        if self.is_stopped:
+                            sequential_learner.stop()
+                        await queue.put(
+                            ("state", dataclasses.replace(state, learner_id=learner_id))
+                        )
+                    self.metric_values_per_iteration[f"learner-{learner_id}"] = (
+                        sequential_learner.metric_values_per_iteration
+                    )
+                except Exception as e:
+                    print(f"ActiveLearner-{learner_id}] failed with error: {e}")
+                    await queue.put(("error", e))
+                finally:
+                    await queue.put(("done", None))
 
-        async def run_learner(learner_id: int) -> None:
-            try:
-                sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
-                    learner_id, learner_configs[learner_id]
-                )
-                sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
-                    learner_configs[learner_id]
-                )
-                async for state in sequential_learner.start(
-                    max_iter=max_iter,
-                    skip_pre_loop=skip_pre_loop,
-                    skip_simulation_step=skip_simulation_step,
-                    initial_config=sequential_config,
-                ):
-                    if self.is_stopped:
-                        sequential_learner.stop()
-                    await queue.put(("state", dataclasses.replace(state, learner_id=learner_id)))
+            return run_learner
 
-                self.metric_values_per_iteration[f"learner-{learner_id}"] = (
-                    sequential_learner.metric_values_per_iteration
-                )
-            except Exception as e:
-                print(f"ActiveLearner-{learner_id}] failed with error: {e}")
-                await queue.put(("error", e))
-            finally:
-                await queue.put(("done", None))
-
-        tasks = [asyncio.create_task(run_learner(i)) for i in range(parallel_learners)]
-
-        completed = 0
-        first_error: Exception | None = None
-        while completed < parallel_learners:
-            kind, value = await queue.get()
-            if kind == "done":
-                completed += 1
-            elif kind == "state":
-                yield value
-            elif kind == "error":
-                if first_error is None:
-                    first_error = value
-
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if first_error is not None:
-            raise first_error
+        async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
+            yield state
 
     async def teach(
         self,

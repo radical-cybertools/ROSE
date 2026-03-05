@@ -10,7 +10,7 @@ from radical.asyncflow import WorkflowEngine
 
 from rose.uq.uq_learner import UQLearner, UQLearnerConfig
 
-from ..learner import IterationState, TaskConfig
+from ..learner import IterationState, TaskConfig, _stream_parallel
 
 
 class SeqUQLearner(UQLearner):
@@ -525,55 +525,42 @@ class ParallelUQLearner(SeqUQLearner):
 
         print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
-        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        def make_run_fn(learner_name: str):
+            async def run_learner(queue: asyncio.Queue) -> None:
+                try:
+                    sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
+                    sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
+                        learner_configs[learner_name]
+                    )
+                    print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
+                    async for state in sequential_learner.start(
+                        model_names=model_names,
+                        num_predictions=num_predictions,
+                        max_iter=max_iter,
+                        skip_pre_loop=skip_pre_loop,
+                        learning_config=sequential_config,
+                    ):
+                        if self.is_stopped:
+                            sequential_learner.stop()
+                        await queue.put(
+                            ("state", dataclasses.replace(state, learner_id=learner_name))
+                        )
+                    self.metric_values_per_iteration[f"learner-{learner_name}"] = (
+                        sequential_learner.metric_values_per_iteration
+                    )
+                    self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
+                        sequential_learner.uncertainty_values_per_iteration
+                    )
+                except Exception as e:
+                    print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
+                    await queue.put(("error", e))
+                finally:
+                    await queue.put(("done", None))
 
-        async def run_learner(learner_name: str) -> None:
-            try:
-                sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
-                sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
-                    learner_configs[learner_name]
-                )
-                print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
-                async for state in sequential_learner.start(
-                    model_names=model_names,
-                    num_predictions=num_predictions,
-                    max_iter=max_iter,
-                    skip_pre_loop=skip_pre_loop,
-                    learning_config=sequential_config,
-                ):
-                    if self.is_stopped:
-                        sequential_learner.stop()
-                    await queue.put(("state", dataclasses.replace(state, learner_id=learner_name)))
+            return run_learner
 
-                self.metric_values_per_iteration[f"learner-{learner_name}"] = (
-                    sequential_learner.metric_values_per_iteration
-                )
-                self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
-                    sequential_learner.uncertainty_values_per_iteration
-                )
-            except Exception as e:
-                print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
-                await queue.put(("error", e))
-            finally:
-                await queue.put(("done", None))
-
-        tasks = [asyncio.create_task(run_learner(name)) for name in learner_names]
-
-        completed = 0
-        first_error: Exception | None = None
-        while completed < len(learner_names):
-            kind, value = await queue.get()
-            if kind == "done":
-                completed += 1
-            elif kind == "state":
-                yield value
-            elif kind == "error":
-                if first_error is None:
-                    first_error = value
-
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if first_error is not None:
-            raise first_error
+        async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
+            yield state
 
     async def teach(
         self,
