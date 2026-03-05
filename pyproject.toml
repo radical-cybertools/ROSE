@@ -27,6 +27,9 @@ Documentation = "https://radical-cybertools.github.io/ROSE/"
 [project.scripts]
 rose = "rose.service.api.cli:main"
 
+[project.entry-points."radical.edge.plugins"]
+rose = "rose.service.api.rest:PluginRose"
+
 [project.optional-dependencies]
 lint = ["ruff"]
 

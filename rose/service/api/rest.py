@@ -7,7 +7,9 @@ __license__   = 'MIT'
 
 import asyncio
 import uuid
+import time
 import logging
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from starlette.responses import JSONResponse
@@ -15,8 +17,16 @@ from starlette.responses import JSONResponse
 from radical.edge.plugin_session_base import PluginSession
 from radical.edge.plugin_base         import Plugin
 from radical.edge.client              import PluginClient
+from radical.edge.ui_schema           import UIConfig, UIForm, UIField, \
+                                             UIFormSubmit, UIMonitor, \
+                                             UINotifications
 
-from rose.service.client import ServiceClient
+from radical.asyncflow import WorkflowEngine, LocalExecutionBackend
+
+from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
+from rose.learner import LearnerConfig, TaskConfig
+from rose.service.models import Workflow, WorkflowState
+from rose.service.manager import WorkflowLoader
 
 
 log = logging.getLogger("radical.edge")
@@ -28,47 +38,176 @@ class RoseSession(PluginSession):
     """
     ROSE session (service-side).
 
-    Wraps a ``ServiceClient`` instance, forwarding workflow submission,
-    status queries, cancellation, and service shutdown to a running ROSE
-    service identified by its job ID.
+    Directly manages workflow execution using AsyncFlow, eliminating the need
+    for a separate ServiceManager process.
     """
 
     # --------------------------------------------------------------------------
     #
-    def __init__(self, sid: str, job_id: str = 'local_job_0'):
+    def __init__(self, sid: str):
         """
         Initialize a RoseSession.
 
         Args:
-            sid    (str): Unique session identifier assigned by the plugin.
-            job_id (str): The ROSE service job ID to connect to.
-                          Defaults to 'local_job_0' (local, non-SLURM usage).
+            sid (str): Unique session identifier assigned by the plugin.
         """
         super().__init__(sid)
 
-        self._job_id = job_id
-        self._client = ServiceClient(job_id)
+        self._workflows: Dict[str, Workflow] = {}
+        self._learner_tasks: Dict[str, asyncio.Task] = {}
+        self._engine: Optional[WorkflowEngine] = None
+        self._engine_lock = asyncio.Lock()
+        self._initialized = False
+
+
+    # --------------------------------------------------------------------------
+    #
+    async def _ensure_engine(self):
+        """Lazily initialize the workflow engine."""
+        if self._engine is not None:
+            return
+
+        async with self._engine_lock:
+            if self._engine is not None:
+                return
+
+            log.info(f'[{self.sid}] Initializing workflow engine')
+            backend = LocalExecutionBackend()
+            self._engine = await WorkflowEngine.create(backend)
+            self._initialized = True
+            log.info(f'[{self.sid}] Workflow engine ready')
 
 
     # --------------------------------------------------------------------------
     #
     async def submit_workflow(self, workflow_file: str) -> dict:
         """
-        Submit a workflow YAML file to the ROSE service.
+        Submit a workflow YAML file for execution.
 
         Args:
             workflow_file (str): Absolute or relative path to the workflow YAML.
 
         Returns:
-            dict: ``{req_id, wf_id}`` — the request ID and the derived workflow ID.
+            dict: ``{wf_id}`` — the workflow ID.
         """
         self._check_active()
+        await self._ensure_engine()
 
-        req_id = await asyncio.to_thread(self._client.submit_workflow,
-                                         workflow_file)
-        wf_id  = ServiceClient.get_wf_id(req_id)
+        # Generate workflow ID
+        wf_id = f'wf.{uuid.uuid4().hex[:8]}'
 
-        return {'req_id': req_id, 'wf_id': wf_id}
+        # Create workflow record
+        wf = Workflow(
+            wf_id=wf_id,
+            state=WorkflowState.SUBMITTED,
+            workflow_file=workflow_file
+        )
+        self._workflows[wf_id] = wf
+
+        # Notify submission
+        if self._notify:
+            self._notify('workflow_state', {
+                'wf_id': wf_id,
+                'state': 'SUBMITTED',
+                'workflow_file': workflow_file
+            })
+
+        # Start workflow execution in background
+        task = asyncio.create_task(self._run_workflow(wf))
+        self._learner_tasks[wf_id] = task
+
+        log.info(f'[{self.sid}] Submitted workflow {wf_id}: {workflow_file}')
+        return {'wf_id': wf_id}
+
+
+    # --------------------------------------------------------------------------
+    #
+    async def _run_workflow(self, wf: Workflow):
+        """Execute a workflow (runs as background task)."""
+        wf_id = wf.wf_id
+
+        try:
+            # Initialize
+            wf.state = WorkflowState.INITIALIZING
+            self._notify_state(wf)
+
+            # Load workflow definition
+            wf_def = WorkflowLoader.load_yaml(wf.workflow_file)
+            learner, initial_config = WorkflowLoader.create_learner(
+                wf_id, wf_def, self._engine
+            )
+            wf.learner_instance = learner
+
+            # Run
+            wf.state = WorkflowState.RUNNING
+            wf.start_time = time.time()
+            self._notify_state(wf)
+
+            config = wf_def.get('config', {})
+            learner_cfg = wf_def.get('learner', {})
+            max_iter = config.get('max_iterations',
+                       learner_cfg.get('max_iterations', 10))
+
+            log.info(f'[{self.sid}] Running workflow {wf_id} '
+                     f'(max_iterations={max_iter})')
+
+            if isinstance(learner, ParallelActiveLearner):
+                parallel = config.get('parallel_learners',
+                           learner_cfg.get('parallel_learners', 2))
+                configs = [initial_config] * parallel if initial_config else None
+
+                results = await learner.start(
+                    parallel_learners=parallel,
+                    max_iter=max_iter,
+                    learner_configs=configs
+                )
+                wf.stats = {'parallel_results': [str(r) for r in results]}
+
+            else:
+                # Sequential learner - async iterator
+                async for state in learner.start(
+                    max_iter=max_iter,
+                    initial_config=initial_config
+                ):
+                    wf.stats = state.to_dict()
+                    log.info(f'[{self.sid}] {wf_id} iteration {state.iteration} '
+                             f'(metric={state.metric_value})')
+                    self._notify_state(wf)
+
+            # Completed
+            wf.state = WorkflowState.COMPLETED
+            wf.end_time = time.time()
+            log.info(f'[{self.sid}] Workflow {wf_id} completed')
+
+        except asyncio.CancelledError:
+            wf.state = WorkflowState.CANCELED
+            wf.end_time = time.time()
+            log.info(f'[{self.sid}] Workflow {wf_id} canceled')
+
+        except Exception as e:
+            wf.state = WorkflowState.FAILED
+            wf.error = str(e)
+            wf.end_time = time.time()
+            log.error(f'[{self.sid}] Workflow {wf_id} failed: {e}')
+            import traceback
+            traceback.print_exc()
+
+        finally:
+            self._notify_state(wf)
+            self._learner_tasks.pop(wf_id, None)
+
+
+    # --------------------------------------------------------------------------
+    #
+    def _notify_state(self, wf: Workflow):
+        """Send workflow state notification."""
+        if self._notify:
+            self._notify('workflow_state', {
+                'wf_id': wf.wf_id,
+                'state': wf.state.value,
+                'stats': wf.stats,
+                'error': wf.error
+            })
 
 
     # --------------------------------------------------------------------------
@@ -78,81 +217,109 @@ class RoseSession(PluginSession):
         Return the current status of a workflow.
 
         Args:
-            wf_id (str): The workflow ID (e.g. ``wf.3f2a1b4c``).
+            wf_id (str): The workflow ID.
 
         Returns:
-            dict: Workflow state dictionary from the service registry.
+            dict: Workflow state dictionary.
 
         Raises:
             HTTPException(404): If the workflow ID is not found.
         """
         self._check_active()
 
-        status = await asyncio.to_thread(self._client.get_workflow_status,
-                                         wf_id)
-        if not status:
+        wf = self._workflows.get(wf_id)
+        if not wf:
             raise HTTPException(status_code=404,
                                 detail=f"workflow '{wf_id}' not found")
 
-        return status
+        return wf.to_dict()
 
 
     # --------------------------------------------------------------------------
     #
     async def list_workflows(self) -> dict:
         """
-        List all workflows tracked by the ROSE service.
+        List all workflows in this session.
 
         Returns:
-            dict: Full registry mapping ``wf_id → state dict``.
+            dict: Mapping ``wf_id → state dict``.
         """
         self._check_active()
 
-        return await asyncio.to_thread(self._client.list_workflows)
+        return {wf_id: wf.to_dict() for wf_id, wf in self._workflows.items()}
 
 
     # --------------------------------------------------------------------------
     #
     async def cancel_workflow(self, wf_id: str) -> dict:
         """
-        Request cancellation of a running workflow.
+        Cancel a running workflow.
 
         Args:
             wf_id (str): The workflow ID to cancel.
 
         Returns:
-            dict: ``{req_id, wf_id}`` confirming the cancellation request.
+            dict: ``{wf_id}`` confirming the cancellation.
         """
         self._check_active()
 
-        req_id = await asyncio.to_thread(self._client.cancel_workflow, wf_id)
+        wf = self._workflows.get(wf_id)
+        if not wf:
+            raise HTTPException(status_code=404,
+                                detail=f"workflow '{wf_id}' not found")
 
-        return {'req_id': req_id, 'wf_id': wf_id}
+        if wf.state not in (WorkflowState.RUNNING, WorkflowState.INITIALIZING,
+                            WorkflowState.SUBMITTED):
+            raise HTTPException(status_code=400,
+                                detail=f"workflow '{wf_id}' not running")
 
+        # Stop the learner
+        if wf.learner_instance:
+            wf.learner_instance.stop()
 
-    # --------------------------------------------------------------------------
-    #
-    async def shutdown(self) -> dict:
-        """
-        Send a graceful shutdown request to the ROSE service.
+        # Cancel the task
+        task = self._learner_tasks.get(wf_id)
+        if task and not task.done():
+            task.cancel()
 
-        Returns:
-            dict: ``{req_id}`` confirming the shutdown request was queued.
-        """
-        self._check_active()
+        log.info(f'[{self.sid}] Canceling workflow {wf_id}')
 
-        req_id = await asyncio.to_thread(self._client.shutdown)
+        if self._notify:
+            self._notify('workflow_state', {
+                'wf_id': wf_id,
+                'state': 'CANCELING'
+            })
 
-        return {'req_id': req_id}
+        return {'wf_id': wf_id}
 
 
     # --------------------------------------------------------------------------
     #
     async def close(self) -> dict:
         """
-        Close this session. ServiceClient is stateless so no teardown needed.
+        Close this session, stopping all workflows and cleaning up.
         """
-        self._client = None
+        log.info(f'[{self.sid}] Closing session')
+
+        # Stop all learners
+        for wf in self._workflows.values():
+            if wf.learner_instance and wf.state == WorkflowState.RUNNING:
+                wf.learner_instance.stop()
+
+        # Cancel all tasks
+        for task in self._learner_tasks.values():
+            if not task.done():
+                task.cancel()
+
+        if self._learner_tasks:
+            await asyncio.gather(*self._learner_tasks.values(),
+                                 return_exceptions=True)
+            self._learner_tasks.clear()
+
+        # Shutdown engine
+        if self._engine:
+            await self._engine.shutdown()
+            self._engine = None
 
         return await super().close()
 
@@ -164,24 +331,31 @@ class RoseClient(PluginClient):
     Application-side client for the ROSE plugin.
 
     Provides a thin sync wrapper over the HTTP endpoints exposed by
-    ``PluginRose``, mirroring the same operations available through the
-    ``rose`` CLI and ``ServiceClient``.
+    ``PluginRose``.
     """
 
     # --------------------------------------------------------------------------
     #
-    def register_session(self, job_id: str = 'local_job_0'):
+    def on_workflow_state(self, callback):
         """
-        Register a session with the ROSE plugin, binding it to a job ID.
+        Register a callback for workflow state change notifications.
 
         Args:
-            job_id (str): The ROSE service job ID to connect to.
-                          Defaults to 'local_job_0'.
+            callback: A callable(topic, data) to invoke on state changes.
         """
-        resp = self._http.post(self._url('register_session'),
-                               json={'job_id': job_id})
-        resp.raise_for_status()
-        self._sid = resp.json()['sid']
+        self.register_notification_callback(callback)
+
+
+    # --------------------------------------------------------------------------
+    #
+    def off_workflow_state(self, callback):
+        """
+        Unregister a workflow state change callback.
+
+        Args:
+            callback: The callback to unregister.
+        """
+        self.unregister_notification_callback(callback)
 
 
     # --------------------------------------------------------------------------
@@ -194,7 +368,7 @@ class RoseClient(PluginClient):
             workflow_file (str): Path to the workflow YAML file.
 
         Returns:
-            dict: ``{req_id, wf_id}``.
+            dict: ``{wf_id}``.
         """
         if not self.sid:
             raise RuntimeError('No active session')
@@ -231,7 +405,7 @@ class RoseClient(PluginClient):
     #
     def list_workflows(self) -> dict:
         """
-        List all workflows in the connected ROSE service.
+        List all workflows in the session.
 
         Returns:
             dict: Registry mapping ``wf_id → state dict``.
@@ -255,30 +429,12 @@ class RoseClient(PluginClient):
             wf_id (str): Workflow ID to cancel.
 
         Returns:
-            dict: ``{req_id, wf_id}``.
+            dict: ``{wf_id}``.
         """
         if not self.sid:
             raise RuntimeError('No active session')
 
         resp = self._http.post(self._url(f'cancel/{self.sid}/{wf_id}'))
-        resp.raise_for_status()
-
-        return resp.json()
-
-
-    # --------------------------------------------------------------------------
-    #
-    def shutdown(self) -> dict:
-        """
-        Send a shutdown request to the ROSE service.
-
-        Returns:
-            dict: ``{req_id}``.
-        """
-        if not self.sid:
-            raise RuntimeError('No active session')
-
-        resp = self._http.post(self._url(f'shutdown/{self.sid}'))
         resp.raise_for_status()
 
         return resp.json()
@@ -290,29 +446,66 @@ class PluginRose(Plugin):
     """
     ROSE plugin for RADICAL-Edge.
 
-    Exposes ROSE-as-a-Service workflow management via REST endpoints,
-    enabling remote submission and monitoring of Active Learning workflows
-    through the RADICAL-Edge bridge infrastructure.
+    Exposes workflow management via REST endpoints, with embedded execution
+    (no separate ServiceManager process required).
 
-    Standard routes inherited from Plugin:
+    Routes:
     - POST /rose/register_session
     - POST /rose/unregister_session/{sid}
-    - GET  /rose/echo/{sid}
-    - GET  /rose/version
-    - GET  /rose/list_sessions
-
-    ROSE-specific routes:
     - POST /rose/submit/{sid}
     - GET  /rose/status/{sid}/{wf_id}
     - GET  /rose/workflows/{sid}
     - POST /rose/cancel/{sid}/{wf_id}
-    - POST /rose/shutdown/{sid}
     """
 
     plugin_name   = 'rose'
     session_class = RoseSession
     client_class  = RoseClient
-    version       = '0.1.0'
+    version       = '0.2.0'
+    session_ttl   = 0  # No timeout - workflows can run for hours/days
+
+    ui_config = UIConfig(
+        icon='🌹',
+        title='ROSE Active Learning',
+        description='Submit and monitor Active Learning workflows',
+        refresh_button=True,
+        forms=[
+            UIForm(
+                id='submit',
+                title='Submit Workflow',
+                layout='single',
+                fields=[
+                    UIField(
+                        name='workflow_file',
+                        type='text',
+                        label='Workflow File',
+                        placeholder='/path/to/workflow.yaml',
+                        required=True
+                    )
+                ],
+                submit=UIFormSubmit(
+                    label='Submit',
+                    style='success',
+                    endpoint='submit/{sid}'
+                )
+            )
+        ],
+        monitors=[
+            UIMonitor(
+                id='workflows',
+                title='Workflows',
+                type='task_list',
+                css_class='workflow-list',
+                empty_text='No workflows submitted yet',
+                auto_load='workflows/{sid}'
+            )
+        ],
+        notifications=UINotifications(
+            topic='workflow_state',
+            id_field='wf_id',
+            state_field='state'
+        )
+    )
 
 
     # --------------------------------------------------------------------------
@@ -320,68 +513,21 @@ class PluginRose(Plugin):
     def __init__(self, app: FastAPI, instance_name: str = 'rose'):
         """
         Initialize the ROSE plugin, registering all routes.
-
-        Args:
-            app           (FastAPI): The FastAPI application instance.
-            instance_name (str):     Plugin namespace. Defaults to 'rose'.
         """
         super().__init__(app, instance_name)
 
         self.add_route_post('submit/{sid}',          self.submit_workflow)
         self.add_route_get ('status/{sid}/{wf_id}',  self.get_workflow_status)
-        self.add_route_get ('workflows/{sid}',        self.list_workflows)
+        self.add_route_get ('workflows/{sid}',       self.list_workflows)
         self.add_route_post('cancel/{sid}/{wf_id}',  self.cancel_workflow)
-        self.add_route_post('shutdown/{sid}',         self.shutdown)
 
         self._log_routes()
 
 
     # --------------------------------------------------------------------------
     #
-    async def register_session(self, request: Request) -> JSONResponse:
-        """
-        Register a new ROSE session, binding it to a specific job ID.
-
-        Overrides the base implementation to accept an optional ``job_id``
-        from the request body (defaults to ``'local_job_0'``).
-
-        Args:
-            request (Request): JSON body may contain ``{"job_id": "..."}``
-
-        Returns:
-            JSONResponse: ``{sid}`` — the assigned session ID.
-        """
-        body = {}
-        try:
-            body = await request.json()
-        except Exception:
-            pass
-
-        job_id = body.get('job_id', 'local_job_0')
-
-        async with self._id_lock:
-            sid = f'session.{uuid.uuid4().hex[:8]}'
-
-        self._sessions[sid] = self._create_session(sid, job_id=job_id)
-        log.info(f'[{self.instance_name}] Registered session {sid} '
-                 f'(job_id={job_id})')
-
-        return JSONResponse({'sid': sid})
-
-
-    # --------------------------------------------------------------------------
-    #
     async def submit_workflow(self, request: Request) -> JSONResponse:
-        """
-        Submit a workflow YAML file to the ROSE service.
-
-        Args:
-            request (Request): Path param ``sid``.
-                               JSON body: ``{"workflow_file": "/path/to/wf.yaml"}``
-
-        Returns:
-            JSONResponse: ``{req_id, wf_id}``
-        """
+        """Submit a workflow YAML file."""
         sid  = request.path_params['sid']
         data = await request.json()
 
@@ -392,15 +538,7 @@ class PluginRose(Plugin):
     # --------------------------------------------------------------------------
     #
     async def get_workflow_status(self, request: Request) -> JSONResponse:
-        """
-        Return the status of a specific workflow.
-
-        Args:
-            request (Request): Path params ``sid``, ``wf_id``.
-
-        Returns:
-            JSONResponse: Workflow state dictionary.
-        """
+        """Return the status of a specific workflow."""
         sid   = request.path_params['sid']
         wf_id = request.path_params['wf_id']
 
@@ -411,15 +549,7 @@ class PluginRose(Plugin):
     # --------------------------------------------------------------------------
     #
     async def list_workflows(self, request: Request) -> JSONResponse:
-        """
-        List all workflows tracked by the ROSE service.
-
-        Args:
-            request (Request): Path param ``sid``.
-
-        Returns:
-            JSONResponse: Registry dict ``{wf_id → state dict}``.
-        """
+        """List all workflows in the session."""
         sid = request.path_params['sid']
 
         return await self._forward(sid, RoseSession.list_workflows)
@@ -428,37 +558,12 @@ class PluginRose(Plugin):
     # --------------------------------------------------------------------------
     #
     async def cancel_workflow(self, request: Request) -> JSONResponse:
-        """
-        Cancel a running workflow.
-
-        Args:
-            request (Request): Path params ``sid``, ``wf_id``.
-
-        Returns:
-            JSONResponse: ``{req_id, wf_id}``
-        """
+        """Cancel a running workflow."""
         sid   = request.path_params['sid']
         wf_id = request.path_params['wf_id']
 
         return await self._forward(sid, RoseSession.cancel_workflow,
                                    wf_id=wf_id)
-
-
-    # --------------------------------------------------------------------------
-    #
-    async def shutdown(self, request: Request) -> JSONResponse:
-        """
-        Send a graceful shutdown request to the ROSE service.
-
-        Args:
-            request (Request): Path param ``sid``.
-
-        Returns:
-            JSONResponse: ``{req_id}``
-        """
-        sid = request.path_params['sid']
-
-        return await self._forward(sid, RoseSession.shutdown)
 
 
 # ------------------------------------------------------------------------------

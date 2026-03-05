@@ -8,8 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Callable
 
-from radical.asyncflow import WorkflowEngine, ConcurrentExecutionBackend
-from concurrent.futures import ProcessPoolExecutor
+from radical.asyncflow import WorkflowEngine, LocalExecutionBackend
 
 from rose.al.active_learner import SequentialActiveLearner, ParallelActiveLearner
 from rose.learner import LearnerConfig, TaskConfig
@@ -187,7 +186,7 @@ class ServiceManager:
         """Setup directories and backend."""
         self.requests_dir.mkdir(parents=True, exist_ok=True)
 
-        backend = await ConcurrentExecutionBackend(ProcessPoolExecutor())
+        backend = LocalExecutionBackend()
         self.engine = await WorkflowEngine.create(backend)
         logger.info(f"Service initialized at {self.service_root}")
 
