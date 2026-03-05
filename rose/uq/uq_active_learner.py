@@ -525,20 +525,18 @@ class ParallelUQLearner(SeqUQLearner):
 
         print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
+        # Factory required: plain closure in a loop would capture the same variable reference.
         def make_run_fn(learner_name: str):
             async def run_learner(queue: asyncio.Queue) -> None:
                 try:
                     sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
-                    sequential_config: UQLearnerConfig | None = self._convert_to_sequential_config(
-                        learner_configs[learner_name]
-                    )
                     print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
                     async for state in sequential_learner.start(
                         model_names=model_names,
                         num_predictions=num_predictions,
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
-                        learning_config=sequential_config,
+                        learning_config=learner_configs[learner_name],
                     ):
                         if self.is_stopped:
                             sequential_learner.stop()

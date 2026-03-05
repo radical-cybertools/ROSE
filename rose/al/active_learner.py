@@ -468,20 +468,18 @@ class ParallelActiveLearner(Learner):
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
+        # Factory required: plain closure in a loop would capture the same variable reference.
         def make_run_fn(learner_id: int):
             async def run_learner(queue: asyncio.Queue) -> None:
                 try:
                     sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
                         learner_id, learner_configs[learner_id]
                     )
-                    sequential_config: LearnerConfig | None = self._convert_to_sequential_config(
-                        learner_configs[learner_id]
-                    )
                     async for state in sequential_learner.start(
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
                         skip_simulation_step=skip_simulation_step,
-                        initial_config=sequential_config,
+                        initial_config=learner_configs[learner_id],
                     ):
                         if self.is_stopped:
                             sequential_learner.stop()
@@ -492,7 +490,7 @@ class ParallelActiveLearner(Learner):
                         sequential_learner.metric_values_per_iteration
                     )
                 except Exception as e:
-                    print(f"ActiveLearner-{learner_id}] failed with error: {e}")
+                    print(f"[ActiveLearner-{learner_id}] failed with error: {e}")
                     await queue.put(("error", e))
                 finally:
                     await queue.put(("done", None))

@@ -205,4 +205,4 @@ class TestParallelActiveLearner:
                         pass
 
                 # Verify error was printed (learner 1 fails, not 0)
-                mock_print.assert_any_call("ActiveLearner-1] failed with error: Learner failed")
+                mock_print.assert_any_call("[ActiveLearner-1] failed with error: Learner failed")

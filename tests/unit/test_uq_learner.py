@@ -238,45 +238,24 @@ class TestParallelUQLearner:
             "_create_sequential_learner",
             return_value=mock_sequential,
         ):
-            with patch.object(
-                configured_parallel_learner,
-                "_convert_to_sequential_config",
-                return_value=None,
+            states = []
+            async for state in configured_parallel_learner.start(
+                learner_names=["l1", "l2"],
+                learner_configs={"l1": None, "l2": None},
+                model_names=["m1"],
+                max_iter=1,
             ):
-                states = []
-                async for state in configured_parallel_learner.start(
-                    learner_names=["l1", "l2"],
-                    learner_configs={"l1": None, "l2": None},
-                    model_names=["m1"],
-                    max_iter=1,
-                ):
-                    states.append(state)
+                states.append(state)
 
-                # Each learner yields one state, so 2 states total
-                assert len(states) == 2
-                assert all(isinstance(s, IterationState) for s in states)
-                # Each state has learner_id set to the learner name
-                assert {s.learner_id for s in states} == {"l1", "l2"}
+            # Each learner yields one state, so 2 states total
+            assert len(states) == 2
+            assert all(isinstance(s, IterationState) for s in states)
+            # Each state has learner_id set to the learner name
+            assert {s.learner_id for s in states} == {"l1", "l2"}
 
-                # Verify sequential learners were called
-                # We can't easily check call count for a generator function mock
-                # but results verify it was called.
-                print(
-                    "metric_values_per_iteration",
-                    configured_parallel_learner.metric_values_per_iteration,
-                )
-                print(
-                    "uncertainty_values_per_iteration",
-                    configured_parallel_learner.uncertainty_values_per_iteration,
-                )
-
-                # Verify metric collection
-                assert (
-                    "learner-l1" in configured_parallel_learner.metric_values_per_iteration.keys()
-                )
-                assert (
-                    "learner-l2" in configured_parallel_learner.metric_values_per_iteration.keys()
-                )
+            # Verify metric collection
+            assert "learner-l1" in configured_parallel_learner.metric_values_per_iteration
+            assert "learner-l2" in configured_parallel_learner.metric_values_per_iteration
 
     @pytest.mark.asyncio
     async def test_teach_learner_failure_handling(self, configured_parallel_learner):
@@ -295,24 +274,19 @@ class TestParallelUQLearner:
             "_create_sequential_learner",
             return_value=mock_sequential,
         ):
-            with patch.object(
-                configured_parallel_learner,
-                "_convert_to_sequential_config",
-                return_value=None,
-            ):
-                # Mock print to capture error message
-                with patch("builtins.print") as mock_print:
-                    # Should raise exception due to learner failure
-                    with pytest.raises(Exception, match="Learner failed"):
-                        async for _ in configured_parallel_learner.start(
-                            learner_names=["l1"],
-                            model_names=["m1"],
-                            learner_configs={"l1": None},
-                            max_iter=1,
-                        ):
-                            pass
+            # Mock print to capture error message
+            with patch("builtins.print") as mock_print:
+                # Should raise exception due to learner failure
+                with pytest.raises(Exception, match="Learner failed"):
+                    async for _ in configured_parallel_learner.start(
+                        learner_names=["l1"],
+                        model_names=["m1"],
+                        learner_configs={"l1": None},
+                        max_iter=1,
+                    ):
+                        pass
 
-                    # Verify error was printed
-                    mock_print.assert_any_call(
-                        "[Parallel-Learner-l1] Failed with error: Learner failed"
-                    )
+                # Verify error was printed
+                mock_print.assert_any_call(
+                    "[Parallel-Learner-l1] Failed with error: Learner failed"
+                )
