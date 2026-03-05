@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-03-05
+
+### Added
+- **`IterationState.learner_id`**: New field (`int | str | None`, default `None`) on `IterationState`
+  identifying which parallel learner produced a given state. Integer index for
+  `ParallelActiveLearner` and `ParallelReinforcementLearner`; learner name string for
+  `ParallelUQLearner`.
+
+### Changed
+- **Unified async-iterator API for parallel learners**: `ParallelActiveLearner.start()`,
+  `ParallelReinforcementLearner.start()`, and `ParallelUQLearner.start()` now return
+  `AsyncIterator[IterationState]` instead of blocking until all learners finish and returning
+  `list[Any]`. States stream in real time as each parallel learner completes an iteration,
+  using the same `async for state in learner.start():` interface as `SequentialActiveLearner`.
+- **Shared `_stream_parallel` helper**: The internal `asyncio.Queue`-based fan-in pattern
+  is extracted into a single module-level async generator in `rose/learner.py`, eliminating
+  identical code that was previously duplicated across all three parallel learner classes.
+
+### Deprecated
+- **`ParallelActiveLearner.teach()`**, **`ParallelReinforcementLearner.learn()`**, and
+  **`ParallelUQLearner.teach()`** still work but now internally iterate `start()` and
+  collect final states into a list. Migrate to `async for state in learner.start():`.
+
+---
+
 ## [0.2.0] - 2026-02-27
 
 ### Added
