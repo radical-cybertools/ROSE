@@ -32,11 +32,19 @@ async def test_active_learning_pipeline_functions():
     async def check_mse(*args):
         return 0.05  # Return a metric value below threshold
 
-    async for _ in learner.start(parallel_learners=5, max_iter=2):
-        pass
+    states = []
+    async for state in learner.start(parallel_learners=5, max_iter=2):
+        states.append(state)
+
+    # Each learner stops after 1 iteration because criterion (0.05) < threshold (0.1)
+    assert len(states) > 0
+    assert all(state.learner_id is not None for state in states)
+    assert {state.learner_id for state in states} == {0, 1, 2, 3, 4}
 
     scores = learner.get_metric_results()
-
     assert scores != {}
+    # Verify per-learner metric keys are present
+    for i in range(5):
+        assert f"learner-{i}" in scores
 
     await learner.shutdown()
