@@ -94,8 +94,10 @@ nav:
       - 7.Reinforcement Learning: user-guide/basic-rl-workflow.md
       - 8.Experience Banks: user-guide/experience.md
       - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
+      - 10.Tracking & Observability: user-guide/tracking.md
   - Integrations:
       - MLflow: integrations/mlflow.md
+      - ClearML: integrations/clearml.md
   - Changelog: changelog.md
 
 extra_css:

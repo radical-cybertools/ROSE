@@ -117,6 +117,7 @@ class SequentialActiveLearner(Learner):
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
+        _stop_reason = "max_iter_reached"
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
@@ -158,101 +159,113 @@ class SequentialActiveLearner(Learner):
             iteration_range = range(max_iter)
 
         # Main iteration loop
-        for i in iteration_range:
-            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            if self.is_stopped:
-                print(f"{learner_prefix}Stop requested, exiting learning loop.")
-                break
-
-            # Check for pending config
-            if self._pending_config is not None:
-                learner_config = self._pending_config
-                self._pending_config = None
-
-            # Clear transient state from previous iteration
-            self.clear_state()
-
-            # Extract state from sim/train results
-            # (prepared in previous iteration or pre-loop)
-            if not skip_simulation_step and sim_result is not None:
-                self._extract_state_from_result(sim_result)
-            if train_result is not None:
-                self._extract_state_from_result(train_result)
-
-            print(f"{learner_prefix}Starting Iteration-{i}")
-
-            # Get iteration-specific AL config
-            acl_config = self._get_iteration_task_config(
-                self.active_learn_function, learner_config, "active_learn", i
-            )
-
-            # Register AL task with dependencies
-            if skip_simulation_step:
-                acl_task = self._register_task(acl_config, deps=train_task)
-            else:
-                acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
-
-            # Await AL task and extract state from dict result
-            acl_result = await acl_task
-            if self.is_stopped:
-                break
-            self._extract_state_from_result(acl_result)
-
-            # Check stop criterion if configured
-            metric_value: float | None = None
-            should_stop = False
-
-            if self.criterion_function:
-                criterion_config = self._get_iteration_task_config(
-                    self.criterion_function, learner_config, "criterion", i
+        try:
+            for i in iteration_range:
+                learner_prefix = (
+                    f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
                 )
-                stop_task = self._register_task(criterion_config)
-                stop_result = await stop_task
                 if self.is_stopped:
-                    break
-                should_stop, metric_value = self._check_stop_criterion(stop_result)
-
-            # Build iteration state
-            self._iteration_state = self.build_iteration_state(
-                iteration=i,
-                metric_value=metric_value,
-                should_stop=should_stop,
-                current_config=learner_config,
-            )
-
-            # YIELD CONTROL TO AGENT
-            yield self._iteration_state
-
-            # Check if user loop broke or criterion met
-            if should_stop:
-                break
-
-            # Prepare next iteration using potentially updated config
-            next_config = self._pending_config or learner_config
-            next_train_config = self._get_iteration_task_config(
-                self.training_function, next_config, "training", i + 1
-            )
-
-            if skip_simulation_step:
-                sim_task = ()
-                sim_result = None
-                train_task = self._register_task(next_train_config, deps=acl_task)
-            else:
-                next_sim_config = self._get_iteration_task_config(
-                    self.simulation_function, next_config, "simulation", i + 1
-                )
-                sim_task = self._register_task(next_sim_config, deps=acl_task)
-                train_task = self._register_task(next_train_config, deps=sim_task)
-
-                # Await simulation result (extract state in next iteration)
-                sim_result = await sim_task
-                if self.is_stopped:
+                    print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                    _stop_reason = "stopped"
                     break
 
-            # Await training result (extract state in next iteration)
-            train_result = await train_task
-            if self.is_stopped:
-                break
+                # Check for pending config
+                if self._pending_config is not None:
+                    learner_config = self._pending_config
+                    self._pending_config = None
+
+                # Clear transient state from previous iteration
+                self.clear_state()
+
+                # Extract state from sim/train results
+                # (prepared in previous iteration or pre-loop)
+                if not skip_simulation_step and sim_result is not None:
+                    self._extract_state_from_result(sim_result)
+                if train_result is not None:
+                    self._extract_state_from_result(train_result)
+
+                print(f"{learner_prefix}Starting Iteration-{i}")
+
+                # Get iteration-specific AL config
+                acl_config = self._get_iteration_task_config(
+                    self.active_learn_function, learner_config, "active_learn", i
+                )
+
+                # Register AL task with dependencies
+                if skip_simulation_step:
+                    acl_task = self._register_task(acl_config, deps=train_task)
+                else:
+                    acl_task = self._register_task(acl_config, deps=(sim_task, train_task))
+
+                # Await AL task and extract state from dict result
+                acl_result = await acl_task
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
+                self._extract_state_from_result(acl_result)
+
+                # Check stop criterion if configured
+                metric_value: float | None = None
+                should_stop = False
+
+                if self.criterion_function:
+                    criterion_config = self._get_iteration_task_config(
+                        self.criterion_function, learner_config, "criterion", i
+                    )
+                    stop_task = self._register_task(criterion_config)
+                    stop_result = await stop_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+                    should_stop, metric_value = self._check_stop_criterion(stop_result)
+
+                # Build iteration state
+                self._iteration_state = self.build_iteration_state(
+                    iteration=i,
+                    metric_value=metric_value,
+                    should_stop=should_stop,
+                    current_config=learner_config,
+                )
+
+                # Notify trackers then yield control to caller
+                self._notify_trackers_iteration(self._iteration_state)
+                yield self._iteration_state
+
+                # Check if user loop broke or criterion met
+                if should_stop:
+                    _stop_reason = "criterion_met"
+                    break
+
+                # Prepare next iteration using potentially updated config
+                next_config = self._pending_config or learner_config
+                next_train_config = self._get_iteration_task_config(
+                    self.training_function, next_config, "training", i + 1
+                )
+
+                if skip_simulation_step:
+                    sim_task = ()
+                    sim_result = None
+                    train_task = self._register_task(next_train_config, deps=acl_task)
+                else:
+                    next_sim_config = self._get_iteration_task_config(
+                        self.simulation_function, next_config, "simulation", i + 1
+                    )
+                    sim_task = self._register_task(next_sim_config, deps=acl_task)
+                    train_task = self._register_task(next_train_config, deps=sim_task)
+
+                    # Await simulation result (extract state in next iteration)
+                    sim_result = await sim_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+
+                # Await training result (extract state in next iteration)
+                train_result = await train_task
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -497,8 +510,13 @@ class ParallelActiveLearner(Learner):
 
             return run_learner
 
-        async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
-            yield state
+        _stop_reason = "max_iter_reached"
+        try:
+            async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
+                self._notify_trackers_iteration(state)
+                yield state
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
         self,

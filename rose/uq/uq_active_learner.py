@@ -168,6 +168,7 @@ class SeqUQLearner(UQLearner):
         # Track iterations and results for this pipeline
         iteration_count: int = 0
         stop_training = {name: False for name in model_names}
+        _stop_reason = "max_iter_reached"
 
         # Initialize tasks for pre-loop
         training_tasks: tuple = ()
@@ -187,143 +188,155 @@ class SeqUQLearner(UQLearner):
             iteration_range = range(max_iter)
 
         # Main learning loop
-        for i in iteration_range:
-            if self.is_stopped:
-                print(f"[Learner {self.learner_name}] Stop requested, exiting learning loop.")
-                break
-
-            # Clear transient state from previous iteration
-            self.clear_state()
-
-            print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
-
-            # Check uncertainty if configured
-            uq_task: tuple = ()
-            uq_stop_value: float | None = None
-            if self.uncertainty_function:
-                # Get iteration-specific configurations
-                uq_config: TaskConfig = self._get_iteration_task_config(
-                    self.uncertainty_function, learning_config, "uncertainty", i
-                )
-                uq_task = self._register_task(uq_config, deps=training_tasks)
-                uq_value = await uq_task
+        try:
+            for i in iteration_range:
                 if self.is_stopped:
+                    print(f"[Learner {self.learner_name}] Stop requested, exiting learning loop.")
+                    _stop_reason = "stopped"
                     break
-                print(f"[Learner {self.learner_name}] {uq_value}")
 
-                uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
-                self.register_state("uq_value", uq_stop_value)
+                # Clear transient state from previous iteration
+                self.clear_state()
 
-                if uq_model_stop:
-                    print(
-                        f"[Learner {self.learner_name}] UQ value reached "
-                        f"its threshold - Stopping training for all models"
-                        f" at iteration {i} with value: "
-                        f"{uq_stop_value}"
+                print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
+
+                # Check uncertainty if configured
+                uq_task: tuple = ()
+                uq_stop_value: float | None = None
+                if self.uncertainty_function:
+                    # Get iteration-specific configurations
+                    uq_config: TaskConfig = self._get_iteration_task_config(
+                        self.uncertainty_function, learning_config, "uncertainty", i
                     )
-                    # Build final iteration state before breaking
-                    iteration_state = self.build_iteration_state(
-                        iteration=i,
-                        metric_value=None,
-                        should_stop=True,
-                        current_config=learning_config,
-                    )
-                    yield iteration_state
-                    break
+                    uq_task = self._register_task(uq_config, deps=training_tasks)
+                    uq_value = await uq_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+                    print(f"[Learner {self.learner_name}] {uq_value}")
 
-            # Get iteration-specific configurations
-            acl_config: TaskConfig = self._get_iteration_task_config(
-                self.active_learn_function, learning_config, "active_learn", i
-            )
-            acl_task = self._register_task(
-                acl_config,
-                deps=(uq_task if uq_task else training_tasks),
-            )
-            al_results = await acl_task
-            if self.is_stopped:
-                break
-            self._extract_state_from_result(al_results)
+                    uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
+                    self.register_state("uq_value", uq_stop_value)
 
-            print(f"[Learner {self.learner_name}] {al_results}")
-
-            # Check stop criterion if configured
-            metric_value: float | None = None
-            should_stop = False
-
-            if self.criterion_function:
-                stop_tasks = {}
-                # Run validation for each model in learner
-                for model_name in model_names:
-                    if stop_training[model_name]:
-                        continue
-                    criterion_function = copy.deepcopy(self.criterion_function)
-                    criterion_function["kwargs"]["--model_name"] = model_name
-                    stop_task = self._register_task(criterion_function, deps=acl_task)
-                    stop_tasks[model_name] = stop_task
-
-                results = await asyncio.gather(*stop_tasks.values())
-                if self.is_stopped:
-                    break
-                stops = dict(zip(stop_tasks.keys(), results, strict=False))
-
-                model_stop: bool
-                stop_value: float
-                # The pipeline will stop once all models meet the exit criteria.
-                should_stop_count: int = 0
-                final_results = []
-                for model_name, stop in stops.items():
-                    model_stop, stop_value = self._check_stop_criterion(stop)
-                    final_results.append(stop_value)
-                    if model_stop:
-                        stop_training[model_name] = True
-                        should_stop_count += 1
+                    if uq_model_stop:
                         print(
-                            f"[Learner {self.learner_name}] Model "
-                            f"{model_name} will stop training"
-                            f" as stop criterion is met at iteration {i}"
+                            f"[Learner {self.learner_name}] UQ value reached "
+                            f"its threshold - Stopping training for all models"
+                            f" at iteration {i} with value: "
+                            f"{uq_stop_value}"
+                        )
+                        # Build final iteration state before breaking
+                        self._iteration_state = self.build_iteration_state(
+                            iteration=i,
+                            metric_value=None,
+                            should_stop=True,
+                            current_config=learning_config,
+                        )
+                        _stop_reason = "criterion_met"
+                        self._notify_trackers_iteration(self._iteration_state)
+                        yield self._iteration_state
+                        break
+
+                # Get iteration-specific configurations
+                acl_config: TaskConfig = self._get_iteration_task_config(
+                    self.active_learn_function, learning_config, "active_learn", i
+                )
+                acl_task = self._register_task(
+                    acl_config,
+                    deps=(uq_task if uq_task else training_tasks),
+                )
+                al_results = await acl_task
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
+                self._extract_state_from_result(al_results)
+
+                print(f"[Learner {self.learner_name}] {al_results}")
+
+                # Check stop criterion if configured
+                metric_value: float | None = None
+                should_stop = False
+
+                if self.criterion_function:
+                    stop_tasks = {}
+                    # Run validation for each model in learner
+                    for model_name in model_names:
+                        if stop_training[model_name]:
+                            continue
+                        criterion_function = copy.deepcopy(self.criterion_function)
+                        criterion_function["kwargs"]["--model_name"] = model_name
+                        stop_task = self._register_task(criterion_function, deps=acl_task)
+                        stop_tasks[model_name] = stop_task
+
+                    results = await asyncio.gather(*stop_tasks.values())
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+                    stops = dict(zip(stop_tasks.keys(), results, strict=False))
+
+                    model_stop: bool
+                    stop_value: float
+                    # The pipeline will stop once all models meet the exit criteria.
+                    should_stop_count: int = 0
+                    final_results = []
+                    for model_name, stop in stops.items():
+                        model_stop, stop_value = self._check_stop_criterion(stop)
+                        final_results.append(stop_value)
+                        if model_stop:
+                            stop_training[model_name] = True
+                            should_stop_count += 1
+                            print(
+                                f"[Learner {self.learner_name}] Model "
+                                f"{model_name} will stop training"
+                                f" as stop criterion is met at iteration {i}"
+                            )
+
+                    # Store criterion results in state
+                    self.register_state("criterion_values", final_results)
+
+                    # Use average of criterion values as the metric value
+                    if final_results:
+                        metric_value = sum(final_results) / len(final_results)
+
+                    if should_stop_count == len(stops):
+                        should_stop = True
+                        print(
+                            f"[Learner {self.learner_name}] Stopping "
+                            f"criterion met for all models at iteration {i} "
+                            f"with value: {stop_value}"
                         )
 
-                # Store criterion results in state
-                self.register_state("criterion_values", final_results)
+                # Build iteration state
+                self._iteration_state = self.build_iteration_state(
+                    iteration=i,
+                    metric_value=metric_value,
+                    should_stop=should_stop,
+                    current_config=learning_config,
+                )
 
-                # Use average of criterion values as the metric value
-                if final_results:
-                    metric_value = sum(final_results) / len(final_results)
+                # Notify trackers then yield control to caller
+                self._notify_trackers_iteration(self._iteration_state)
+                yield self._iteration_state
 
-                if should_stop_count == len(stops):
-                    should_stop = True
-                    print(
-                        f"[Learner {self.learner_name}] Stopping "
-                        f"criterion met for all models at iteration {i} "
-                        f"with value: {stop_value}"
-                    )
+                # Check if stopping criterion met
+                if should_stop:
+                    _stop_reason = "criterion_met"
+                    break
 
-            # Build iteration state
-            iteration_state = self.build_iteration_state(
-                iteration=i,
-                metric_value=metric_value,
-                should_stop=should_stop,
-                current_config=learning_config,
-            )
+                iteration_count = i + 1
+                futures: list[Any] = [
+                    _training_stage(learning_config, model_name, iteration_count)
+                    for model_name in model_names
+                    if not stop_training[model_name]
+                ]
+                training_tasks = await asyncio.gather(*futures)
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
 
-            # YIELD CONTROL TO CALLER
-            yield iteration_state
-
-            # Check if stopping criterion met
-            if should_stop:
-                break
-
-            iteration_count = i + 1
-            futures: list[Any] = [
-                _training_stage(learning_config, model_name, iteration_count)
-                for model_name in model_names
-                if not stop_training[model_name]
-            ]
-            training_tasks = await asyncio.gather(*futures)
-            if self.is_stopped:
-                break
-
-            print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
+                print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
         self,
@@ -557,8 +570,13 @@ class ParallelUQLearner(SeqUQLearner):
 
             return run_learner
 
-        async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
-            yield state
+        _stop_reason = "max_iter_reached"
+        try:
+            async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
+                self._notify_trackers_iteration(state)
+                yield state
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
         self,

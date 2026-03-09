@@ -1,125 +1,148 @@
 # MLflow Integration
 
-This guide demonstrates how to combine **ROSE's** workflow orchestration with **MLflow's** experiment tracking to create a robust and observable active learning system.
-
-## Overview
-
-ROSE and MLflow provide a complementary relationship in a research or production pipeline:
-
-*   **ROSE (Orchestration):** Manages task execution order, dependencies, high-performance computing (HPC) resources, and the iterative loop.
-*   **MLflow (Tracking):** Records hyperparameters, performance metrics, trained models, and diagnostic plots for analysis and reproducibility.
-
-| Tool | Role | Focus |
-|------|------|-------|
-| **ROSE** | Orchestrator | *What* runs? *When*? *Where*? In what order? |
-| **MLflow** | Tracker | *What happened*? How well did it perform? Can I reproduce it? |
-
----
-
-## Installation
-
-To use this integration, you need both `mlflow` and `ROSE` installed in your environment.
+ROSE ships a plug-and-play `MLflowTracker` that wires MLflow into any learner with a single
+line. No MLflow calls belong inside your `async for` loop.
 
 ```bash
-# Install MLflow
-pip install mlflow
-
-# Optional: for visualization logic in the example
-pip install matplotlib scikit-learn
+pip install rose[mlflow]
 ```
 
 ---
 
-## Quick Start
+## Quick start
 
-You can find a complete integration example in the codebase at `examples/integrations/mlflow/mlflow_rose.py`.
+```python
+from rose.integrations.mlflow_tracker import MLflowTracker
+
+learner.add_tracker(
+    MLflowTracker(
+        experiment_name="surrogate-v1",
+        run_name="gp-adaptive-kernel",   # optional
+    )
+)
+
+async for state in learner.start(max_iter=30):
+    print(f"iter {state.iteration}: mse={state.metric_value:.4f}")
+    # tracking is fully automatic — no mlflow calls here
+```
+
+View results:
 
 ```bash
-# Run the integration example
-python examples/integrations/mlflow/mlflow_rose.py
-
-# Launch the MLflow UI to view results
 mlflow ui --port 5000
+# Open http://localhost:5000 → experiment "surrogate-v1"
 ```
 
-Once the UI is running, open [http://localhost:5000](http://localhost:5000) in your browser.
+A complete runnable example is at
+`examples/integrations/tracking/mlflow/run_me_tracker.py`.
 
 ---
 
-## Integration Pattern
+## What gets logged automatically
 
-The standard pattern for integrating MLflow into a ROSE `SequentialActiveLearner` loop involves wrapping the learner's `start()` iterator:
+### Parameters — logged once in `on_start`
+
+The entire pipeline manifest is logged as MLflow parameters without any user annotation:
+
+| MLflow param | Source |
+|---|---|
+| `learner_type` | Learner class name |
+| `criterion/metric_name` | `as_stop_criterion(metric_name=...)` |
+| `criterion/threshold` | `as_stop_criterion(threshold=...)` |
+| `criterion/operator` | `as_stop_criterion(operator=...)` |
+| `task.<name>.as_executable` | Per registered task |
+| `task.<name>.<kwarg>` | Extra decorator kwargs (e.g. `num_gpus`) |
+
+### Metrics — logged per iteration in `on_iteration`
+
+| MLflow metric | Source |
+|---|---|
+| `<metric_name>` (e.g. `mean_squared_error_mse`) | Stop criterion value |
+| Any scalar in `state.state` | Auto-extracted from task `dict` returns |
+
+Every key registered via `learner.register_state(key, value)` or returned in a task's
+`dict` result appears as a metric — zero annotation required.
+
+### Live metrics — logged in `on_state_update`
+
+Keys registered mid-iteration (before the iteration snapshot is built) are logged as
+`live.<key>`. This captures streaming data like per-epoch training loss:
 
 ```python
-import mlflow
-from rose.al import SequentialActiveLearner
-
-async def main():
-    # 1. Initialize MLflow Run
-    mlflow.set_experiment("ROSE_AL_Experiment")
-
-    with mlflow.start_run():
-        # 2. Log Configuration
-        mlflow.log_params({
-            "max_iterations": 10,
-            "mse_threshold": 0.01,
-        })
-
-        # 3. Setup ROSE Learner
-        learner = SequentialActiveLearner(asyncflow)
-        # ... register tasks ...
-
-        # 4. Instrument the Control Loop
-        async for state in learner.start(max_iter=10):
-            # Log metrics at each iteration step
-            mlflow.log_metric("mse", state.metric_value, step=state.iteration)
-            mlflow.log_metric("labeled_count", state.labeled_count, step=state.iteration)
-
-            print(f"Iteration {state.iteration}: MSE {state.metric_value}")
-
-        # 5. Log Final Artifacts
-        mlflow.sklearn.log_model(final_model, "surrogate_model")
+@learner.training_task(as_executable=False)
+async def training(*args, **kwargs):
+    for epoch in range(200):
+        loss = train_one_epoch(...)
+        learner.register_state("epoch_loss", loss)   # → mlflow: live.epoch_loss
+    return {"final_loss": loss}
 ```
 
----
+### Tags — logged in `on_stop`
 
-## What is Tracked?
-
-### Parameters
-Parameters are typically logged once at the beginning of the run to record the experimental setup.
-*   Iteration limits
-*   Stopping criteria thresholds
-*   Initial sample sizes
-*   Batch selection counts
-
-### Metrics
-Metrics are logged at **each iteration step** using the `step` parameter in `mlflow.log_metric()`. This allows you to view learning curves and performance trends over time in the MLflow UI.
-*   **Performance:** MSE, Accuracy, R-squared
-*   **Workflow State:** Number of labeled samples, remaining pool size
-*   **Adaptive Features:** Current uncertainty scores, selection batch sizes
-
-### Artifacts and Model Registry
-At the end of the ROSE workflow, you can save:
-*   **The Model:** Register the final surrogate model in the MLflow Model Registry for deployment.
-*   **Visualizations:** Save plots of error reduction vs. iteration or sample size.
-*   **Data States:** Save the final labeled dataset for future reference.
+| MLflow tag | Value |
+|---|---|
+| `stop_reason` | `"criterion_met"` / `"max_iter_reached"` / `"stopped"` / `"error"` |
+| `final_iteration` | Last completed iteration number |
 
 ---
 
-## Advanced: MLflowROSETracker Helper
+## Adaptive config changes
 
-For more complex workflows, the provided example includes an `MLflowROSETracker` helper class. It encapsulates common tracking logic, making the main workflow code cleaner:
+When you call `learner.set_next_config(config)` to change hyperparameters between iterations,
+the new config appears in the next `IterationState.current_config`. MLflow captures this
+automatically in `on_iteration` — no manual `log_params()` call needed.
 
 ```python
-tracker = MLflowROSETracker("My_Complex_Experiment")
-tracker.start_experiment(config)
+configs = {
+    0:  LearnerConfig(training=TaskConfig(kwargs={"--lr": 3e-4})),
+    10: LearnerConfig(training=TaskConfig(kwargs={"--lr": 1e-4})),
+    20: LearnerConfig(training=TaskConfig(kwargs={"--lr": 3e-5})),
+}
 
-async for state in learner.start(max_iter=15):
-    # Automatically handles extraction and logging of relevant metrics
-    tracker.log_iteration(state)
-
-tracker.log_model(model, X_sample, y_sample)
-tracker.end_experiment(success=True)
+async for state in learner.start(max_iter=30):
+    next_iter = state.iteration + 1
+    if next_iter in configs:
+        learner.set_next_config(configs[next_iter])
+    # MLflow records the config change — no manual call needed
 ```
 
-For the full implementation of this helper, see the [mlflow_rose.py source code](https://github.com/radical-cybertools/ROSE/blob/main/examples/integrations/mlflow/mlflow_rose.py).
+---
+
+## Multiple trackers
+
+Attach MLflow alongside other trackers — they are independent observers:
+
+```python
+from rose.integrations.mlflow_tracker import MLflowTracker
+
+learner.add_tracker(HPC_FileTracker("run.jsonl"))       # safety net
+learner.add_tracker(MLflowTracker(experiment_name="x")) # experiment comparison
+```
+
+---
+
+## `MLflowTracker` vs manual wiring
+
+The previous ROSE documentation showed a manual pattern where MLflow calls were placed
+inside the `async for` loop. That approach is now deprecated in favour of `add_tracker()`.
+
+| | `MLflowTracker` | Manual wiring |
+|---|---|---|
+| Pipeline manifest as params | Automatic | Must write `log_params(...)` manually |
+| Metrics per iteration | Automatic | Must call `log_metric(...)` inside loop |
+| Stop reason tag | Automatic | Requires try/finally |
+| Mid-iteration streaming | Automatic via `on_state_update` | Not possible |
+| MLflow code in control loop | None | Yes |
+
+!!! tip
+    If you need to log model artifacts (e.g. `mlflow.sklearn.log_model`) or custom plots,
+    add that logic to a subclass of `MLflowTracker` by overriding `on_stop`:
+
+    ```python
+    class MLflowArtifactTracker(MLflowTracker):
+        def on_stop(self, final_state, reason: str) -> None:
+            super().on_stop(final_state, reason)
+            if final_state and reason in ("criterion_met", "max_iter_reached"):
+                model = load_model(final_state.get("checkpoint_path"))
+                mlflow.sklearn.log_model(model, artifact_path="surrogate_model")
+    ```
