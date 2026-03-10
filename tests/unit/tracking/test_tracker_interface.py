@@ -10,7 +10,6 @@ from rose.al.active_learner import SequentialActiveLearner
 from rose.learner import IterationState, TaskConfig
 from rose.tracking import PipelineManifest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -26,7 +25,6 @@ class RecordingTracker:
         self.stopped = False
         self.stop_reason = None
         self.final_state = None
-        self.state_updates = []
 
     def on_start(self, manifest):
         self.started = True
@@ -39,9 +37,6 @@ class RecordingTracker:
         self.stopped = True
         self.stop_reason = reason
         self.final_state = final_state
-
-    def on_state_update(self, key, value):
-        self.state_updates.append((key, value))
 
 
 # ---------------------------------------------------------------------------
@@ -76,11 +71,6 @@ class TestAddTracker:
     def test_add_tracker_appends_to_trackers_list(self, learner, recording_tracker):
         learner.add_tracker(recording_tracker)
         assert len(learner._trackers) == 1
-
-    def test_add_tracker_wires_state_update(self, learner, recording_tracker):
-        learner.add_tracker(recording_tracker)
-        learner.register_state("loss", 0.5)
-        assert recording_tracker.state_updates == [("loss", 0.5)]
 
     def test_add_multiple_trackers(self, learner):
         tracker_a = RecordingTracker()
@@ -265,9 +255,7 @@ class TestTrackerLifecycleInLoop:
         learner.training_function = AsyncMock(return_value="train_result")
         learner.active_learn_function = AsyncMock(return_value="active_result")
         learner.criterion_function = AsyncMock(return_value=False)
-        learner._get_iteration_task_config = MagicMock(
-            return_value=MagicMock(spec=TaskConfig)
-        )
+        learner._get_iteration_task_config = MagicMock(return_value=MagicMock(spec=TaskConfig))
         learner._register_task = AsyncMock(return_value="task_result")
         learner._check_stop_criterion = MagicMock(return_value=(False, None))
         return learner

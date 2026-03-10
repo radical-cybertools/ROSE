@@ -1,17 +1,16 @@
 """Unit tests for MLflowTracker.
 
-mlflow is never actually imported — every test injects a MagicMock into
-sys.modules before importing the tracker class.
+mlflow is never actually imported — every test injects a MagicMock into sys.modules before importing
+the tracker class.
 """
 
 import sys
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from rose.learner import IterationState
 from rose.tracking import CriterionManifest, PipelineManifest, TaskManifest
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures (module-level helpers used by multiple classes)
@@ -110,6 +109,11 @@ class TestMLflowTrackerOnStart:
         assert logged_params["criterion/metric_name"] == "mean_squared_error_mse"
         assert logged_params["criterion/threshold"] == 0.01
 
+    def test_logs_criterion_operator(self, tracker, mock_mlflow, simple_manifest):
+        tracker.on_start(simple_manifest)
+        logged_params = mock_mlflow.log_params.call_args[0][0]
+        assert logged_params["criterion/operator"] == "<"
+
     def test_logs_task_as_executable(self, tracker, mock_mlflow, simple_manifest):
         tracker.on_start(simple_manifest)
         logged_params = mock_mlflow.log_params.call_args[0][0]
@@ -194,6 +198,31 @@ class TestMLflowTrackerOnIteration:
         tracker.on_iteration(state)
         mock_mlflow.log_metric.assert_any_call("metric", 0.1, step=2)
 
+    def test_parallel_learner_prefixes_metric_with_learner_id(self, tracker, mock_mlflow):
+        state = IterationState(
+            iteration=1,
+            metric_value=0.05,
+            metric_name="mse",
+            learner_id="A",
+            state={"n_labeled": 10},
+        )
+        tracker.on_iteration(state)
+        mock_mlflow.log_metric.assert_any_call("A/mse", 0.05, step=1)
+        mock_mlflow.log_metric.assert_any_call("A/n_labeled", 10, step=1)
+
+    def test_sequential_learner_no_prefix(self, tracker, mock_mlflow):
+        state = IterationState(
+            iteration=0,
+            metric_value=0.1,
+            metric_name="mse",
+            learner_id=None,
+            state={},
+        )
+        tracker.on_iteration(state)
+        logged_keys = [c[0][0] for c in mock_mlflow.log_metric.call_args_list]
+        assert "mse" in logged_keys
+        assert not any(k.startswith("/") for k in logged_keys)
+
 
 # ---------------------------------------------------------------------------
 # TestMLflowTrackerOnStop
@@ -212,7 +241,9 @@ class TestMLflowTrackerOnStop:
     def tracker(self, mock_mlflow):
         from rose.integrations.mlflow_tracker import MLflowTracker
 
-        return MLflowTracker(experiment_name="test-exp", run_name="test-run")
+        t = MLflowTracker(experiment_name="test-exp", run_name="test-run")
+        t._run = MagicMock()  # simulate on_start having been called
+        return t
 
     def test_sets_stop_reason_tag(self, tracker, mock_mlflow):
         tracker.on_stop(IterationState(iteration=5), "criterion_met")
@@ -231,6 +262,12 @@ class TestMLflowTrackerOnStop:
         tag_keys = [c[0][0] for c in mock_mlflow.set_tag.call_args_list]
         assert "final_iteration" not in tag_keys
 
+    def test_no_run_skips_silently(self, tracker, mock_mlflow):
+        tracker._run = None
+        tracker.on_stop(IterationState(iteration=1), "error")  # should not raise
+        mock_mlflow.set_tag.assert_not_called()
+        mock_mlflow.end_run.assert_not_called()
+
     @pytest.mark.parametrize(
         "reason",
         ["criterion_met", "max_iter_reached", "stopped", "error"],
@@ -238,38 +275,3 @@ class TestMLflowTrackerOnStop:
     def test_all_stop_reasons(self, tracker, mock_mlflow, reason):
         tracker.on_stop(None, reason)
         mock_mlflow.set_tag.assert_any_call("stop_reason", reason)
-
-
-# ---------------------------------------------------------------------------
-# TestMLflowTrackerOnStateUpdate
-# ---------------------------------------------------------------------------
-
-
-class TestMLflowTrackerOnStateUpdate:
-    @pytest.fixture
-    def mock_mlflow(self):
-        mock = MagicMock()
-        mock.start_run.return_value = MagicMock()
-        with patch.dict(sys.modules, {"mlflow": mock, "mlflow.models": MagicMock()}):
-            yield mock
-
-    @pytest.fixture
-    def tracker(self, mock_mlflow):
-        from rose.integrations.mlflow_tracker import MLflowTracker
-
-        return MLflowTracker(experiment_name="test-exp", run_name="test-run")
-
-    def test_logs_numeric_live_metric(self, tracker, mock_mlflow):
-        tracker._run = MagicMock()
-        tracker.on_state_update("loss", 0.42)
-        mock_mlflow.log_metric.assert_called_once_with("live.loss", 0.42)
-
-    def test_skips_non_numeric(self, tracker, mock_mlflow):
-        tracker._run = MagicMock()
-        tracker.on_state_update("label", "abc")
-        mock_mlflow.log_metric.assert_not_called()
-
-    def test_skips_when_no_active_run(self, tracker, mock_mlflow):
-        tracker._run = None
-        tracker.on_state_update("loss", 0.42)
-        mock_mlflow.log_metric.assert_not_called()

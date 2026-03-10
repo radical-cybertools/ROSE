@@ -870,24 +870,12 @@ class Learner:
         by decorators, so ``add_tracker`` must be called **after** all task
         decorators have been applied and **before** ``start()`` is called.
 
-        The tracker's ``on_state_update`` is wired via the existing
-        ``on_state_update`` callback mechanism so it receives every
-        ``register_state()`` call in real-time during task execution.
-
         Args:
             tracker: Any object implementing the ``TrackerBase`` protocol.
         """
         manifest = self._build_pipeline_manifest()
         tracker.on_start(manifest)
         self._trackers.append(tracker)
-
-        def _fwd(key: str, value: Any) -> None:
-            try:
-                tracker.on_state_update(key, value)
-            except Exception:
-                pass
-
-        self.on_state_update(_fwd)
 
     def _build_pipeline_manifest(self) -> PipelineManifest:
         """Build a ``PipelineManifest`` from the currently registered task dicts.

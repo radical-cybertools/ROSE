@@ -46,6 +46,7 @@ The entire pipeline manifest is connected to the ClearML task without any user a
 | `learner_type` | Learner class name |
 | `criterion/metric_name` | `as_stop_criterion(metric_name=...)` |
 | `criterion/threshold` | `as_stop_criterion(threshold=...)` |
+| `criterion/operator` | `as_stop_criterion(operator=...)` |
 | `task/<name>/as_executable` | Per registered task |
 | `task/<name>/<kwarg>` | Extra decorator kwargs (e.g. `num_gpus`) |
 
@@ -59,20 +60,6 @@ The entire pipeline manifest is connected to the ClearML task without any user a
 For **parallel learners**, `state.learner_id` is included automatically. The tracker logs
 each state as a separate `series` inside the same scalar title, making per-learner curves
 directly comparable without any user code.
-
-### Live scalars — logged in `on_state_update`
-
-Keys registered mid-iteration appear under `live/<key>` as a streaming series. Useful for
-capturing per-epoch training loss before the full iteration snapshot is built:
-
-```python
-@learner.training_task(as_executable=False)
-async def training(*args, **kwargs):
-    for epoch in range(200):
-        loss = train_one_epoch(...)
-        learner.register_state("epoch_loss", loss)   # → clearml: live/epoch_loss
-    return {"final_loss": loss}
-```
 
 ### Task tags — logged in `on_stop`
 

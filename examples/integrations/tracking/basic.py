@@ -18,8 +18,7 @@ output — one record per iteration. JSON Lines is the correct format for HPC:
   - Survives job preemption: all completed iterations are already on disk
   - Human-readable and importable with ``pandas.read_json(..., lines=True)``
 
-``on_state_update`` captures the fitted GP log-marginal-likelihood (LML) each
-time it is registered mid-iteration, before the full snapshot is built.
+Task outputs (returned as dicts) are captured automatically via ``on_iteration``.
 
 Requirements
 ------------
@@ -38,9 +37,8 @@ import json
 import pickle
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from radical.asyncflow import WorkflowEngine
@@ -147,13 +145,12 @@ class HPC_FileTracker(TrackerBase):
                 # Core metric (MSE from stop criterion)
                 "mse": state.metric_value,
                 "should_stop": state.should_stop,
-                # Task outputs auto-extracted by register_state() inside tasks
+                # Task outputs auto-extracted from dict return values
                 "n_labeled": state.get("n_labeled"),
                 "n_pool": state.get("n_pool"),
                 "mean_std": state.get("mean_std"),
                 "max_std": state.get("max_std"),
                 "train_mse": state.get("train_mse"),
-                # LML streamed mid-iteration via on_state_update
                 "log_marginal_likelihood": state.get("log_marginal_likelihood"),
             }
         )
@@ -169,18 +166,6 @@ class HPC_FileTracker(TrackerBase):
             }
         )
         print(f"[Tracker] Run complete — reason={reason!r}, file={self._path.resolve()}")
-
-    def on_state_update(self, key: str, value: Any) -> None:
-        """Stream mid-iteration updates (e.g. LML computed inside training task)."""
-        if key == "log_marginal_likelihood":
-            self._write(
-                {
-                    "event": "live",
-                    "key": key,
-                    "value": float(value),
-                    "ts": time.time(),
-                }
-            )
 
     # ── Internal ───────────────────────────────────────────────────────────
 
@@ -283,7 +268,7 @@ async def check_mse(*args) -> float:
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
-    engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
+    engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
     learner = SequentialActiveLearner(asyncflow)
 
@@ -296,10 +281,7 @@ async def main() -> None:
 
     @learner.training_task(as_executable=False)
     async def train(*args, **kwargs):
-        result = await training(*args, **kwargs)
-        # Register LML so on_state_update fires → tracker captures it live
-        learner.register_state("log_marginal_likelihood", result["log_marginal_likelihood"])
-        return result
+        return await training(*args, **kwargs)
 
     @learner.active_learn_task(as_executable=False)
     async def active(*args, **kwargs):
@@ -333,7 +315,7 @@ async def main() -> None:
     print()
     print("Replay run with:")
     print(
-        f'  python -c "import pandas; '
+        f'python -c "import pandas; '
         f"print(pandas.read_json('{JSONL_FILE}', lines=True)"
         f"[['iteration','mse','n_labeled']].dropna())\""
     )

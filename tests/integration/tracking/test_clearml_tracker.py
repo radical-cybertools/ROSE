@@ -1,7 +1,7 @@
 """Unit tests for ClearMLTracker.
 
-clearml is never actually imported — every test injects a MagicMock into
-sys.modules before importing the tracker class.
+clearml is never actually imported — every test injects a MagicMock into sys.modules before
+importing the tracker class.
 """
 
 import sys
@@ -11,7 +11,6 @@ import pytest
 
 from rose.learner import IterationState
 from rose.tracking import CriterionManifest, PipelineManifest, TaskManifest
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -132,6 +131,11 @@ class TestClearMLTrackerOnStart:
         assert connected_params["criterion/metric_name"] == "mean_squared_error_mse"
         assert connected_params["criterion/threshold"] == 0.01
 
+    def test_connects_criterion_operator(self, tracker, mock_clearml, simple_manifest):
+        tracker.on_start(simple_manifest)
+        connected_params = mock_clearml["task"].connect.call_args[0][0]
+        assert connected_params["criterion/operator"] == "<"
+
     def test_connects_task_params(self, tracker, mock_clearml, simple_manifest):
         tracker.on_start(simple_manifest)
         connected_params = mock_clearml["task"].connect.call_args[0][0]
@@ -210,6 +214,34 @@ class TestClearMLTrackerOnIteration:
         tracker.on_iteration(iteration_state)
         mock_clearml["logger"].report_scalar.assert_not_called()
 
+    def test_parallel_learner_uses_learner_id_as_series(self, tracker, mock_clearml):
+        state = IterationState(
+            iteration=2,
+            metric_value=0.05,
+            metric_name="mse",
+            learner_id="B",
+            state={},
+        )
+        tracker.on_iteration(state)
+        mock_clearml["logger"].report_scalar.assert_called_once_with(
+            title="mse",
+            series="B",
+            value=0.05,
+            iteration=2,
+        )
+
+    def test_sequential_learner_uses_value_as_series(self, tracker, mock_clearml):
+        state = IterationState(
+            iteration=0,
+            metric_value=0.1,
+            metric_name="mse",
+            learner_id=None,
+            state={},
+        )
+        tracker.on_iteration(state)
+        call_kwargs = mock_clearml["logger"].report_scalar.call_args[1]
+        assert call_kwargs["series"] == "value"
+
 
 # ---------------------------------------------------------------------------
 # TestClearMLTrackerOnStop
@@ -257,43 +289,3 @@ class TestClearMLTrackerOnStop:
         tracker.on_stop(IterationState(iteration=1), "error")
         mock_clearml["task"].add_tags.assert_not_called()
         mock_clearml["task"].close.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# TestClearMLTrackerOnStateUpdate
-# ---------------------------------------------------------------------------
-
-
-class TestClearMLTrackerOnStateUpdate:
-    @pytest.fixture
-    def mock_clearml(self):
-        mocks = _make_mock_clearml()
-        with patch.dict(sys.modules, {"clearml": mocks["module"]}):
-            yield mocks
-
-    @pytest.fixture
-    def tracker(self, mock_clearml):
-        from rose.integrations.clearml_tracker import ClearMLTracker
-
-        t = ClearMLTracker(project_name="test-project", task_name="test-task")
-        t._task = mock_clearml["task"]
-        t._logger = mock_clearml["logger"]
-        return t
-
-    def test_reports_live_scalar(self, tracker, mock_clearml):
-        tracker.on_state_update("loss", 0.42)
-        mock_clearml["logger"].report_scalar.assert_called_once_with(
-            title="live/loss",
-            series="stream",
-            value=0.42,
-        )
-
-    def test_skips_non_numeric(self, tracker, mock_clearml):
-        tracker.on_state_update("label", "abc")
-        mock_clearml["logger"].report_scalar.assert_not_called()
-
-    def test_skips_when_no_logger(self, tracker, mock_clearml):
-        tracker._logger = None
-        # Should not raise
-        tracker.on_state_update("loss", 0.42)
-        mock_clearml["logger"].report_scalar.assert_not_called()

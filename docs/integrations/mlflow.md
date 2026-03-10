@@ -60,22 +60,7 @@ The entire pipeline manifest is logged as MLflow parameters without any user ann
 | `<metric_name>` (e.g. `mean_squared_error_mse`) | Stop criterion value |
 | Any scalar in `state.state` | Auto-extracted from task `dict` returns |
 
-Every key registered via `learner.register_state(key, value)` or returned in a task's
-`dict` result appears as a metric — zero annotation required.
-
-### Live metrics — logged in `on_state_update`
-
-Keys registered mid-iteration (before the iteration snapshot is built) are logged as
-`live.<key>`. This captures streaming data like per-epoch training loss:
-
-```python
-@learner.training_task(as_executable=False)
-async def training(*args, **kwargs):
-    for epoch in range(200):
-        loss = train_one_epoch(...)
-        learner.register_state("epoch_loss", loss)   # → mlflow: live.epoch_loss
-    return {"final_loss": loss}
-```
+Every key returned in a task's `dict` result appears as a metric — zero annotation required.
 
 ### Tags — logged in `on_stop`
 
@@ -131,7 +116,6 @@ inside the `async for` loop. That approach is now deprecated in favour of `add_t
 | Pipeline manifest as params | Automatic | Must write `log_params(...)` manually |
 | Metrics per iteration | Automatic | Must call `log_metric(...)` inside loop |
 | Stop reason tag | Automatic | Requires try/finally |
-| Mid-iteration streaming | Automatic via `on_state_update` | Not possible |
 | MLflow code in control loop | None | Yes |
 
 !!! tip

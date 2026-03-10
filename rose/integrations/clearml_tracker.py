@@ -26,7 +26,8 @@ class ClearMLTracker:
     """TrackerBase implementation backed by ClearML.
 
     Logs pipeline manifest as hyperparameters on start, scalar metrics per
-    iteration, and stop reason as a task tag on stop.
+    iteration, and stop reason as a task tag on stop. Task outputs (returned
+    as dicts) are captured automatically via ``on_iteration``.
 
     Args:
         project_name: ClearML project name (created if it does not exist).
@@ -60,6 +61,7 @@ class ClearMLTracker:
             "parallel_learners": manifest.parallel_count,
             "criterion/metric_name": manifest.criterion.metric_name if manifest.criterion else None,
             "criterion/threshold": manifest.criterion.threshold if manifest.criterion else None,
+            "criterion/operator": manifest.criterion.operator if manifest.criterion else None,
         }
         for task_key, task_manifest in manifest.tasks.items():
             params[f"task/{task_key}/as_executable"] = task_manifest.as_executable
@@ -72,11 +74,13 @@ class ClearMLTracker:
         if self._logger is None:
             return
 
+        series = state.learner_id or "value"
+
         if state.metric_value is not None:
             metric_name = getattr(state, "metric_name", None) or "metric"
             self._logger.report_scalar(
                 title=metric_name,
-                series="value",
+                series=series,
                 value=state.metric_value,
                 iteration=state.iteration,
             )
@@ -85,7 +89,7 @@ class ClearMLTracker:
             if isinstance(value, (int, float)):
                 self._logger.report_scalar(
                     title=key,
-                    series="value",
+                    series=series,
                     value=value,
                     iteration=state.iteration,
                 )
@@ -98,11 +102,3 @@ class ClearMLTracker:
         if final_state is not None:
             self._task.add_tags([f"final_iter:{final_state.iteration}"])
         self._task.close()
-
-    def on_state_update(self, key: str, value: Any) -> None:
-        if isinstance(value, (int, float)) and self._logger is not None:
-            self._logger.report_scalar(
-                title=f"live/{key}",
-                series="stream",
-                value=value,
-            )

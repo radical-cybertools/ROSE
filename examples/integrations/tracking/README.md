@@ -23,17 +23,17 @@ Three trackers are available out of the box:
 
 ## Tracker lifecycle
 
-Every tracker receives four calls from the learner:
+Every tracker receives three calls from the learner:
 
 | Method | When | What it receives |
 |--------|------|-----------------|
 | `on_start(manifest)` | Once, at `add_tracker()` | Full pipeline manifest: task names, criterion threshold/operator, learner type |
-| `on_iteration(state)` | Once per iteration, before `yield` | Complete `IterationState` snapshot: metric, registered task outputs, `learner_id` |
+| `on_iteration(state)` | Once per iteration, before `yield` | Complete `IterationState` snapshot: metric, task outputs, `learner_id` |
 | `on_stop(final_state, reason)` | Once, in `finally` | Last state + stop reason: `"criterion_met"` / `"max_iter_reached"` / `"stopped"` / `"error"` |
-| `on_state_update(key, value)` | Real-time, inside tasks | Individual `register_state()` calls — fires mid-iteration before snapshot is built |
 
-`on_state_update` is **sequential-learner only**. For parallel learners, use `state.state` dict
-in `on_iteration` — it already contains the consolidated snapshot of all task outputs.
+Task outputs flow into `on_iteration` automatically: when a task returns a `dict`, ROSE
+extracts each key-value pair into `IterationState.state`, making them available in every
+`on_iteration` call.
 
 ---
 
@@ -45,10 +45,6 @@ benchmark with known global optima. Runs entirely with stdlib + numpy + scikit-l
 **Tracker:** Append-only JSON Lines file. Each call to `on_iteration` appends one line —
 atomic at the POSIX level. If the HPC job is preempted, all completed iterations are already
 on disk and can be inspected or resumed without rerunning the whole pipeline.
-
-`on_state_update` captures the GP log-marginal-likelihood (LML) as a live stream record
-each time it is registered mid-iteration inside the training task, before the full iteration
-snapshot is built.
 
 ```bash
 python run_me.py
@@ -64,11 +60,10 @@ print(df[df.event == 'iteration'][['iteration', 'mse', 'n_labeled', 'log_margina
 **What gets logged automatically:**
 
 ```
-{"event": "start",  "learner_type": "SequentialActiveLearner", "criterion": {"metric": "mean_squared_error_mse", "threshold": 0.01}, ...}
-{"event": "live",   "key": "log_marginal_likelihood", "value": -10.3, "ts": 1234567890.1}   ← mid-iteration stream
+{"event": "start",     "learner_type": "SequentialActiveLearner", "criterion": {"metric": "mean_squared_error_mse", "threshold": 0.01}, ...}
 {"event": "iteration", "iteration": 0, "mse": 0.014, "n_labeled": 25, "n_pool": 290, ...}
 {"event": "iteration", "iteration": 1, "mse": 0.0012, "n_labeled": 35, "n_pool": 280, ...}
-{"event": "stop",   "reason": "criterion_met", "final_iteration": 1, "final_mse": 0.0012}
+{"event": "stop",      "reason": "criterion_met", "final_iteration": 1, "final_mse": 0.0012}
 ```
 
 **Implement your own `HPC_FileTracker`:**
@@ -93,15 +88,12 @@ class HPC_FileTracker(TrackerBase):
             "event": "iteration",
             "iteration": state.iteration,
             "metric": state.metric_value,
-            **state.state,   # all task outputs registered via register_state()
+            **state.state,   # all task outputs from dict return values
         })
 
     def on_stop(self, final_state, reason: str) -> None:
         self._write({"event": "stop", "reason": reason,
                      "elapsed_s": round(time.time() - self._t0, 3)})
-
-    def on_state_update(self, key: str, value) -> None:
-        self._write({"event": "live", "key": key, "value": value})
 
     def _write(self, record: dict) -> None:
         with self._path.open("a") as f:
@@ -121,8 +113,7 @@ boundaries and MLflow captures the config change automatically in the next `on_i
 
 **Tracker:** `MLflowTracker` from `rose.integrations.mlflow_tracker`. Logs the pipeline
 manifest as run parameters on start, per-iteration metrics as MLflow scalars, and stop reason
-as a tag on stop. `on_state_update` streams live metrics as `live.<key>` before the iteration
-snapshot is built.
+as a tag on stop.
 
 ```bash
 pip install rose[mlflow] scikit-learn numpy
@@ -147,14 +138,11 @@ Params (on_start):
 
 Metrics (on_iteration, per step):
   MEAN_SQUARED_ERROR_MSE    ← stop criterion value
-  n_labeled                 ← from register_state() in active_learn
+  n_labeled                 ← from training task dict return
   n_pool
-  train_mse                 ← from register_state() in training
-  log_marginal_likelihood   ← from register_state() in training
+  train_mse                 ← from training task dict return
+  log_marginal_likelihood   ← from training task dict return
   length_scale_used
-
-Live metrics (on_state_update):
-  live.log_marginal_likelihood  ← streams mid-iteration
 
 Tags (on_stop):
   stop_reason = "criterion_met"
@@ -258,7 +246,7 @@ If one tracker raises an exception, the others are unaffected and the learner co
 
 ## Writing a custom tracker
 
-Any class with the four methods is a valid tracker — no import from ROSE required:
+Any class with the three methods is a valid tracker — no import from ROSE required:
 
 ```python
 class SlackTracker:
@@ -270,7 +258,6 @@ class SlackTracker:
 
     def on_start(self, manifest): pass
     def on_iteration(self, state): self._iters += 1
-    def on_state_update(self, key, value): pass
 
     def on_stop(self, final_state, reason: str) -> None:
         import urllib.request, json

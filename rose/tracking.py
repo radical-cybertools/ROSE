@@ -7,9 +7,9 @@ learners call at three lifecycle points:
 * ``on_iteration`` — once per iteration, with the full ``IterationState`` snapshot
 * ``on_stop``      — once, when the learning loop exits for any reason
 
-An optional fourth method, ``on_state_update``, is called in real-time each time
-``register_state()`` fires inside a task, giving trackers access to mid-iteration
-process data before the iteration snapshot is built.
+Task outputs flow into the tracker via ``on_iteration``: when a task returns a ``dict``,
+ROSE automatically extracts each key-value pair into ``IterationState.state``, making
+them available in the ``state`` argument passed to every ``on_iteration`` call.
 
 Concrete implementations live in ``rose/integrations/`` (MLflow, ClearML) and are
 optional — ROSE core never imports them.
@@ -28,9 +28,6 @@ Example::
 
         def on_stop(self, final_state, reason: str) -> None:
             print(f"Stopped: {reason}")
-
-        def on_state_update(self, key: str, value) -> None:
-            pass  # optional — no-op is fine
 
     learner.add_tracker(PrintTracker())
 """
@@ -117,24 +114,15 @@ class TrackerBase:
     methods have default no-op implementations so you only override what you
     need.
 
-    The four methods map to two distinct data channels:
+    The three lifecycle methods map to the outer learning loop:
 
-    **Snapshot channel** (iteration-level):
-        - ``on_start``     → pipeline manifest before the first iteration
-        - ``on_iteration`` → ``IterationState`` snapshot after each iteration
-        - ``on_stop``      → final state and stop reason when the loop exits
+    - ``on_start``     → pipeline manifest, fired once at ``add_tracker()``
+    - ``on_iteration`` → ``IterationState`` snapshot after each iteration completes
+    - ``on_stop``      → final state and stop reason when the loop exits
 
-    **Streaming channel** (sub-iteration, real-time):
-        - ``on_state_update`` → fires for every ``register_state(key, value)``
-          call inside a task, before ``build_iteration_state()`` consolidates
-          them into the ``IterationState`` snapshot.
-
-    Note:
-        For parallel learners, ``on_state_update`` is **not** called for
-        sub-learner task code — only ``on_iteration`` is called (with the
-        already-consolidated ``IterationState.state`` dict). This is sufficient
-        for all standard tracking needs; streaming sub-learner updates would
-        require injecting the tracker into each sub-learner instance.
+    Task outputs are captured via return values: when a task returns a ``dict``,
+    ROSE extracts each key-value pair into ``IterationState.state`` automatically,
+    making them available in every ``on_iteration`` call.
     """
 
     def on_start(self, manifest: PipelineManifest) -> None:
@@ -179,20 +167,4 @@ class TrackerBase:
                 - ``"stopped"`` — ``learner.stop()`` was called or user broke
                   out of the ``async for`` loop
                 - ``"error"`` — an unhandled exception occurred
-        """
-
-    def on_state_update(self, key: str, value: Any) -> None:
-        """Called in real-time for every ``register_state(key, value)`` call.
-
-        Fires inside the task execution, before ``build_iteration_state()``
-        consolidates all registered state into the ``IterationState`` snapshot.
-        Useful for streaming per-task metrics (e.g. training loss per batch)
-        without waiting for the full iteration to complete.
-
-        For parallel learners this method is **not** called — use
-        ``on_iteration`` and read ``state.state`` instead.
-
-        Args:
-            key: State key (e.g. ``"loss"``, ``"labeled_count"``).
-            value: Associated value.
         """

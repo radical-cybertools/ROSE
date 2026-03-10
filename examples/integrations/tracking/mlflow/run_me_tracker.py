@@ -21,7 +21,6 @@ MLflow captures
   ``on_iteration``  → mse (step metric), n_labeled, n_pool, mean_std,
                       train_mse, log_marginal_likelihood per iteration
   ``on_stop``       → tag stop_reason, final_iteration
-  ``on_state_update`` → live.log_marginal_likelihood (mid-iteration stream)
 
 Difference from the manual ``mlflow_rose.py`` example
 ------------------------------------------------------
@@ -216,11 +215,7 @@ async def main() -> None:
 
     @learner.training_task(as_executable=False)
     async def train(*args, **kwargs):
-        result = await training(*args, **kwargs)
-        # Streaming: register LML so MLflow captures it via on_state_update
-        # as live.log_marginal_likelihood — visible before iteration ends
-        learner.register_state("log_marginal_likelihood", result["log_marginal_likelihood"])
-        return result
+        return await training(*args, **kwargs)
 
     @learner.active_learn_task(as_executable=False)
     async def active(*args, **kwargs):
@@ -268,17 +263,17 @@ async def main() -> None:
         if next_iter in configs:
             learner.set_next_config(configs[next_iter])
             ls, _ = KERNEL_SCHEDULE[next_iter]
-            print(f"         → kernel schedule: length_scale={ls}")
+            print(f"kernel schedule: length_scale={ls}")
 
     await learner.shutdown()
     DATA_FILE.unlink(missing_ok=True)
 
     print()
     print("View results:")
-    print("  mlflow ui --port 5000")
-    print("  # Experiment: ROSE-Rosenbrock-Surrogate")
-    print("  # Metrics: MEAN_SQUARED_ERROR_MSE, n_labeled, LML")
-    print("  # Tags: stop_reason, final_iteration")
+    print("mlflow ui --port 5000")
+    print("# Experiment: ROSE-Rosenbrock-Surrogate")
+    print("# Metrics: MEAN_SQUARED_ERROR_MSE, n_labeled, LML")
+    print("# Tags: stop_reason, final_iteration")
 
 
 if __name__ == "__main__":

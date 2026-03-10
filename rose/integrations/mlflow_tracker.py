@@ -26,8 +26,8 @@ class MLflowTracker:
     """TrackerBase implementation backed by MLflow.
 
     Logs pipeline manifest as run parameters on start, metric values per
-    iteration, and stop reason as a tag on stop. Mid-iteration ``register_state``
-    calls are streamed as live metrics.
+    iteration, and stop reason as a tag on stop. Task outputs (returned as
+    dicts) are captured automatically via ``on_iteration``.
 
     Args:
         experiment_name: MLflow experiment name (created if it does not exist).
@@ -57,6 +57,7 @@ class MLflowTracker:
             "parallel_learners": manifest.parallel_count,
             "criterion/metric_name": manifest.criterion.metric_name if manifest.criterion else None,
             "criterion/threshold": manifest.criterion.threshold if manifest.criterion else None,
+            "criterion/operator": manifest.criterion.operator if manifest.criterion else None,
         }
         for task_key, task_manifest in manifest.tasks.items():
             params[f"task.{task_key}.as_executable"] = task_manifest.as_executable
@@ -69,24 +70,23 @@ class MLflowTracker:
         import mlflow
 
         step = state.iteration
+        prefix = f"{state.learner_id}/" if state.learner_id is not None else ""
+
         if state.metric_value is not None:
             metric_name = getattr(state, "metric_name", None) or "metric"
-            mlflow.log_metric(metric_name, state.metric_value, step=step)
+            mlflow.log_metric(f"{prefix}{metric_name}", state.metric_value, step=step)
 
         for key, value in state.state.items():
             if isinstance(value, (int, float)):
-                mlflow.log_metric(key, value, step=step)
+                mlflow.log_metric(f"{prefix}{key}", value, step=step)
 
     def on_stop(self, final_state: IterationState | None, reason: str) -> None:
         import mlflow
+
+        if self._run is None:
+            return
 
         mlflow.set_tag("stop_reason", reason)
         if final_state is not None:
             mlflow.set_tag("final_iteration", str(final_state.iteration))
         mlflow.end_run()
-
-    def on_state_update(self, key: str, value: Any) -> None:
-        import mlflow
-
-        if isinstance(value, (int, float)) and self._run is not None:
-            mlflow.log_metric(f"live.{key}", value)

@@ -10,7 +10,6 @@ from rose.tracking import (
     TrackerBase,
 )
 
-
 # ---------------------------------------------------------------------------
 # TestTrackerBase
 # ---------------------------------------------------------------------------
@@ -32,10 +31,6 @@ class TestTrackerBase:
     def test_default_noop_on_stop(self):
         tracker = TrackerBase()
         tracker.on_stop(None, "error")  # should not raise
-
-    def test_default_noop_on_state_update(self):
-        tracker = TrackerBase()
-        tracker.on_state_update("key", 1.0)  # should not raise
 
 
 # ---------------------------------------------------------------------------
