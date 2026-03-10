@@ -1,4 +1,4 @@
-"""MLflow PnP Tracker — adaptive GP surrogate with kernel schedule logging.
+"""MLflow OnP Tracker — adaptive GP surrogate with kernel schedule logging.
 
 Science
 -------
@@ -73,8 +73,8 @@ DATA_FILE = Path(tempfile.gettempdir()) / "rosenbrock_al_data.pkl"
 
 # Kernel schedule: iteration threshold → (length_scale, noise_level)
 KERNEL_SCHEDULE: dict[int, tuple[float, float]] = {
-    0:  (0.50, 0.05),   # broad kernel — exploration phase
-    10: (0.20, 0.01),   # medium kernel — transition phase
+    0: (0.50, 0.05),  # broad kernel — exploration phase
+    10: (0.20, 0.01),  # medium kernel — transition phase
     20: (0.08, 0.002),  # tight kernel  — refinement phase
 }
 
@@ -84,10 +84,10 @@ KERNEL_SCHEDULE: dict[int, tuple[float, float]] = {
 # ---------------------------------------------------------------------------
 def rosenbrock(X: np.ndarray) -> np.ndarray:
     """Rosenbrock function rescaled to [0,1]² input, output in [0,1]."""
-    x = X[:, 0] * 4.0 - 2.0    # [0,1] → [-2, 2]
-    y = X[:, 1] * 4.0 - 2.0    # [0,1] → [-2, 2]
+    x = X[:, 0] * 4.0 - 2.0  # [0,1] → [-2, 2]
+    y = X[:, 1] * 4.0 - 2.0  # [0,1] → [-2, 2]
     z = (1 - x) ** 2 + 100 * (y - x**2) ** 2
-    return (z / 3600.0).reshape(-1, 1)   # normalise to ≈[0,1]
+    return (z / 3600.0).reshape(-1, 1)  # normalise to ≈[0,1]
 
 
 # ---------------------------------------------------------------------------
@@ -120,8 +120,15 @@ async def simulation(*args, n_initial: int = N_INITIAL, n_pool: int = N_POOL) ->
     y_labeled = rosenbrock(X_labeled)
     X_pool = rng.uniform(0, 1, (n_pool, 2))
     y_pool = rosenbrock(X_pool)
-    save_state({"X_labeled": X_labeled, "y_labeled": y_labeled,
-                "X_pool": X_pool, "y_pool": y_pool, "model": None})
+    save_state(
+        {
+            "X_labeled": X_labeled,
+            "y_labeled": y_labeled,
+            "X_pool": X_pool,
+            "y_pool": y_pool,
+            "model": None,
+        }
+    )
     return {"n_labeled": n_initial, "n_pool": n_pool}
 
 
@@ -138,9 +145,7 @@ async def training(
     )
     gp.fit(data["X_labeled"], data["y_labeled"].ravel())
     lml = float(gp.log_marginal_likelihood_value_)
-    train_mse = float(mean_squared_error(
-        data["y_labeled"], gp.predict(data["X_labeled"])
-    ))
+    train_mse = float(mean_squared_error(data["y_labeled"], gp.predict(data["X_labeled"])))
     save_state({**data, "model": gp})
     return {
         "train_mse": train_mse,
@@ -157,8 +162,7 @@ async def active_learn(*args, n_select: int = N_SELECT) -> dict:
     X_labeled, y_labeled = data["X_labeled"], data["y_labeled"]
 
     if len(X_pool) == 0:
-        return {"n_labeled": len(X_labeled), "n_pool": 0,
-                "mean_std": 0.0, "max_std": 0.0}
+        return {"n_labeled": len(X_labeled), "n_pool": 0, "mean_std": 0.0, "max_std": 0.0}
 
     _, std = gp.predict(X_pool, return_std=True)
     n_sel = min(n_select, len(X_pool))
@@ -168,8 +172,9 @@ async def active_learn(*args, n_select: int = N_SELECT) -> dict:
     y_labeled = np.vstack([y_labeled, y_pool[idx]])
     X_pool = np.delete(X_pool, idx, axis=0)
     y_pool = np.delete(y_pool, idx, axis=0)
-    save_state({**data, "X_labeled": X_labeled, "y_labeled": y_labeled,
-                "X_pool": X_pool, "y_pool": y_pool})
+    save_state(
+        {**data, "X_labeled": X_labeled, "y_labeled": y_labeled, "X_pool": X_pool, "y_pool": y_pool}
+    )
     return {
         "n_labeled": len(X_labeled),
         "n_pool": len(X_pool),
@@ -237,10 +242,12 @@ async def main() -> None:
     # Build LearnerConfig objects from the schedule
     configs = {
         it: LearnerConfig(
-            training=TaskConfig(kwargs={
-                "--length_scale": ls,
-                "--noise_level": nl,
-            })
+            training=TaskConfig(
+                kwargs={
+                    "--length_scale": ls,
+                    "--noise_level": nl,
+                }
+            )
         )
         for it, (ls, nl) in KERNEL_SCHEDULE.items()
     }

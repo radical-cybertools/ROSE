@@ -70,8 +70,7 @@ class TaskManifest:
 
 @dataclass
 class CriterionManifest(TaskManifest):
-    """Snapshot of the stop-criterion task, extending ``TaskManifest`` with
-    metric metadata.
+    """Snapshot of the stop-criterion task, extending ``TaskManifest`` with metric metadata.
 
     Attributes:
         metric_name: Name of the metric being tracked (e.g. ``"MSE"``).

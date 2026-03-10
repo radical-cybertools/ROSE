@@ -1,4 +1,4 @@
-"""ClearML PnP Tracker — parallel ensemble UQ for material property prediction.
+"""ClearML OnP Tracker — parallel ensemble UQ for material property prediction.
 
 Science
 -------
@@ -63,8 +63,8 @@ from rose.uq.uq_learner import UQLearnerConfig
 # ---------------------------------------------------------------------------
 MAX_ITERATIONS = 15
 MSE_THRESHOLD = 0.005
-UQ_THRESHOLD = 0.02       # mean entropy nats — stop when ensemble agrees
-UQ_QUERY_SIZE = 10        # top-10 most uncertain structures per iteration
+UQ_THRESHOLD = 0.02  # mean entropy nats — stop when ensemble agrees
+UQ_QUERY_SIZE = 10  # top-10 most uncertain structures per iteration
 N_INITIAL = 20
 N_POOL = 400
 N_SELECT_AL = 12
@@ -116,9 +116,17 @@ async def simulation(*args, **kwargs) -> dict:
     y_labeled = formation_energy(X_labeled)
     X_pool = rng.uniform(0, 1, (N_POOL, 5))
     y_pool = formation_energy(X_pool)
-    save_state(name, {"X_labeled": X_labeled, "y_labeled": y_labeled,
-                      "X_pool": X_pool, "y_pool": y_pool, "model": None,
-                      "seed": seed})
+    save_state(
+        name,
+        {
+            "X_labeled": X_labeled,
+            "y_labeled": y_labeled,
+            "X_pool": X_pool,
+            "y_pool": y_pool,
+            "model": None,
+            "seed": seed,
+        },
+    )
     return {"n_labeled": N_INITIAL, "n_pool": N_POOL}
 
 
@@ -129,14 +137,14 @@ async def training(*args, **kwargs) -> dict:
     rng_state = data["seed"]
     kernel = RBF(length_scale=[0.3] * 5) + WhiteKernel(noise_level=0.01)
     gp = GaussianProcessRegressor(
-        kernel=kernel, n_restarts_optimizer=2, normalize_y=True,
+        kernel=kernel,
+        n_restarts_optimizer=2,
+        normalize_y=True,
         random_state=rng_state,
     )
     gp.fit(data["X_labeled"], data["y_labeled"].ravel())
     lml = float(gp.log_marginal_likelihood_value_)
-    train_mse = float(mean_squared_error(
-        data["y_labeled"], gp.predict(data["X_labeled"])
-    ))
+    train_mse = float(mean_squared_error(data["y_labeled"], gp.predict(data["X_labeled"])))
     save_state(name, {**data, "model": gp})
     return {
         "train_mse": train_mse,
@@ -173,10 +181,22 @@ async def active_learn(*args, **kwargs) -> dict:
     y_labeled = np.vstack([y_labeled, y_pool[idx]])
     X_pool = np.delete(X_pool, idx, axis=0)
     y_pool = np.delete(y_pool, idx, axis=0)
-    save_state(name, {**data, "X_labeled": X_labeled, "y_labeled": y_labeled,
-                      "X_pool": X_pool, "y_pool": y_pool})
-    return {"n_labeled": len(X_labeled), "n_pool": len(X_pool),
-            "mean_std": float(std.mean()), "max_std": float(std.max())}
+    save_state(
+        name,
+        {
+            **data,
+            "X_labeled": X_labeled,
+            "y_labeled": y_labeled,
+            "X_pool": X_pool,
+            "y_pool": y_pool,
+        },
+    )
+    return {
+        "n_labeled": len(X_labeled),
+        "n_pool": len(X_pool),
+        "mean_std": float(std.mean()),
+        "max_std": float(std.max()),
+    }
 
 
 async def check_accuracy(*args, **kwargs) -> float:
@@ -193,9 +213,8 @@ async def check_accuracy(*args, **kwargs) -> float:
 async def check_uq(*args, **kwargs) -> float:
     """Compute mean predictive entropy across the ensemble.
 
-    Predictive entropy H = -sum_k p_k * log(p_k) is approximated here
-    using the normalised GP predictive standard deviations as a proxy
-    for the probability mass at each candidate point.
+    Predictive entropy H = -sum_k p_k * log(p_k) is approximated here using the normalised GP
+    predictive standard deviations as a proxy for the probability mass at each candidate point.
     """
     name = kwargs.get("--learner_name", "default")
     data = load_state(name)

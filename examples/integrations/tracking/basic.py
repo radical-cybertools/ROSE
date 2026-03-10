@@ -70,8 +70,8 @@ JSONL_FILE = Path("branin_run.jsonl")
 # ---------------------------------------------------------------------------
 def branin(X: np.ndarray) -> np.ndarray:
     """Branin-Hoo benchmark: f(x1,x2) has 3 global minima at f≈0.398."""
-    x1 = X[:, 0] * 15.0 - 5.0   # rescale [0,1] → [-5, 10]
-    x2 = X[:, 1] * 15.0          # rescale [0,1] → [0, 15]
+    x1 = X[:, 0] * 15.0 - 5.0  # rescale [0,1] → [-5, 10]
+    x2 = X[:, 1] * 15.0  # rescale [0,1] → [0, 15]
     a, b, c = 1.0, 5.1 / (4 * np.pi**2), 5.0 / np.pi
     r, s, t = 6.0, 10.0, 1.0 / (8.0 * np.pi)
     y = a * (x2 - b * x1**2 + c * x1 - r) ** 2 + s * (1 - t) * np.cos(x1) + s
@@ -121,56 +121,66 @@ class HPC_FileTracker(TrackerBase):
 
     def on_start(self, manifest: PipelineManifest) -> None:
         self._t0 = time.time()
-        self._write({
-            "event": "start",
-            "ts": self._t0,
-            "learner_type": manifest.learner_type,
-            "tasks": list(manifest.tasks.keys()),
-            "criterion": {
-                "metric": manifest.criterion.metric_name,
-                "threshold": manifest.criterion.threshold,
-                "operator": manifest.criterion.operator,
-            } if manifest.criterion else None,
-        })
+        self._write(
+            {
+                "event": "start",
+                "ts": self._t0,
+                "learner_type": manifest.learner_type,
+                "tasks": list(manifest.tasks.keys()),
+                "criterion": {
+                    "metric": manifest.criterion.metric_name,
+                    "threshold": manifest.criterion.threshold,
+                    "operator": manifest.criterion.operator,
+                }
+                if manifest.criterion
+                else None,
+            }
+        )
         print(f"[Tracker] Logging to {self._path.resolve()}")
 
     def on_iteration(self, state: IterationState) -> None:
-        self._write({
-            "event": "iteration",
-            "iteration": state.iteration,
-            "elapsed_s": round(time.time() - self._t0, 3),
-            # Core metric (MSE from stop criterion)
-            "mse": state.metric_value,
-            "should_stop": state.should_stop,
-            # Task outputs auto-extracted by register_state() inside tasks
-            "n_labeled": state.get("n_labeled"),
-            "n_pool": state.get("n_pool"),
-            "mean_std": state.get("mean_std"),
-            "max_std": state.get("max_std"),
-            "train_mse": state.get("train_mse"),
-            # LML streamed mid-iteration via on_state_update
-            "log_marginal_likelihood": state.get("log_marginal_likelihood"),
-        })
+        self._write(
+            {
+                "event": "iteration",
+                "iteration": state.iteration,
+                "elapsed_s": round(time.time() - self._t0, 3),
+                # Core metric (MSE from stop criterion)
+                "mse": state.metric_value,
+                "should_stop": state.should_stop,
+                # Task outputs auto-extracted by register_state() inside tasks
+                "n_labeled": state.get("n_labeled"),
+                "n_pool": state.get("n_pool"),
+                "mean_std": state.get("mean_std"),
+                "max_std": state.get("max_std"),
+                "train_mse": state.get("train_mse"),
+                # LML streamed mid-iteration via on_state_update
+                "log_marginal_likelihood": state.get("log_marginal_likelihood"),
+            }
+        )
 
     def on_stop(self, final_state: IterationState | None, reason: str) -> None:
-        self._write({
-            "event": "stop",
-            "reason": reason,
-            "elapsed_s": round(time.time() - self._t0, 3),
-            "final_iteration": final_state.iteration if final_state else None,
-            "final_mse": final_state.metric_value if final_state else None,
-        })
+        self._write(
+            {
+                "event": "stop",
+                "reason": reason,
+                "elapsed_s": round(time.time() - self._t0, 3),
+                "final_iteration": final_state.iteration if final_state else None,
+                "final_mse": final_state.metric_value if final_state else None,
+            }
+        )
         print(f"[Tracker] Run complete — reason={reason!r}, file={self._path.resolve()}")
 
     def on_state_update(self, key: str, value: Any) -> None:
         """Stream mid-iteration updates (e.g. LML computed inside training task)."""
         if key == "log_marginal_likelihood":
-            self._write({
-                "event": "live",
-                "key": key,
-                "value": float(value),
-                "ts": time.time(),
-            })
+            self._write(
+                {
+                    "event": "live",
+                    "key": key,
+                    "value": float(value),
+                    "ts": time.time(),
+                }
+            )
 
     # ── Internal ───────────────────────────────────────────────────────────
 
@@ -197,8 +207,15 @@ async def simulation(*args, n_initial: int = N_INITIAL, n_pool: int = N_POOL) ->
     y_labeled = branin(X_labeled)
     X_pool = rng.uniform(0, 1, (n_pool, 2))
     y_pool = branin(X_pool)
-    save_state({"X_labeled": X_labeled, "y_labeled": y_labeled,
-                "X_pool": X_pool, "y_pool": y_pool, "model": None})
+    save_state(
+        {
+            "X_labeled": X_labeled,
+            "y_labeled": y_labeled,
+            "X_pool": X_pool,
+            "y_pool": y_pool,
+            "model": None,
+        }
+    )
     return {"n_labeled": n_initial, "n_pool": n_pool}
 
 
@@ -239,8 +256,9 @@ async def active_learn(*args, n_select: int = N_SELECT) -> dict:
     y_labeled = np.vstack([y_labeled, y_pool[idx]])
     X_pool = np.delete(X_pool, idx, axis=0)
     y_pool = np.delete(y_pool, idx, axis=0)
-    save_state({**data, "X_labeled": X_labeled, "y_labeled": y_labeled,
-                "X_pool": X_pool, "y_pool": y_pool})
+    save_state(
+        {**data, "X_labeled": X_labeled, "y_labeled": y_labeled, "X_pool": X_pool, "y_pool": y_pool}
+    )
     return {
         "n_labeled": len(X_labeled),
         "n_pool": len(X_pool),
@@ -314,9 +332,11 @@ async def main() -> None:
 
     print()
     print("Replay run with:")
-    print(f"  python -c \"import pandas; "
-          f"print(pandas.read_json('{JSONL_FILE}', lines=True)"
-          f"[['iteration','mse','n_labeled']].dropna())\"")
+    print(
+        f'  python -c "import pandas; '
+        f"print(pandas.read_json('{JSONL_FILE}', lines=True)"
+        f"[['iteration','mse','n_labeled']].dropna())\""
+    )
 
 
 if __name__ == "__main__":

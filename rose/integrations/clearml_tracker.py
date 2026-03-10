@@ -38,8 +38,7 @@ class ClearMLTracker:
             import clearml  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "clearml is required for ClearMLTracker. "
-                "Install it with: pip install rose[clearml]"
+                "clearml is required for ClearMLTracker. Install it with: pip install rose[clearml]"
             ) from e
 
         self._project_name = project_name
