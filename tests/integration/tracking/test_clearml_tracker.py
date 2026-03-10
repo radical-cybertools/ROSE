@@ -30,7 +30,7 @@ def _make_simple_manifest():
                 func_name="train",
                 func_module="mod",
                 as_executable=False,
-                decor_kwargs={"num_gpus": 2},
+                log_params={"num_gpus": 2},
             ),
         },
         criterion=CriterionManifest(

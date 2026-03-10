@@ -3,19 +3,27 @@
 ROSE has a pluggable tracking system that lets you record what happened in a run — metrics,
 pipeline configuration, stop reason — without changing a single line of your workflow code.
 
-You attach a tracker **once**, before calling `start()`. The learner calls it automatically
-at every lifecycle point. No tracking code belongs inside your `async for` loop.
+You attach a tracker **once**, after registering all tasks and before calling `start()`.
+The learner calls it automatically at every lifecycle point. No tracking code belongs
+inside your `async for` loop.
 
 ```python
-learner.add_tracker(MyTracker(...))   # (1)
+# 1. Register tasks first
+@learner.training_task(as_executable=False)
+async def train(*args, **kwargs): ...
 
+# 2. Attach tracker — on_start(manifest) fires here with the complete pipeline manifest
+learner.add_tracker(MyTracker(...))
+
+# 3. Start the loop
 async for state in learner.start(max_iter=20):
     # your control logic only — tracking is fully automatic
     if state.metric_value and state.metric_value < 0.001:
         break
 ```
 
-1. One line. Before `start()`. Everything else is automatic.
+`add_tracker()` fires `on_start(manifest)` immediately. All task decorators must have been
+applied beforehand so the manifest is complete.
 
 ---
 
@@ -45,10 +53,10 @@ from rose import TrackerBase, PipelineManifest, IterationState
 class MyTracker(TrackerBase):
 
     def on_start(self, manifest: PipelineManifest) -> None:
-        """Called once when add_tracker() is invoked.
+        """Called once inside add_tracker(), immediately when it is invoked.
 
-        manifest is already complete: all task decorators have fired before
-        add_tracker() is called, so the full pipeline is captured here.
+        All task decorators must have fired before add_tracker() is called —
+        the manifest is built at that moment and contains the full pipeline.
         """
 
     def on_iteration(self, state: IterationState) -> None:
@@ -73,8 +81,9 @@ class MyTracker(TrackerBase):
 ### Lifecycle diagram
 
 ```
+# Register tasks first, then:
 add_tracker(t)
-    └─ t.on_start(manifest)           ← pipeline manifest, full pipeline captured
+    └─ t.on_start(manifest)           ← fires immediately; manifest is complete because tasks were registered first
 
 start() called
     ├─ iteration 0
@@ -106,7 +115,8 @@ class TaskManifest:
     func_name: str        # decorated function's __name__
     func_module: str      # decorated function's __module__
     as_executable: bool   # True = executable_task, False = function_task
-    decor_kwargs: dict    # extra decorator kwargs (num_gpus, ranks, etc.)
+    decor_kwargs: dict    # HPC backend kwargs (num_gpus, ranks, memory) — opaque to trackers
+    log_params: dict      # explicit tracking metadata declared at decoration time
 
 @dataclass
 class CriterionManifest(TaskManifest):
@@ -131,8 +141,29 @@ def on_start(self, manifest: PipelineManifest) -> None:
     print(manifest.criterion.metric_name)           # "mean_squared_error_mse"
     print(manifest.criterion.threshold)             # 0.01
     print(manifest.tasks["training"].as_executable) # False
-    print(manifest.tasks["training"].decor_kwargs)  # {"num_gpus": 2}
+    print(manifest.tasks["training"].log_params)    # {"num_gpus": 4, "kernel": "rbf"}
+    # manifest.tasks["training"].decor_kwargs holds HPC backend args — not logged by trackers
 ```
+
+### Two-channel decorator design
+
+Task decorators accept two separate keyword groups with different destinations:
+
+```python
+@learner.training_task(
+    as_executable=False,
+    num_gpus=4,                               # → HPC backend only, opaque to trackers
+    log_params={"num_gpus": 4, "kernel": "rbf"}  # → trackers only, via TaskManifest.log_params
+)
+async def training(*args, **kwargs):
+    ...
+```
+
+- **`decor_kwargs`** (any keyword not recognised by ROSE) flow to the HPC execution backend
+  (RADICAL-Pilot, Ray, etc.) as task requirements. They are intentionally not logged —
+  they may include resource specs, auth tokens, or backend-specific values.
+- **`log_params`** is the explicit opt-in channel: only what you list here reaches trackers.
+  Nothing is logged unless you declare it.
 
 ---
 

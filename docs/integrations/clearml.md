@@ -48,7 +48,7 @@ The entire pipeline manifest is connected to the ClearML task without any user a
 | `criterion/threshold` | `as_stop_criterion(threshold=...)` |
 | `criterion/operator` | `as_stop_criterion(operator=...)` |
 | `task/<name>/as_executable` | Per registered task |
-| `task/<name>/<kwarg>` | Extra decorator kwargs (e.g. `num_gpus`) |
+| `task/<name>/<key>` | Explicit `log_params` dict declared in task decorator |
 
 ### Scalars — logged per iteration in `on_iteration`
 

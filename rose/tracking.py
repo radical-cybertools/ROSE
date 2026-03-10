@@ -55,14 +55,19 @@ class TaskManifest:
         func_module: The decorated function's ``__module__``.
         as_executable: ``True`` when submitted via ``asyncflow.executable_task``,
             ``False`` when submitted via ``asyncflow.function_task``.
-        decor_kwargs: Extra keyword arguments passed to the task decorator
-            (e.g. ``num_gpus``, ``ranks``).
+        decor_kwargs: Extra keyword arguments forwarded to the execution backend
+            (e.g. ``num_gpus``, ``ranks``).  These are opaque to trackers —
+            they are backend resource specifications, not experiment metadata.
+        log_params: Explicit tracking parameters declared via the ``log_params``
+            decorator keyword.  Only these values are forwarded to trackers.
+            Example: ``@learner.training_task(num_gpus=4, log_params={"num_gpus": 4})``.
     """
 
     func_name: str
     func_module: str
     as_executable: bool
     decor_kwargs: dict[str, Any] = field(default_factory=dict)
+    log_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

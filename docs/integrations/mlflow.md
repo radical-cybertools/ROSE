@@ -14,6 +14,11 @@ pip install rose[mlflow]
 ```python
 from rose.integrations.mlflow_tracker import MLflowTracker
 
+# Register tasks before attaching the tracker
+@learner.training_task(as_executable=False, log_params={"kernel": "rbf"})
+async def train(*args, **kwargs): ...
+
+# add_tracker fires on_start(manifest) immediately — tasks must already be registered
 learner.add_tracker(
     MLflowTracker(
         experiment_name="surrogate-v1",
@@ -51,7 +56,7 @@ The entire pipeline manifest is logged as MLflow parameters without any user ann
 | `criterion/threshold` | `as_stop_criterion(threshold=...)` |
 | `criterion/operator` | `as_stop_criterion(operator=...)` |
 | `task.<name>.as_executable` | Per registered task |
-| `task.<name>.<kwarg>` | Extra decorator kwargs (e.g. `num_gpus`) |
+| `task.<name>.<key>` | Explicit `log_params` dict declared in task decorator |
 
 ### Metrics — logged per iteration in `on_iteration`
 

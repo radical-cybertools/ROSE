@@ -134,6 +134,8 @@ Params (on_start):
   criterion/threshold = 0.002
   task.simulation.as_executable = False
   task.training.as_executable = False
+  task.training.kernel = "RBF+WhiteKernel"          ← from log_params in decorator
+  task.training.kernel_schedule = "adaptive"         ← from log_params in decorator
   ...
 
 Metrics (on_iteration, per step):
@@ -154,7 +156,11 @@ Tags (on_stop):
 ```python
 from rose.integrations.mlflow_tracker import MLflowTracker
 
-learner.add_tracker(
+# Register tasks first, then attach the tracker
+@learner.training_task(as_executable=False, log_params={"kernel": "rbf"})
+async def train(*args, **kwargs): ...
+
+learner.add_tracker(          # on_start(manifest) fires here — manifest is complete
     MLflowTracker(
         experiment_name="my-surrogate",
         run_name="gp-v1",

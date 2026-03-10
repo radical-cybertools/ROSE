@@ -30,7 +30,7 @@ def _make_simple_manifest():
                 func_name="train",
                 func_module="mod",
                 as_executable=False,
-                decor_kwargs={"num_gpus": 2},
+                log_params={"num_gpus": 2},
             ),
         },
         criterion=CriterionManifest(
@@ -119,7 +119,7 @@ class TestMLflowTrackerOnStart:
         logged_params = mock_mlflow.log_params.call_args[0][0]
         assert logged_params["task.simulation.as_executable"] is False
 
-    def test_logs_task_decor_kwargs(self, tracker, mock_mlflow, simple_manifest):
+    def test_logs_task_log_params(self, tracker, mock_mlflow, simple_manifest):
         tracker.on_start(simple_manifest)
         logged_params = mock_mlflow.log_params.call_args[0][0]
         assert logged_params["task.training.num_gpus"] == 2

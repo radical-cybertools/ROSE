@@ -65,7 +65,7 @@ class ClearMLTracker:
         }
         for task_key, task_manifest in manifest.tasks.items():
             params[f"task/{task_key}/as_executable"] = task_manifest.as_executable
-            for k, v in task_manifest.decor_kwargs.items():
+            for k, v in task_manifest.log_params.items():
                 params[f"task/{task_key}/{k}"] = v
 
         self._task.connect(params)

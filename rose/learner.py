@@ -413,6 +413,9 @@ class Learner:
             def decorator(func: Callable) -> Callable:
                 # Capture immutable values at decoration time
                 decoration_as_executable = decor_kwargs.pop("as_executable", True)
+                # log_params is the explicit tracking contract — separate from
+                # backend resource kwargs (num_gpus, ranks, etc.)
+                decoration_log_params: dict[str, Any] = decor_kwargs.pop("log_params", {})
                 decoration_decor_kwargs = decor_kwargs.copy()
 
                 # Store initial placeholder (so validation passes)
@@ -421,6 +424,7 @@ class Learner:
                     "args": (),
                     "kwargs": {},
                     "decor_kwargs": decoration_decor_kwargs,
+                    "log_params": decoration_log_params,
                     "as_executable": decoration_as_executable,
                 }
                 setattr(self, f"{task_attr_name}_function", base_task_obj)
@@ -433,6 +437,7 @@ class Learner:
                         "args": args,
                         "kwargs": kwargs,
                         "decor_kwargs": decoration_decor_kwargs.copy(),
+                        "log_params": decoration_log_params,
                         "as_executable": decoration_as_executable,
                     }
 
@@ -910,6 +915,7 @@ class Learner:
                 func_module=getattr(func, "__module__", ""),
                 as_executable=task_dict.get("as_executable", True),
                 decor_kwargs=task_dict.get("decor_kwargs", {}).copy(),
+                log_params=task_dict.get("log_params", {}).copy(),
             )
 
         criterion: CriterionManifest | None = None

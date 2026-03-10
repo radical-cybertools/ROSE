@@ -69,8 +69,14 @@ class TestPipelineManifest:
             func_module="mymod",
             as_executable=True,
             decor_kwargs={"num_gpus": 4},
+            log_params={"num_gpus": 4, "kernel": "rbf"},
         )
         assert tm.func_name == "sim"
         assert tm.func_module == "mymod"
         assert tm.as_executable is True
         assert tm.decor_kwargs == {"num_gpus": 4}
+        assert tm.log_params == {"num_gpus": 4, "kernel": "rbf"}
+
+    def test_task_manifest_log_params_defaults_empty(self):
+        tm = TaskManifest(func_name="sim", func_module="mymod", as_executable=False)
+        assert tm.log_params == {}

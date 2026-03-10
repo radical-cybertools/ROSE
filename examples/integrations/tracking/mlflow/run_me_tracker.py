@@ -12,12 +12,13 @@ accurate, mimicking the practice of curriculum-style surrogate refinement.
   Iteration 10–19 : RBF(length_scale=0.2) — focused, refines local detail
   Iteration 20+   : RBF(length_scale=0.08) — tight, captures fine structure
 
-Stop criterion : MSE < 0.002 on a fixed 400-point validation grid.
+Stop criterion : MSE < 1e-6 on a fixed 400-point validation grid.
 
 MLflow captures
 ---------------
   ``on_start``      → run params: learner_type, criterion threshold/operator,
-                      task names, as_executable flag, kernel schedule
+                      task names, as_executable flag, and any keys declared in
+                      ``log_params`` at decoration time (e.g. kernel, num_gpus)
   ``on_iteration``  → mse (step metric), n_labeled, n_pool, mean_std,
                       train_mse, log_marginal_likelihood per iteration
   ``on_stop``       → tag stop_reason, final_iteration
@@ -63,10 +64,10 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MAX_ITERATIONS = 30
-MSE_THRESHOLD = 0.002
+MAX_ITERATIONS = 35
+MSE_THRESHOLD = 1e-6
 N_INITIAL = 20
-N_POOL = 500
+N_POOL = 800
 N_SELECT = 15
 DATA_FILE = Path(tempfile.gettempdir()) / "rosenbrock_al_data.pkl"
 
@@ -196,24 +197,22 @@ async def check_mse(*args) -> float:
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
+    DATA_FILE.unlink(missing_ok=True)  # always start fresh
+
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
     learner = SequentialActiveLearner(asyncflow)
 
-    # ── Single line to enable full MLflow tracking ────────────────────────
-    # Params, metrics, tags, and stop reason are all logged automatically.
-    learner.add_tracker(
-        MLflowTracker(
-            experiment_name="ROSE-Rosenbrock-Surrogate",
-            run_name="gp-adaptive-kernel",
-        )
-    )
-
+    # Register all tasks first — add_tracker() fires on_start(manifest) immediately,
+    # so tasks must be registered before the tracker is attached.
     @learner.simulation_task(as_executable=False)
     async def sim(*args, **kwargs):
         return await simulation(*args, **kwargs)
 
-    @learner.training_task(as_executable=False)
+    @learner.training_task(
+        as_executable=False,
+        log_params={"kernel": "RBF+WhiteKernel", "kernel_schedule": "adaptive"},
+    )
     async def train(*args, **kwargs):
         return await training(*args, **kwargs)
 
@@ -230,6 +229,15 @@ async def main() -> None:
     async def criterion(*args, **kwargs):
         return await check_mse(*args, **kwargs)
 
+    # ── Attach tracker after all tasks are registered ─────────────────────
+    # on_start(manifest) fires here — the manifest is now complete.
+    learner.add_tracker(
+        MLflowTracker(
+            experiment_name="ROSE-Rosenbrock-Surrogate",
+            run_name="gp-adaptive-kernel",
+        )
+    )
+
     print("=" * 58)
     print("ROSE + MLflowTracker — Rosenbrock GP Surrogate")
     print("=" * 58)
@@ -239,8 +247,8 @@ async def main() -> None:
         it: LearnerConfig(
             training=TaskConfig(
                 kwargs={
-                    "--length_scale": ls,
-                    "--noise_level": nl,
+                    "length_scale": ls,
+                    "noise_level": nl,
                 }
             )
         )
