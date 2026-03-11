@@ -268,6 +268,23 @@ class TestMLflowTrackerOnIteration:
         logged_keys = [c[0][0] for c in mock_mlflow.log_metric.call_args_list]
         assert not any("config/" in k for k in logged_keys)
 
+    def test_logs_string_config_kwargs_as_tags(self, tracker, mock_mlflow):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=10,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"kernel_type": "RBF+WhiteKernel", "length_scale": 0.2})
+            ),
+        )
+        tracker.on_iteration(state)
+        mock_mlflow.set_tag.assert_any_call("config/training/kernel_type", "RBF+WhiteKernel")
+        # numeric value goes to log_metric, not set_tag
+        mock_mlflow.log_metric.assert_any_call("config/training/length_scale", 0.2, step=10)
+
 
 # ---------------------------------------------------------------------------
 # TestMLflowTrackerOnStop

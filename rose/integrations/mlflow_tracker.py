@@ -21,6 +21,16 @@ if TYPE_CHECKING:
     from rose.learner import IterationState
     from rose.tracking import PipelineManifest
 
+_TASK_NAMES = (
+    "simulation",
+    "training",
+    "prediction",
+    "active_learn",
+    "environment",
+    "update",
+    "criterion",
+)
+
 
 class MLflowTracker:
     """TrackerBase implementation backed by MLflow.
@@ -81,22 +91,17 @@ class MLflowTracker:
                 mlflow.log_metric(f"{prefix}{key}", value, step=step)
 
         if state.current_config is not None:
-            _TASK_NAMES = (
-                "simulation",
-                "training",
-                "prediction",
-                "active_learn",
-                "environment",
-                "update",
-                "criterion",
-            )
             for task_name in _TASK_NAMES:
                 task_cfg = state.current_config.get_task_config(task_name, step)
                 if task_cfg is None:
                     continue
                 for k, v in task_cfg.kwargs.items():
-                    if isinstance(v, (int, float)) and not k.startswith("--"):
+                    if k.startswith("--"):
+                        continue
+                    if isinstance(v, (int, float)):
                         mlflow.log_metric(f"{prefix}config/{task_name}/{k}", v, step=step)
+                    elif isinstance(v, str):
+                        mlflow.set_tag(f"{prefix}config/{task_name}/{k}", v)
 
     def on_stop(self, final_state: IterationState | None, reason: str) -> None:
         import mlflow

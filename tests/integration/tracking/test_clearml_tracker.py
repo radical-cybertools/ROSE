@@ -299,6 +299,54 @@ class TestClearMLTrackerOnIteration:
         ]
         assert not any("config/" in t for t in reported_titles)
 
+    def test_logs_string_config_kwargs_to_current_config_section(self, tracker, mock_clearml):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=5,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"kernel_type": "RBF+WhiteKernel", "length_scale": 0.2})
+            ),
+        )
+        tracker.on_iteration(state)
+        mock_clearml["task"].connect.assert_called_once_with(
+            {"training/kernel_type": "RBF+WhiteKernel"}, name="current_config"
+        )
+        # numeric value goes to report_scalar, not connect
+        reported_titles = [
+            c[1]["title"] for c in mock_clearml["logger"].report_scalar.call_args_list
+        ]
+        assert "config/training/length_scale" in reported_titles
+
+    def test_learner_names_maps_int_id_to_name(self, mock_clearml):
+        from rose.integrations.clearml_tracker import ClearMLTracker
+
+        t = ClearMLTracker(
+            project_name="p", task_name="t", learner_names=["ensemble-A", "ensemble-B"]
+        )
+        t._task = mock_clearml["task"]
+        t._logger = mock_clearml["logger"]
+
+        state = IterationState(
+            iteration=1, metric_value=0.05, metric_name="mse", learner_id=1, state={}
+        )
+        t.on_iteration(state)
+        mock_clearml["logger"].report_scalar.assert_called_once_with(
+            title="mse", series="ensemble-B", value=0.05, iteration=1
+        )
+
+    def test_integer_learner_id_zero_uses_string_zero_not_value(self, tracker, mock_clearml):
+        state = IterationState(
+            iteration=0, metric_value=0.1, metric_name="mse", learner_id=0, state={}
+        )
+        tracker.on_iteration(state)
+        call_kwargs = mock_clearml["logger"].report_scalar.call_args[1]
+        assert call_kwargs["series"] == "0"
+        assert call_kwargs["series"] != "value"
+
 
 # ---------------------------------------------------------------------------
 # TestClearMLTrackerOnStop

@@ -234,6 +234,7 @@ async def main() -> None:
         ClearMLTracker(
             project_name="ROSE-Materials-UQ",
             task_name="parallel-ensemble-gp",
+            learner_names=LEARNER_NAMES,
         )
     )
 
