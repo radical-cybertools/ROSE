@@ -94,6 +94,29 @@ class ClearMLTracker:
                     iteration=state.iteration,
                 )
 
+        if state.current_config is not None:
+            _TASK_NAMES = (
+                "simulation",
+                "training",
+                "prediction",
+                "active_learn",
+                "environment",
+                "update",
+                "criterion",
+            )
+            for task_name in _TASK_NAMES:
+                task_cfg = state.current_config.get_task_config(task_name, state.iteration)
+                if task_cfg is None:
+                    continue
+                for k, v in task_cfg.kwargs.items():
+                    if isinstance(v, (int, float)) and not k.startswith("--"):
+                        self._logger.report_scalar(
+                            title=f"config/{task_name}/{k}",
+                            series=series,
+                            value=v,
+                            iteration=state.iteration,
+                        )
+
     def on_stop(self, final_state: IterationState | None, reason: str) -> None:
         if self._task is None:
             return

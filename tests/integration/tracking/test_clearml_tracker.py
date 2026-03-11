@@ -242,6 +242,63 @@ class TestClearMLTrackerOnIteration:
         call_kwargs = mock_clearml["logger"].report_scalar.call_args[1]
         assert call_kwargs["series"] == "value"
 
+    def test_logs_config_kwargs_as_scalars(self, tracker, mock_clearml):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=10,
+            metric_value=0.01,
+            metric_name="mse",
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"length_scale": 0.2, "noise_level": 0.01})
+            ),
+        )
+        tracker.on_iteration(state)
+        reported_titles = [
+            c[1]["title"] for c in mock_clearml["logger"].report_scalar.call_args_list
+        ]
+        assert "config/training/length_scale" in reported_titles
+        assert "config/training/noise_level" in reported_titles
+        # Verify values
+        for call in mock_clearml["logger"].report_scalar.call_args_list:
+            if call[1]["title"] == "config/training/length_scale":
+                assert call[1]["value"] == 0.2
+                assert call[1]["iteration"] == 10
+
+    def test_skips_cli_style_config_kwargs(self, tracker, mock_clearml):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=0,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"--learner_name": "ensemble-A", "lr": 0.001})
+            ),
+        )
+        tracker.on_iteration(state)
+        reported_titles = [
+            c[1]["title"] for c in mock_clearml["logger"].report_scalar.call_args_list
+        ]
+        assert not any("learner_name" in t for t in reported_titles)
+        assert any("lr" in t for t in reported_titles)
+
+    def test_no_config_skips_config_scalars(self, tracker, mock_clearml):
+        state = IterationState(
+            iteration=0,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=None,
+        )
+        tracker.on_iteration(state)
+        reported_titles = [
+            c[1]["title"] for c in mock_clearml["logger"].report_scalar.call_args_list
+        ]
+        assert not any("config/" in t for t in reported_titles)
+
 
 # ---------------------------------------------------------------------------
 # TestClearMLTrackerOnStop

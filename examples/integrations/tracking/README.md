@@ -174,15 +174,14 @@ async for state in learner.start(max_iter=30):
 
 ## 3 — ClearML Tracker
 
-**Science:** 5D materials formation energy prediction using a two-learner ensemble
-(`"ensemble-A"`, `"ensemble-B"`, different random seeds). Predictive entropy quantifies
-inter-model disagreement — the ensemble stops when mean entropy falls below 0.02 nats,
-meaning both models agree sufficiently on unseen structures.
+**Science:** 5D materials formation energy prediction using two parallel active learners
+(`"ensemble-A"`, `"ensemble-B"`, different random seeds). Both run concurrently — each
+trains its own GP and selects its own labeled points. ClearML shows both learners'
+convergence curves side by side, making seed sensitivity immediately visible.
 
 **Tracker:** `ClearMLTracker` from `rose.integrations.clearml_tracker`. Each yielded
-`IterationState` carries `state.learner_id` (`"ensemble-A"` or `"ensemble-B"`), so
-both learners' scalar curves appear in the same ClearML task and can be overlaid for
-direct convergence comparison.
+`IterationState` carries `state.learner_id` (0 or 1), so both learners' scalar curves
+appear in the same ClearML task and can be overlaid for direct convergence comparison.
 
 ```bash
 pip install rose[clearml] scikit-learn numpy
@@ -197,20 +196,20 @@ python clearml/run_me.py
 
 ```
 Hyperparameters (on_start):
-  learner_type = "ParallelUQLearner"
+  learner_type = "ParallelActiveLearner"
   criterion/metric_name = "mean_squared_error_mse"
-  criterion/threshold = 0.005
+  criterion/threshold = 0.01
   ...
 
 Scalars (on_iteration, per learner per step):
-  title=MEAN_SQUARED_ERROR_MSE  series=value  ← stop criterion
-  title=n_labeled               series=value
-  title=n_pool                  series=value
-  title=train_mse               series=value
+  title=MEAN_SQUARED_ERROR_MSE  series=0  ← ensemble-A
+  title=MEAN_SQUARED_ERROR_MSE  series=1  ← ensemble-B
+  title=n_labeled               series=0/1
+  title=train_mse               series=0/1
 
 Task tags (on_stop):
   stop:criterion_met   or   stop:max_iter_reached
-  final_iter:7
+  final_iter:N
 ```
 
 **Wire it:**

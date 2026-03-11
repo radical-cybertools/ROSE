@@ -1,30 +1,28 @@
-"""ClearML OnP Tracker — parallel ensemble UQ for material property prediction.
+"""ClearML Tracker — parallel ensemble active learning for material property prediction.
 
 Science
 -------
-Ensemble-based UQ active learning for a materials science regression task:
+Ensemble-based active learning for a materials science regression task:
 predicting the formation energy of hypothetical crystal structures from
-a set of structural descriptors (e.g. Coulomb matrix eigenvalues). Two
+a set of structural descriptors (5-D Coulomb matrix eigenvalues). Two
 parallel learners (``"ensemble-A"`` and ``"ensemble-B"``) train on different
 random seeds, building diverse GP models. Their per-iteration metrics are
-reported as separate ClearML tasks inside one project, enabling direct
-comparison of convergence across seeds.
+logged as separate ClearML scalar series inside the same task, enabling direct
+convergence comparison in the ClearML UI.
 
-UQ metric   : predictive entropy across the two-model ensemble
-              — measures how much the models disagree on unseen structures
-UQ threshold: stop when mean entropy < 0.02 (ensemble is sufficiently confident)
-Stop criterion: MSE < 0.005 on a held-out test set
+Stop criterion: MSE < 0.01 on a held-out 200-point test set.
 
 Scientific value:
   - Ensemble diversity (different seeds) reduces systematic error
-  - Predictive entropy quantifies aleatoric + epistemic uncertainty
   - ClearML overlay plot shows whether both seeds converge at the same rate
+  - Parallel execution: both learners run concurrently, not sequentially
 
 ClearML captures
 ----------------
-  ``on_start``      → hyperparams: criterion threshold, task names, seed info
-  ``on_iteration``  → per-learner scalars: mse, mean_entropy, max_entropy,
-                      n_labeled, n_pool (each as a separate ClearML series)
+  ``on_start``      → hyperparams: learner_type, criterion threshold/operator,
+                      task names, as_executable flag
+  ``on_iteration``  → per-learner scalars: mse, train_mse, n_labeled, n_pool
+                      (each as a separate ClearML series per learner_id)
   ``on_stop``       → task tag "stop:criterion_met" or "stop:max_iter_reached"
 
 Requirements
@@ -37,7 +35,7 @@ Usage
 
     # View results:
     # Open ClearML web UI → project "ROSE-Materials-UQ"
-    # Compare "mse" scalar curves between the two parallel learner tasks
+    # Scalars tab: overlay mse curves for ensemble-A vs ensemble-B
 """
 
 import asyncio
@@ -53,25 +51,23 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from sklearn.metrics import mean_squared_error
 
+from rose.al.active_learner import ParallelActiveLearner
 from rose.integrations.clearml_tracker import ClearMLTracker
-from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
-from rose.uq.uq_active_learner import ParallelUQLearner
-from rose.uq.uq_learner import UQLearnerConfig
+from rose.learner import LearnerConfig, TaskConfig
+from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MAX_ITERATIONS = 15
-MSE_THRESHOLD = 0.005
-UQ_THRESHOLD = 0.02  # mean entropy nats — stop when ensemble agrees
-UQ_QUERY_SIZE = 10  # top-10 most uncertain structures per iteration
+MAX_ITERATIONS = 20
+MSE_THRESHOLD = 0.01
 N_INITIAL = 20
 N_POOL = 400
 N_SELECT_AL = 12
 LEARNER_NAMES = ["ensemble-A", "ensemble-B"]
 SEEDS = {"ensemble-A": 11, "ensemble-B": 37}
 
-DATA_FILE = Path(tempfile.gettempdir()) / "materials_uq_{name}.pkl"
+DATA_FILE = Path(tempfile.gettempdir()) / "materials_al_{name}.pkl"
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +93,7 @@ def load_state(name: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# ROSE task functions — each receives --learner_name to isolate state
+# ROSE task functions — each receives --learner_name to isolate per-seed state
 # ---------------------------------------------------------------------------
 async def simulation(*args, **kwargs) -> dict:
     """Generate initial labeled structures and unlabeled candidate pool.
@@ -134,13 +130,12 @@ async def training(*args, **kwargs) -> dict:
     """Fit GP model on current labeled set (seed-specific random init)."""
     name = kwargs.get("--learner_name", "default")
     data = load_state(name)
-    rng_state = data["seed"]
     kernel = RBF(length_scale=[0.3] * 5) + WhiteKernel(noise_level=0.01)
     gp = GaussianProcessRegressor(
         kernel=kernel,
-        n_restarts_optimizer=2,
+        n_restarts_optimizer=0,
         normalize_y=True,
-        random_state=rng_state,
+        random_state=data["seed"],
     )
     gp.fit(data["X_labeled"], data["y_labeled"].ravel())
     lml = float(gp.log_marginal_likelihood_value_)
@@ -151,17 +146,6 @@ async def training(*args, **kwargs) -> dict:
         "log_marginal_likelihood": lml,
         "n_labeled": len(data["X_labeled"]),
     }
-
-
-async def prediction(*args, **kwargs) -> dict:
-    """Generate predictions + uncertainties from this ensemble member."""
-    name = kwargs.get("--learner_name", "default")
-    model_name = kwargs.get("--model_name", "gp")
-    data = load_state(name)
-    gp = data["model"]
-    y_pred, std = gp.predict(data["X_pool"], return_std=True)
-    # Return dict keyed by model name — used by UQ aggregation
-    return {model_name: {"y_pred": y_pred.tolist(), "std": std.tolist()}}
 
 
 async def active_learn(*args, **kwargs) -> dict:
@@ -195,7 +179,6 @@ async def active_learn(*args, **kwargs) -> dict:
         "n_labeled": len(X_labeled),
         "n_pool": len(X_pool),
         "mean_std": float(std.mean()),
-        "max_std": float(std.max()),
     }
 
 
@@ -210,45 +193,20 @@ async def check_accuracy(*args, **kwargs) -> float:
     return float(mean_squared_error(y_test, y_pred))
 
 
-async def check_uq(*args, **kwargs) -> float:
-    """Compute mean predictive entropy across the ensemble.
-
-    Predictive entropy H = -sum_k p_k * log(p_k) is approximated here using the normalised GP
-    predictive standard deviations as a proxy for the probability mass at each candidate point.
-    """
-    name = kwargs.get("--learner_name", "default")
-    data = load_state(name)
-    gp = data["model"]
-    X_pool = data["X_pool"]
-
-    if len(X_pool) == 0:
-        return 0.0
-
-    _, std = gp.predict(X_pool, return_std=True)
-    # Approximate entropy: H(x) = 0.5 * log(2πe * σ²) for Gaussian
-    entropy = 0.5 * np.log(2 * np.pi * np.e * (std**2 + 1e-12))
-    return float(entropy.mean())
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
+    # Always start fresh — clear stale per-learner data files
+    for name in LEARNER_NAMES:
+        Path(str(DATA_FILE).format(name=name)).unlink(missing_ok=True)
+
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
-    learner = ParallelUQLearner(asyncflow)
+    learner = ParallelActiveLearner(asyncflow)
 
-    # ── Single line to enable full ClearML tracking ───────────────────────
-    # Each yielded state (learner_id = "ensemble-A" / "ensemble-B") is logged
-    # as a separate scalar series inside the same ClearML task, making
-    # per-seed comparison trivial in the ClearML UI.
-    learner.add_tracker(
-        ClearMLTracker(
-            project_name="ROSE-Materials-UQ",
-            task_name="parallel-ensemble-gp",
-        )
-    )
-
+    # Register all tasks first — add_tracker() fires on_start(manifest) immediately,
+    # so tasks must be registered before the tracker is attached.
     @learner.simulation_task(as_executable=False)
     async def sim(*args, **kwargs):
         return await simulation(*args, **kwargs)
@@ -256,10 +214,6 @@ async def main() -> None:
     @learner.training_task(as_executable=False)
     async def train(*args, **kwargs):
         return await training(*args, **kwargs)
-
-    @learner.prediction_task(as_executable=False)
-    async def predict(*args, **kwargs):
-        return await prediction(*args, **kwargs)
 
     @learner.active_learn_task(as_executable=False)
     async def active(*args, **kwargs):
@@ -274,43 +228,43 @@ async def main() -> None:
     async def criterion(*args, **kwargs):
         return await check_accuracy(*args, **kwargs)
 
-    @learner.uncertainty_quantification(
-        uq_metric_name=PREDICTIVE_ENTROPY,
-        threshold=UQ_THRESHOLD,
-        query_size=UQ_QUERY_SIZE,
-        operator="<",
-        as_executable=False,
+    # ── Attach tracker after all tasks are registered ─────────────────────
+    # on_start(manifest) fires here — the manifest is now complete.
+    learner.add_tracker(
+        ClearMLTracker(
+            project_name="ROSE-Materials-UQ",
+            task_name="parallel-ensemble-gp",
+        )
     )
-    async def uq(*args, **kwargs):
-        return await check_uq(*args, **kwargs)
 
-    # Per-learner configs: each seed gets its own learner_name kwarg
-    learner_configs = {
-        name: UQLearnerConfig(
-            simulation=dict(kwargs={"--learner_name": name}),
-            training=dict(kwargs={"--learner_name": name}),
-            prediction=dict(kwargs={"--learner_name": name}),
-            active_learn=dict(kwargs={"--learner_name": name}),
-            criterion=dict(kwargs={"--learner_name": name}),
-            uncertainty=dict(kwargs={"--learner_name": name}),
+    # Per-learner configs: inject --learner_name so each task accesses its own state file
+    learner_configs = [
+        LearnerConfig(
+            simulation=TaskConfig(kwargs={"--learner_name": name}),
+            training=TaskConfig(kwargs={"--learner_name": name}),
+            active_learn=TaskConfig(kwargs={"--learner_name": name}),
+            criterion=TaskConfig(kwargs={"--learner_name": name}),
         )
         for name in LEARNER_NAMES
-    }
+    ]
 
     print("=" * 60)
-    print("ROSE + ClearMLTracker — Parallel Ensemble UQ")
+    print("ROSE + ClearMLTracker — Parallel Ensemble Active Learning")
     print("Learners:", LEARNER_NAMES)
     print("=" * 60)
 
     async for state in learner.start(
-        learner_names=LEARNER_NAMES,
-        model_names=["gp-ensemble"],
-        num_predictions=1,
+        parallel_learners=len(LEARNER_NAMES),
         max_iter=MAX_ITERATIONS,
         learner_configs=learner_configs,
     ):
+        label = (
+            LEARNER_NAMES[state.learner_id]
+            if isinstance(state.learner_id, int)
+            else state.learner_id
+        )
         print(
-            f"[{state.learner_id}  iter {state.iteration:3d}]  "
+            f"[{label:12s}  iter {state.iteration:3d}]  "
             f"MSE={state.metric_value:.5f}  "
             f"labeled={state.get('n_labeled')}  "
             f"pool={state.get('n_pool')}"

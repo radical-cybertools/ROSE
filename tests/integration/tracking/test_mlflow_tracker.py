@@ -223,6 +223,51 @@ class TestMLflowTrackerOnIteration:
         assert "mse" in logged_keys
         assert not any(k.startswith("/") for k in logged_keys)
 
+    def test_logs_config_kwargs_as_metrics(self, tracker, mock_mlflow):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=10,
+            metric_value=0.01,
+            metric_name="mse",
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"length_scale": 0.2, "noise_level": 0.01})
+            ),
+        )
+        tracker.on_iteration(state)
+        mock_mlflow.log_metric.assert_any_call("config/training/length_scale", 0.2, step=10)
+        mock_mlflow.log_metric.assert_any_call("config/training/noise_level", 0.01, step=10)
+
+    def test_skips_cli_style_config_kwargs(self, tracker, mock_mlflow):
+        from rose.learner import LearnerConfig, TaskConfig
+
+        state = IterationState(
+            iteration=0,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=LearnerConfig(
+                training=TaskConfig(kwargs={"--learner_name": "ensemble-A", "lr": 0.001})
+            ),
+        )
+        tracker.on_iteration(state)
+        logged_keys = [c[0][0] for c in mock_mlflow.log_metric.call_args_list]
+        assert not any("learner_name" in k for k in logged_keys)
+        assert any("lr" in k for k in logged_keys)
+
+    def test_no_config_skips_config_metrics(self, tracker, mock_mlflow):
+        state = IterationState(
+            iteration=0,
+            metric_value=None,
+            metric_name=None,
+            state={},
+            current_config=None,
+        )
+        tracker.on_iteration(state)
+        logged_keys = [c[0][0] for c in mock_mlflow.log_metric.call_args_list]
+        assert not any("config/" in k for k in logged_keys)
+
 
 # ---------------------------------------------------------------------------
 # TestMLflowTrackerOnStop
