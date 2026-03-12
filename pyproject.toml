@@ -32,6 +32,10 @@ Documentation = "https://radical-cybertools.github.io/ROSE/"
 [project.optional-dependencies]
 lint = ["ruff"]
 
+mlflow = ["mlflow>=2.0"]
+clearml = ["clearml>=1.14"]
+tracking = ["mlflow>=2.0", "clearml>=1.14"]
+
 # All test deps
 dev = [
     "pytest",

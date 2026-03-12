@@ -169,6 +169,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
+        _stop_reason = "max_iter_reached"
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Sequential RL Learner{learner_suffix}")
@@ -212,87 +213,101 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             iteration_range = range(max_iter)
 
         # Main iteration loop
-        for i in iteration_range:
-            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            if self.is_stopped:
-                print(f"{learner_prefix}Stop requested, exiting learning loop.")
-                break
-
-            # Check for pending config update
-            if self._pending_config is not None:
-                learner_config = self._pending_config
-                self._pending_config = None
-
-            # Clear transient state from previous iteration
-            self.clear_state()
-
-            # Extract state from env/update results
-            # (prepared in previous iteration or pre-loop)
-            if not skip_environment_step and env_result is not None:
-                self._extract_state_from_result(env_result)
-            if update_result is not None:
-                self._extract_state_from_result(update_result)
-
-            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            print(f"{learner_prefix}Starting Iteration-{i}")
-
-            # Check stop criterion if configured
-            metric_value: float | None = None
-            should_stop = False
-
-            if self.criterion_function:
-                criterion_config = self._get_iteration_task_config(
-                    self.criterion_function, learner_config, "criterion", i
+        try:
+            for i in iteration_range:
+                learner_prefix = (
+                    f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
                 )
-                stop_task = self._register_task(criterion_config, deps=update_task)
-                stop_result = await stop_task
-
-                # Extract state from criterion result, excluding handled keys
-                self._extract_state_from_result(
-                    stop_result, exclude_keys={"metric_value", "should_stop"}
-                )
-
-                should_stop, metric_value = self._check_stop_criterion(stop_result)
-
-            # Build iteration state
-            self._iteration_state = self.build_iteration_state(
-                iteration=i,
-                metric_value=metric_value,
-                should_stop=should_stop,
-                current_config=learner_config,
-            )
-
-            # YIELD CONTROL TO CALLER
-            yield self._iteration_state
-
-            # Check if caller broke out or criterion met
-            if should_stop:
-                break
-
-            # Prepare next iteration using potentially updated config
-            next_config = self._pending_config or learner_config
-            next_update_config = self._get_iteration_task_config(
-                self.update_function, next_config, "update", i + 1
-            )
-
-            if skip_environment_step:
-                env_task = ()
-                env_result = None
-                update_task = self._register_task(next_update_config, deps=stop_task)
-            else:
-                next_env_config = self._get_iteration_task_config(
-                    self.environment_function, next_config, "environment", i + 1
-                )
-                env_task = self._register_task(next_env_config, deps=stop_task)
-                update_task = self._register_task(next_update_config, deps=env_task)
-
-                # Await environment result (extract state in next iteration)
-                env_result = await env_task
                 if self.is_stopped:
+                    print(f"{learner_prefix}Stop requested, exiting learning loop.")
+                    _stop_reason = "stopped"
                     break
 
-            # Await update result (extract state in next iteration)
-            update_result = await update_task
+                # Check for pending config update
+                if self._pending_config is not None:
+                    learner_config = self._pending_config
+                    self._pending_config = None
+
+                # Clear transient state from previous iteration
+                self.clear_state()
+
+                # Extract state from env/update results
+                # (prepared in previous iteration or pre-loop)
+                if not skip_environment_step and env_result is not None:
+                    self._extract_state_from_result(env_result)
+                if update_result is not None:
+                    self._extract_state_from_result(update_result)
+
+                print(f"{learner_prefix}Starting Iteration-{i}")
+
+                # Check stop criterion if configured
+                metric_value: float | None = None
+                should_stop = False
+
+                if self.criterion_function:
+                    criterion_config = self._get_iteration_task_config(
+                        self.criterion_function, learner_config, "criterion", i
+                    )
+                    stop_task = self._register_task(criterion_config, deps=update_task)
+                    stop_result = await stop_task
+
+                    # Extract state from criterion result, excluding handled keys
+                    self._extract_state_from_result(
+                        stop_result, exclude_keys={"metric_value", "should_stop"}
+                    )
+
+                    should_stop, metric_value = self._check_stop_criterion(stop_result)
+
+                # Build iteration state
+                self._iteration_state = self.build_iteration_state(
+                    iteration=i,
+                    metric_value=metric_value,
+                    should_stop=should_stop,
+                    current_config=learner_config,
+                )
+
+                # Notify trackers then yield control to caller
+                self._notify_trackers_iteration(self._iteration_state)
+                yield self._iteration_state
+
+                # Check if caller broke out or criterion met
+                if should_stop:
+                    _stop_reason = "criterion_met"
+                    break
+
+                # Prepare next iteration using potentially updated config
+                next_config = self._pending_config or learner_config
+                next_update_config = self._get_iteration_task_config(
+                    self.update_function, next_config, "update", i + 1
+                )
+
+                if skip_environment_step:
+                    env_task = ()
+                    env_result = None
+                    update_task = self._register_task(next_update_config, deps=stop_task)
+                else:
+                    next_env_config = self._get_iteration_task_config(
+                        self.environment_function, next_config, "environment", i + 1
+                    )
+                    env_task = self._register_task(next_env_config, deps=stop_task)
+                    update_task = self._register_task(next_update_config, deps=env_task)
+
+                    # Await environment result (extract state in next iteration)
+                    env_result = await env_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+
+                # Await update result (extract state in next iteration)
+                update_result = await update_task
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
+        except Exception:
+            _stop_reason = "error"
+            raise
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -922,8 +937,16 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
             return run_learner
 
-        async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
-            yield state
+        _stop_reason = "max_iter_reached"
+        try:
+            async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
+                self._notify_trackers_iteration(state)
+                yield state
+        except Exception:
+            _stop_reason = "error"
+            raise
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def learn(
         self,

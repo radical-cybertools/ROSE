@@ -11,6 +11,7 @@ from radical.asyncflow import (
 )
 
 from .metrics import LearningMetrics as Metrics
+from .tracking import CriterionManifest, PipelineManifest, TaskManifest, TrackerBase
 
 
 @dataclass
@@ -302,6 +303,9 @@ class Learner:
 
         self._stop_event = asyncio.Event()
 
+        self._trackers: list[TrackerBase] = []
+        self._iteration_state: IterationState | None = None
+
     @property
     def is_stopped(self) -> bool:
         """Check if the learner has been requested to stop."""
@@ -409,6 +413,9 @@ class Learner:
             def decorator(func: Callable) -> Callable:
                 # Capture immutable values at decoration time
                 decoration_as_executable = decor_kwargs.pop("as_executable", True)
+                # log_params is the explicit tracking contract — separate from
+                # backend resource kwargs (num_gpus, ranks, etc.)
+                decoration_log_params: dict[str, Any] = decor_kwargs.pop("log_params", {})
                 decoration_decor_kwargs = decor_kwargs.copy()
 
                 # Store initial placeholder (so validation passes)
@@ -417,6 +424,7 @@ class Learner:
                     "args": (),
                     "kwargs": {},
                     "decor_kwargs": decoration_decor_kwargs,
+                    "log_params": decoration_log_params,
                     "as_executable": decoration_as_executable,
                 }
                 setattr(self, f"{task_attr_name}_function", base_task_obj)
@@ -429,6 +437,7 @@ class Learner:
                         "args": args,
                         "kwargs": kwargs,
                         "decor_kwargs": decoration_decor_kwargs.copy(),
+                        "log_params": decoration_log_params,
                         "as_executable": decoration_as_executable,
                     }
 
@@ -854,6 +863,113 @@ class Learner:
             current_config=current_config,
             state=state,
         )
+
+    # ------------------------------------------------------------------
+    # Tracker API
+    # ------------------------------------------------------------------
+
+    def add_tracker(self, tracker: TrackerBase) -> None:
+        """Register a tracker and immediately emit the pipeline manifest.
+
+        The manifest is built from the task function dicts already populated
+        by decorators, so ``add_tracker`` must be called **after** all task
+        decorators have been applied and **before** ``start()`` is called.
+
+        Args:
+            tracker: Any object implementing the ``TrackerBase`` protocol.
+        """
+        manifest = self._build_pipeline_manifest()
+        tracker.on_start(manifest)
+        self._trackers.append(tracker)
+
+    def _build_pipeline_manifest(self) -> PipelineManifest:
+        """Build a ``PipelineManifest`` from the currently registered task dicts.
+
+        Reads ``simulation_function``, ``training_function``,
+        ``active_learn_function``, ``prediction_function``,
+        ``environment_function`` (RL), and ``criterion_function`` if present.
+
+        Returns:
+            Populated ``PipelineManifest`` ready to pass to ``tracker.on_start``.
+        """
+        task_attr_names = (
+            "simulation_function",
+            "training_function",
+            "active_learn_function",
+            "prediction_function",
+            "environment_function",
+            "update_function",
+        )
+
+        tasks: dict[str, TaskManifest] = {}
+        for attr in task_attr_names:
+            task_dict = getattr(self, attr, None)
+            if not task_dict or not isinstance(task_dict, dict):
+                continue
+            func = task_dict.get("func")
+            if func is None:
+                continue
+            task_key = attr.replace("_function", "")
+            tasks[task_key] = TaskManifest(
+                func_name=getattr(func, "__name__", str(func)),
+                func_module=getattr(func, "__module__", ""),
+                as_executable=task_dict.get("as_executable", True),
+                decor_kwargs=task_dict.get("decor_kwargs", {}).copy(),
+                log_params=task_dict.get("log_params", {}).copy(),
+            )
+
+        criterion: CriterionManifest | None = None
+        crit = self.criterion_function
+        if crit and isinstance(crit, dict) and crit.get("func") is not None:
+            func = crit["func"]
+            criterion = CriterionManifest(
+                func_name=getattr(func, "__name__", str(func)),
+                func_module=getattr(func, "__module__", ""),
+                as_executable=crit.get("as_executable", True),
+                decor_kwargs=crit.get("decor_kwargs", {}).copy(),
+                metric_name=crit.get("metric_name", ""),
+                threshold=crit.get("threshold", 0.0),
+                operator=crit.get("operator", ""),
+            )
+
+        return PipelineManifest(
+            learner_type=type(self).__name__,
+            tasks=tasks,
+            criterion=criterion,
+            parallel_count=None,  # overridden by parallel learners
+        )
+
+    def _notify_trackers_iteration(self, state: IterationState) -> None:
+        """Notify all registered trackers of a completed iteration.
+
+        Called just before each ``yield state`` inside ``start()`` so that
+        trackers observe the state at the same time as the user's loop body.
+
+        Args:
+            state: The ``IterationState`` about to be yielded.
+        """
+        for tracker in self._trackers:
+            try:
+                tracker.on_iteration(state)
+            except Exception:
+                pass
+
+    def _notify_trackers_stop(self, final_state: IterationState | None, reason: str) -> None:
+        """Notify all registered trackers that the learning loop has exited.
+
+        Called from the ``finally`` block of every ``start()`` implementation.
+
+        Args:
+            final_state: Last yielded ``IterationState``, or ``None`` if no
+                iterations ran.
+            reason: Exit reason — ``"criterion_met"``, ``"max_iter_reached"``,
+                ``"stopped"``, or ``"error"``.
+        """
+        for tracker in self._trackers:
+            try:
+                tracker.on_stop(final_state, reason)
+            except Exception:
+                pass
 
     async def shutdown(self, *args, **kwargs) -> Any:
         """Shutdown the asyncflow workflow engine.
