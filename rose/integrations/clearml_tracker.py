@@ -152,4 +152,6 @@ class ClearMLTracker:
         self._task.add_tags([f"stop:{reason}"])
         if final_state is not None:
             self._task.add_tags([f"final_iter:{final_state.iteration}"])
+        if reason == "error":
+            self._task.mark_failed(status_reason="error during run")
         self._task.close()

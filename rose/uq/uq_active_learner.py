@@ -335,6 +335,9 @@ class SeqUQLearner(UQLearner):
                     break
 
                 print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
+        except Exception:
+            _stop_reason = "error"
+            raise
         finally:
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
@@ -575,6 +578,9 @@ class ParallelUQLearner(SeqUQLearner):
             async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
                 self._notify_trackers_iteration(state)
                 yield state
+        except Exception:
+            _stop_reason = "error"
+            raise
         finally:
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 

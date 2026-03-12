@@ -315,9 +315,13 @@ class TestMLflowTrackerOnStop:
         tracker.on_stop(IterationState(iteration=5), "criterion_met")
         mock_mlflow.set_tag.assert_any_call("final_iteration", "5")
 
-    def test_ends_run(self, tracker, mock_mlflow):
+    def test_ends_run_with_finished_status_on_normal_stop(self, tracker, mock_mlflow):
         tracker.on_stop(IterationState(iteration=1), "max_iter_reached")
-        mock_mlflow.end_run.assert_called_once()
+        mock_mlflow.end_run.assert_called_once_with(status="FINISHED")
+
+    def test_ends_run_with_failed_status_on_error(self, tracker, mock_mlflow):
+        tracker.on_stop(None, "error")
+        mock_mlflow.end_run.assert_called_once_with(status="FAILED")
 
     def test_no_final_state_skips_iteration_tag(self, tracker, mock_mlflow):
         tracker.on_stop(None, "stopped")

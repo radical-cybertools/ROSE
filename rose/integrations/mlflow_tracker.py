@@ -112,4 +112,4 @@ class MLflowTracker:
         mlflow.set_tag("stop_reason", reason)
         if final_state is not None:
             mlflow.set_tag("final_iteration", str(final_state.iteration))
-        mlflow.end_run()
+        mlflow.end_run(status="FAILED" if reason == "error" else "FINISHED")

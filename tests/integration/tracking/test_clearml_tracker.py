@@ -381,6 +381,15 @@ class TestClearMLTrackerOnStop:
         tracker.on_stop(IterationState(iteration=1), "max_iter_reached")
         mock_clearml["task"].close.assert_called_once()
 
+    def test_marks_failed_on_error(self, tracker, mock_clearml):
+        tracker.on_stop(None, "error")
+        mock_clearml["task"].mark_failed.assert_called_once_with(status_reason="error during run")
+        mock_clearml["task"].close.assert_called_once()
+
+    def test_does_not_mark_failed_on_normal_stop(self, tracker, mock_clearml):
+        tracker.on_stop(IterationState(iteration=3), "criterion_met")
+        mock_clearml["task"].mark_failed.assert_not_called()
+
     def test_no_final_state_skips_iter_tag(self, tracker, mock_clearml):
         tracker.on_stop(None, "stopped")
         all_tag_calls = mock_clearml["task"].add_tags.call_args_list

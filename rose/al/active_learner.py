@@ -264,6 +264,9 @@ class SequentialActiveLearner(Learner):
                 if self.is_stopped:
                     _stop_reason = "stopped"
                     break
+        except Exception:
+            _stop_reason = "error"
+            raise
         finally:
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
@@ -515,6 +518,9 @@ class ParallelActiveLearner(Learner):
             async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
                 self._notify_trackers_iteration(state)
                 yield state
+        except Exception:
+            _stop_reason = "error"
+            raise
         finally:
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
