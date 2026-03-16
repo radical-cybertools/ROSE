@@ -38,7 +38,7 @@ table#config td.type {
   font-size: 0.8em;
 }
 table#config tr:hover code {
-  background-color: hsla(0, 0%, 100%, 1); 
+  background-color: hsla(0, 0%, 100%, 1);
 }
 table#config td:first-child {
   white-space: nowrap;

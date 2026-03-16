@@ -1,11 +1,11 @@
 # Learners with Parameterization Tutorial
 
-This tutorial demonstrates how to configure and run multiple learning pipelines concurrently using `ParallelActiveLearner`. You’ll learn how to:
+This tutorial demonstrates how to configure and run multiple learning pipelines concurrently using `ParallelActiveLearner`. You'll learn how to:
 
 - Set up parallel workflows
 - Configure each learner independently
 - Use per-iteration and adaptive configurations
-- Run learners concurrently with individual stop criteria
+- Stream per-learner states in real time as each iteration completes
 
 ---
 
@@ -21,12 +21,31 @@ This approach can be applied for both Active and Reinforcement learners (Sequent
 - **Learner 1**: Per-iteration config — specific checkpoints for tuning
 - **Learner 2**: Static config — constant settings throughout
 - All learners run **concurrently and independently**
+- States from all learners are **streamed in real time** via `async for`
+
+---
+
+## How the API Works
+
+`ParallelActiveLearner.start()` returns an **async iterator** that yields an `IterationState`
+each time any parallel learner completes an iteration. States arrive in completion order — not
+grouped by learner — so you react to results as they happen.
+
+Each `IterationState` carries a `learner_id` (integer index) identifying which learner produced it:
+
+```python
+async for state in acl.start(parallel_learners=3, max_iter=10):
+    print(f"Learner {state.learner_id} | iter {state.iteration} | MSE {state.metric_value:.4f}")
+```
+
+This is the same interface used by `SequentialActiveLearner`, so code that consumes
+`IterationState` works identically for both sequential and parallel learners.
 
 ---
 
 ## Configuration Modes
 
-### 🧠 Adaptive Configuration
+### Adaptive Configuration
 
 - Receives iteration number `i`
 - Labeled data: `100 + i*50`
@@ -34,7 +53,7 @@ This approach can be applied for both Active and Reinforcement learners (Sequent
 - Learning rate: `0.01 * (0.9^i)`
 - Batch size increases gradually, capped at 64
 
-### 🔁 Per-Iteration Configuration
+### Per-Iteration Configuration
 
 - Iteration keys (e.g., `0`, `5`, `10`) set exact checkpoints
 - `-1` is the fallback/default config
@@ -61,7 +80,7 @@ from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 
 engine = await RadicalExecutionBackend(
     {'runtime': 30,
@@ -73,7 +92,7 @@ acl = ParallelActiveLearner(asyncflow)
 code_path = f'{sys.executable} {os.getcwd()}'
 ```
 
-### 1. Define Workflow Tasks
+### 2. Define Workflow Tasks
 ```python
 @acl.simulation_task
 async def simulation(*args, **kwargs):
@@ -100,7 +119,7 @@ async def check_mse(*args, **kwargs):
 
 ### Approach 1: Static Configuration
 ```python
-results = await acl.start(
+async for state in acl.start(
     parallel_learners=2,
     max_iter=10,
     learner_configs=[
@@ -113,12 +132,13 @@ results = await acl.start(
             training=TaskConfig(kwargs={"--learning_rate": "0.005"})
         )
     ]
-)
+):
+    print(f"[Learner {state.learner_id}] iter={state.iteration} | MSE={state.metric_value}")
 ```
 
 ### Approach 2: Per-Iteration Configuration
 ```python
-results = await acl.start(
+async for state in acl.start(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
@@ -140,7 +160,8 @@ results = await acl.start(
         ),
         None  # Default to base task behavior
     ]
-)
+):
+    print(f"[Learner {state.learner_id}] iter={state.iteration} | MSE={state.metric_value}")
 ```
 
 !!! tip "Per-Iteration Config Keys"
@@ -149,7 +170,7 @@ Use numeric keys for specific iterations and -1 as a fallback.
 
 ### Approach 3: Adaptive Configuration
 ```python
-adaptive_sim = acl.create_adaptive_schedule('simulation', 
+adaptive_sim = acl.create_adaptive_schedule('simulation',
     lambda i: {
         'kwargs': {
             '--n_labeled': str(100 + i * 50),
@@ -166,7 +187,7 @@ adaptive_train = acl.create_adaptive_schedule('training',
         }
     })
 
-results = await acl.start(
+async for state in acl.start(
     parallel_learners=2,
     max_iter=20,
     learner_configs=[
@@ -176,13 +197,14 @@ results = await acl.start(
             training=TaskConfig(kwargs={"--learning_rate": "0.005"})
         )
     ]
-)
+):
+    print(f"[Learner {state.learner_id}] iter={state.iteration} | MSE={state.metric_value}")
 ```
 
 ### Full Example: All Approaches Combined
 
 ```python
-adaptive_sim = acl.create_adaptive_schedule('simulation', 
+adaptive_sim = acl.create_adaptive_schedule('simulation',
     lambda i: {
         'kwargs': {
             '--n_labeled': str(100 + i * 50),
@@ -190,7 +212,10 @@ adaptive_sim = acl.create_adaptive_schedule('simulation',
         }
     })
 
-results = await acl.start(
+# Collect the final state per learner if needed
+final_states = {}
+
+async for state in acl.start(
     parallel_learners=3,
     max_iter=15,
     learner_configs=[
@@ -206,7 +231,9 @@ results = await acl.start(
             simulation=TaskConfig(kwargs={"--n_labeled": "300", "--n_features": 4})
         )
     ]
-)
+):
+    print(f"[Learner {state.learner_id}] iter={state.iteration} | MSE={state.metric_value}")
+    final_states[state.learner_id] = state  # keep last state per learner
 
 await acl.shutdown()
 ```
@@ -214,7 +241,11 @@ await acl.shutdown()
 ### Execution Details
 
 !!! note "Concurrent Execution"
-All learners run in parallel and independently. The workflow completes when all learners either reach max_iter or meet their stop criterion.
+All learners run in parallel and independently. States are yielded in arrival order — whichever learner finishes an iteration first yields next. The loop completes when all learners either reach `max_iter` or meet their stop criterion.
+
+!!! note "Identifying the Source Learner"
+Each `IterationState` has a `learner_id` field (integer index, 0-based) so you can distinguish
+which learner produced each state inside the loop.
 
 !!! warning "Stop Criteria"
 Each learner evaluates its own stop condition. One learner stopping does not affect others.
@@ -248,10 +279,10 @@ adaptive_config = acl.create_adaptive_schedule('training', lr_decay)
 
 ## Next Steps
 
-- 🧪 Try different active learning algorithms per learner
+- Try different active learning algorithms per learner
 
-- 🎯 Use per-iteration configs to design curriculum learning
+- Use per-iteration configs to design curriculum learning
 
-- 📊 Run parameter sweeps
+- Run parameter sweeps across acquisition functions or model architectures
 
-- 🚀 Scale learners to match compute resources
+- Scale learners to match compute resources

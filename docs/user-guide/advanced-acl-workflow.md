@@ -4,10 +4,10 @@ In this example, we demonstrate how to express an AL workflow with different lev
 
 In some cases, AL workflows may require the execution of N simulation or training tasks **concurrently**. But not only that—additionally, they may also require the submission of M AL workflows concurrently. This introduces two levels of parallelism: one at the task level and another at the AL workflow level. Such an approach is possible and can be easily expressed and executed using ROSE's **custom AL policy**.
 
-```sh            
+```sh
                              (N AL WFs in Parallel)
           +-------------------+               +-------------------+
-          |      AL WF 1      |               |      AL WF 2      |   
+          |      AL WF 1      |               |      AL WF 2      |
           +-------------------+               +-------------------+
                    │                                    │
   +----------------+-----------------+  +----------------+-----------------+
@@ -20,7 +20,7 @@ In some cases, AL workflows may require the execution of N simulation or trainin
   |  Training 1   |  |  Training 2   |  |  Training 1   |  |  Training 2   |
   +---------------+  +---------------+  +---------------+  +---------------+
           |                |                    |                 |
-        (...)            (...)                (...)             (...)    
+        (...)            (...)                (...)             (...)
 ```
 
 Since we have already learned how to deploy and load ROSE, and how to instruct it to use different resources, we will skip this part and focus only on expressing the AL workflow.
@@ -59,7 +59,7 @@ async def post_process_simulation(*args):
 Now, lets express the core custom AL policy logic. The example below will:
 
 * Submits 5 AL workflows in parallel (Workflow parallelism).
-* Each workflow will run for 10 iterations sequentially. 
+* Each workflow will run for 10 iterations sequentially.
 * Each iteration will submit 3 simulation tasks in parallel (task parallelism).
 
 

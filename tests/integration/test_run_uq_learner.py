@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQ_REGISTRY, register_uq
@@ -50,16 +51,19 @@ async def test_active_learning_pipeline_functions():
         # Calculate mean or just return a simple value for testing
         return 0.5
 
-    results = await learner.start(
+    states = []
+    async for state in learner.start(
         learner_names=["l1", "l2"],
         learner_configs={"l1": None, "l2": None},
         model_names=["m1"],
         max_iter=2,
-    )
+    ):
+        states.append(state)
 
-    # Verify we got results from both learners
-    assert len(results) == 2
-    assert all(state is not None for state in results)
+    # criterion returns 0.05 < threshold 0.1, so each learner stops after 1 iteration → 2 states
+    assert len(states) == 2
+    assert all(state is not None for state in states)
+    assert {state.learner_id for state in states} == {"l1", "l2"}
 
     scores = learner.get_metric_results()
     uq_scores = learner.get_uncertainty_results()
@@ -111,18 +115,14 @@ async def test_uqlearner_runs_with_mock_functions():
 
     # Patch internal helpers
     learner._get_iteration_task_config = MagicMock(return_value={"kwargs": {}})
-    learner._register_task = AsyncMock(
-        side_effect=lambda config, deps=None: {"result": 42}
-    )
+    learner._register_task = AsyncMock(side_effect=lambda config, deps=None: {"result": 42})
     learner._check_stop_criterion = MagicMock(return_value=(True, 0.1))
     learner._check_uncertainty = MagicMock(return_value=(False, 0.5))
     learner.build_iteration_state = MagicMock()
 
     # Use the new start() method
     iteration_count = 0
-    async for state in learner.start(
-        model_names=["modelA"], max_iter=1, num_predictions=1
-    ):
+    async for state in learner.start(model_names=["modelA"], max_iter=1, num_predictions=1):
         iteration_count += 1
         # Verify the iteration ran
         assert state is not None
