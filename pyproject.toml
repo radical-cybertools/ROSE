@@ -43,12 +43,15 @@ mlflow = ["mlflow>=2.0"]
 clearml = ["clearml>=1.14"]
 tracking = ["mlflow>=2.0", "clearml>=1.14"]
 
+service = ["fastapi>=0.100"]
+
 # All test deps
 dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
     "pre-commit",
+    "fastapi>=0.100",
 ]
 
 doc = [

@@ -4,7 +4,7 @@ Tests the RoseSession, RoseClient, and WorkflowLoader classes.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -208,7 +208,7 @@ class TestRoseSession:
         """Test canceling a running workflow."""
         # Add a running workflow with mock learner
         mock_learner = Mock()
-        mock_task = AsyncMock()
+        mock_task = MagicMock(spec=asyncio.Task)
         mock_task.done.return_value = False
 
         wf = Workflow(wf_id="wf.cancel", state=WorkflowState.RUNNING)
@@ -238,25 +238,30 @@ class TestRoseSession:
     @pytest.mark.asyncio
     async def test_close_session(self, rose_session):
         """Test closing session stops all workflows."""
-        # Add a running workflow
+        # Add a running workflow with a real (cancelled) asyncio.Task
         mock_learner = Mock()
-        mock_task = AsyncMock()
-        mock_task.done.return_value = False
+
+        async def _noop():
+            await asyncio.sleep(10)
+
+        real_task = asyncio.create_task(_noop())
 
         wf = Workflow(wf_id="wf.close", state=WorkflowState.RUNNING)
         wf.learner_instance = mock_learner
         rose_session._workflows["wf.close"] = wf
-        rose_session._learner_tasks["wf.close"] = mock_task
+        rose_session._learner_tasks["wf.close"] = real_task
 
-        rose_session._engine = AsyncMock()
-        rose_session._engine.shutdown = AsyncMock()
+        mock_engine = AsyncMock()
+        mock_engine.shutdown = AsyncMock()
+        rose_session._engine = mock_engine
 
         result = await rose_session.close()
 
         assert result == {}
         assert not rose_session.is_active
+        assert real_task.cancelled()
         mock_learner.stop.assert_called_once()
-        rose_session._engine.shutdown.assert_called_once()
+        mock_engine.shutdown.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_session_closed_check(self, rose_session):
