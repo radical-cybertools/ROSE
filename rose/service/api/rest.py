@@ -196,10 +196,20 @@ class RoseSession(PluginSession):
                 parallel = config.get("parallel_learners", learner_cfg.get("parallel_learners", 2))
                 configs = [initial_config] * parallel if initial_config else None
 
-                results = await learner.start(
+                async for state in learner.start(
                     parallel_learners=parallel, max_iter=max_iter, learner_configs=configs
-                )
-                wf.stats = {"parallel_results": [str(r) for r in results]}
+                ):
+                    wf.stats = (
+                        state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
+                    )
+                    learner_id = getattr(state, "learner_id", "?")
+                    iteration = getattr(state, "iteration", "?")
+                    metric = getattr(state, "metric_value", "?")
+                    log.info(
+                        f"[{self.sid}] {wf_id} learner {learner_id},"
+                        f" iteration {iteration} (metric={metric})"
+                    )
+                    self._notify_state(wf)
 
             else:
                 # Sequential learner - async iterator
