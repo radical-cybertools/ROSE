@@ -43,7 +43,10 @@ mlflow = ["mlflow>=2.0"]
 clearml = ["clearml>=1.14"]
 tracking = ["mlflow>=2.0", "clearml>=1.14"]
 
-service = ["fastapi>=0.100"]
+service = [
+    "fastapi>=0.100",
+    "radical.edge @ git+https://github.com/radical-cybertools/radical.edge",
+]
 
 # All test deps
 dev = [
@@ -52,6 +55,7 @@ dev = [
     "pytest-cov",
     "pre-commit",
     "fastapi>=0.100",
+    "radical.edge @ git+https://github.com/radical-cybertools/radical.edge",
 ]
 
 doc = [
