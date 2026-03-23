@@ -1,27 +1,23 @@
 import asyncio
 import copy
+import dataclasses
 import itertools
-import logging
 import warnings
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
 from rose.uq.uq_learner import UQLearner, UQLearnerConfig
 
-from ..learner import IterationState, TaskConfig
-
-logger = logging.getLogger(__name__)
+from ..learner import IterationState, TaskConfig, _stream_parallel
 
 
 class SeqUQLearner(UQLearner):
-    """UQ active learner that runs iterations one after another.
-    This class implements a sequential active learning approach based
-    on Uncertainty Quantification.
-    Each iteration consists of simulation, a set of training and prediction steps,
-    and active learning phases executed in sequence.
-    The learner can be configured with per-iteration parameters using UQLearnerConfig.
+    """UQ active learner that runs iterations one after another. This class implements a sequential
+    active learning approach based on Uncertainty Quantification. Each iteration consists of
+    simulation, a set of training and prediction steps, and active learning phases executed in
+    sequence. The learner can be configured with per-iteration parameters using UQLearnerConfig.
 
     Attributes:
         learner_name (Optional[str])    :   Identifier for the learner.
@@ -36,7 +32,6 @@ class SeqUQLearner(UQLearner):
 
         Args:
             asyncflow: The workflow engine instance for managing async tasks.
-
         """
         super().__init__(asyncflow)
 
@@ -46,7 +41,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the UQ learner and yield state at each iteration.
 
@@ -92,35 +87,28 @@ class SeqUQLearner(UQLearner):
             or not self.active_learn_function
         ):
             raise ValueError(
-                "Simulation, Training, prediction, and at least"
-                " one AL function must be set!"
+                "Simulation, Training, prediction, and at least one AL function must be set!"
             )
         # Validate exit criteria
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
 
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
 
-        logger.info(f"[Learner {self.learner_name}] Starting execution...")
+        print(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
-            prefix = (
-                f"[Learner {self.learner_name}] starting training for "
-                "Ensemble of Models: "
-            )
+            prefix = f"[Learner {self.learner_name}] starting training for Ensemble of Models: "
         else:
-            prefix = (
-                f"[Learner {self.learner_name}] starting training for Single Model: "
-            )
-        logger.info(f"{prefix} {model_names}")
+            prefix = f"[Learner {self.learner_name}] starting training for Single Model: "
+        print(f"{prefix} {model_names}")
 
         async def _training_stage(
             learning_config: TaskConfig, model_name: str, iteration_count: int
         ) -> dict[str, Any]:
-            """Run a simulation, train of a single model, and generate a set of
-                predictions for that model.
+            """Run a simulation, train of a single model, and generate a set of predictions for that
+            model.
+
             Args:
                 learning_config:
                     Configuration object for retrieving task configurations.
@@ -152,9 +140,7 @@ class SeqUQLearner(UQLearner):
                 training_config["kwargs"]["--model_name"] = model_name
 
                 sim_task = self._register_task(sim_config)
-                training_task = await self._register_task(
-                    training_config, deps=sim_task
-                )
+                training_task = await self._register_task(training_config, deps=sim_task)
 
                 prediction_tasks = []
                 for i in range(num_predictions):
@@ -166,190 +152,194 @@ class SeqUQLearner(UQLearner):
                     )
                     prediction_config["kwargs"]["--model_name"] = model_name
                     prediction_config["kwargs"]["--iteration"] = i
-                    prediction_task = self._register_task(
-                        prediction_config, deps=training_task
-                    )
+                    prediction_task = self._register_task(prediction_config, deps=training_task)
                     prediction_tasks.append(prediction_task)
 
-                logger.info(
+                print(
                     f"[{self.learner_name}-{model_name}] Completed training "
                     f"for {iteration_count + 1} iteration(s) "
                 )
                 return await asyncio.gather(*prediction_tasks)
 
             except Exception as e:
-                logger.error(
-                    f"[{self.learner_name}-{model_name}] "
-                    f"Failed train/prediction with error: {e}"
-                )
+                print(f"[{self.learner_name}-{model_name}] Failed train/prediction with error: {e}")
                 raise
 
         # Track iterations and results for this pipeline
         iteration_count: int = 0
         stop_training = {name: False for name in model_names}
+        _stop_reason = "max_iter_reached"
 
         # Initialize tasks for pre-loop
         training_tasks: tuple = ()
 
         if not skip_pre_loop:
             futures: list[Any] = [
-                _training_stage(learning_config, model_name, 0)
-                for model_name in model_names
+                _training_stage(learning_config, model_name, 0) for model_name in model_names
             ]
 
             training_tasks = await asyncio.gather(*futures)
 
         # Determine iteration range
-        iteration_range: Union[Iterator[int], range]
+        iteration_range: Iterator[int] | range
         if not max_iter:
             iteration_range = itertools.count()
         else:
             iteration_range = range(max_iter)
 
         # Main learning loop
-        for i in iteration_range:
-            if self.is_stopped:
-                logger.info(
-                    f"[Learner {self.learner_name}] Stop requested, "
-                    "exiting learning loop."
-                )
-                break
+        try:
+            for i in iteration_range:
+                if self.is_stopped:
+                    print(f"[Learner {self.learner_name}] Stop requested, exiting learning loop.")
+                    _stop_reason = "stopped"
+                    break
 
-            # Clear transient state from previous iteration
-            self.clear_state()
+                # Clear transient state from previous iteration
+                self.clear_state()
 
-            logger.info(f"[Learner {self.learner_name}] Starting Iteration-{i}")
+                print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
 
-            # Check uncertainty if configured
-            uq_task: tuple = ()
-            uq_stop_value: Optional[float] = None
-            if self.uncertainty_function:
+                # Check uncertainty if configured
+                uq_task: tuple = ()
+                uq_stop_value: float | None = None
+                if self.uncertainty_function:
+                    # Get iteration-specific configurations
+                    uq_config: TaskConfig = self._get_iteration_task_config(
+                        self.uncertainty_function, learning_config, "uncertainty", i
+                    )
+                    uq_task = self._register_task(uq_config, deps=training_tasks)
+                    uq_value = await uq_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+                    print(f"[Learner {self.learner_name}] {uq_value}")
+
+                    uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
+                    self.register_state("uq_value", uq_stop_value)
+
+                    if uq_model_stop:
+                        print(
+                            f"[Learner {self.learner_name}] UQ value reached "
+                            f"its threshold - Stopping training for all models"
+                            f" at iteration {i} with value: "
+                            f"{uq_stop_value}"
+                        )
+                        # Build final iteration state before breaking
+                        self._iteration_state = self.build_iteration_state(
+                            iteration=i,
+                            metric_value=None,
+                            should_stop=True,
+                            current_config=learning_config,
+                        )
+                        _stop_reason = "criterion_met"
+                        self._notify_trackers_iteration(self._iteration_state)
+                        yield self._iteration_state
+                        break
+
                 # Get iteration-specific configurations
-                uq_config: TaskConfig = self._get_iteration_task_config(
-                    self.uncertainty_function, learning_config, "uncertainty", i
+                acl_config: TaskConfig = self._get_iteration_task_config(
+                    self.active_learn_function, learning_config, "active_learn", i
                 )
-                uq_task = self._register_task(uq_config, deps=training_tasks)
-                uq_value = await uq_task
+                acl_task = self._register_task(
+                    acl_config,
+                    deps=(uq_task if uq_task else training_tasks),
+                )
+                al_results = await acl_task
                 if self.is_stopped:
+                    _stop_reason = "stopped"
                     break
-                logger.info(f"[Learner {self.learner_name}] {uq_value}")
+                self._extract_state_from_result(al_results)
 
-                uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
-                self.register_state("uq_value", uq_stop_value)
+                print(f"[Learner {self.learner_name}] {al_results}")
 
-                if uq_model_stop:
-                    logger.info(
-                        f"[Learner {self.learner_name}] UQ value reached "
-                        f"its threshold - Stopping training for all models"
-                        f" at iteration {i} with value: "
-                        f"{uq_stop_value}"
-                    )
-                    # Build final iteration state before breaking
-                    iteration_state = self.build_iteration_state(
-                        iteration=i,
-                        metric_value=None,
-                        should_stop=True,
-                        current_config=learning_config,
-                    )
-                    yield iteration_state
-                    break
+                # Check stop criterion if configured
+                metric_value: float | None = None
+                should_stop = False
 
-            # Get iteration-specific configurations
-            acl_config: TaskConfig = self._get_iteration_task_config(
-                self.active_learn_function, learning_config, "active_learn", i
-            )
-            acl_task = self._register_task(
-                acl_config,
-                deps=(uq_task if uq_task else training_tasks),
-            )
-            al_results = await acl_task
-            if self.is_stopped:
-                break
-            self._extract_state_from_result(al_results)
+                if self.criterion_function:
+                    stop_tasks = {}
+                    # Run validation for each model in learner
+                    for model_name in model_names:
+                        if stop_training[model_name]:
+                            continue
+                        criterion_function = copy.deepcopy(self.criterion_function)
+                        criterion_function["kwargs"]["--model_name"] = model_name
+                        stop_task = self._register_task(criterion_function, deps=acl_task)
+                        stop_tasks[model_name] = stop_task
 
-            logger.info(f"[Learner {self.learner_name}] {al_results}")
+                    results = await asyncio.gather(*stop_tasks.values())
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+                    stops = dict(zip(stop_tasks.keys(), results, strict=False))
 
-            # Check stop criterion if configured
-            metric_value: Optional[float] = None
-            should_stop = False
+                    model_stop: bool
+                    stop_value: float
+                    # The pipeline will stop once all models meet the exit criteria.
+                    should_stop_count: int = 0
+                    final_results = []
+                    for model_name, stop in stops.items():
+                        model_stop, stop_value = self._check_stop_criterion(stop)
+                        final_results.append(stop_value)
+                        if model_stop:
+                            stop_training[model_name] = True
+                            should_stop_count += 1
+                            print(
+                                f"[Learner {self.learner_name}] Model "
+                                f"{model_name} will stop training"
+                                f" as stop criterion is met at iteration {i}"
+                            )
 
-            if self.criterion_function:
-                stop_tasks = {}
-                # Run validation for each model in learner
-                for model_name in model_names:
-                    if stop_training[model_name]:
-                        continue
-                    criterion_function = copy.deepcopy(self.criterion_function)
-                    criterion_function["kwargs"]["--model_name"] = model_name
-                    stop_task = self._register_task(criterion_function, deps=acl_task)
-                    stop_tasks[model_name] = stop_task
+                    # Store criterion results in state
+                    self.register_state("criterion_values", final_results)
 
-                results = await asyncio.gather(*stop_tasks.values())
-                if self.is_stopped:
-                    break
-                stops = dict(zip(stop_tasks.keys(), results))
+                    # Use average of criterion values as the metric value
+                    if final_results:
+                        metric_value = sum(final_results) / len(final_results)
 
-                model_stop: bool
-                stop_value: float
-                # The pipeline will stop once all models meet the exit criteria.
-                should_stop_count: int = 0
-                final_results = []
-                for model_name, stop in stops.items():
-                    model_stop, stop_value = self._check_stop_criterion(stop)
-                    final_results.append(stop_value)
-                    if model_stop:
-                        stop_training[model_name] = True
-                        should_stop_count += 1
-                        logger.info(
-                            f"[Learner {self.learner_name}] Model "
-                            f"{model_name} will stop training"
-                            f" as stop criterion is met at iteration {i}"
+                    if should_stop_count == len(stops):
+                        should_stop = True
+                        print(
+                            f"[Learner {self.learner_name}] Stopping "
+                            f"criterion met for all models at iteration {i} "
+                            f"with value: {stop_value}"
                         )
 
-                # Store criterion results in state
-                self.register_state("criterion_values", final_results)
+                # Build iteration state
+                self._iteration_state = self.build_iteration_state(
+                    iteration=i,
+                    metric_value=metric_value,
+                    should_stop=should_stop,
+                    current_config=learning_config,
+                )
 
-                # Use average of criterion values as the metric value
-                if final_results:
-                    metric_value = sum(final_results) / len(final_results)
+                # Notify trackers then yield control to caller
+                self._notify_trackers_iteration(self._iteration_state)
+                yield self._iteration_state
 
-                if should_stop_count == len(stops):
-                    should_stop = True
-                    logger.info(
-                        f"[Learner {self.learner_name}] Stopping "
-                        f"criterion met for all models at iteration {i} "
-                        f"with value: {stop_value}"
-                    )
+                # Check if stopping criterion met
+                if should_stop:
+                    _stop_reason = "criterion_met"
+                    break
 
-            # Build iteration state
-            iteration_state = self.build_iteration_state(
-                iteration=i,
-                metric_value=metric_value,
-                should_stop=should_stop,
-                current_config=learning_config,
-            )
+                iteration_count = i + 1
+                futures: list[Any] = [
+                    _training_stage(learning_config, model_name, iteration_count)
+                    for model_name in model_names
+                    if not stop_training[model_name]
+                ]
+                training_tasks = await asyncio.gather(*futures)
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
 
-            # YIELD CONTROL TO CALLER
-            yield iteration_state
-
-            # Check if stopping criterion met
-            if should_stop:
-                break
-
-            iteration_count = i + 1
-            futures: list[Any] = [
-                _training_stage(learning_config, model_name, iteration_count)
-                for model_name in model_names
-                if not stop_training[model_name]
-            ]
-            training_tasks = await asyncio.gather(*futures)
-            if self.is_stopped:
-                break
-
-            logger.info(
-                f"[Learner {self.learner_name}] Completed "
-                f"{iteration_count + 1} iteration(s)"
-            )
+                print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
+        except Exception:
+            _stop_reason = "error"
+            raise
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
         self,
@@ -357,7 +347,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: Optional[dict[str, UQLearnerConfig]] = None,
+        learning_config: dict[str, UQLearnerConfig] | None = None,
     ) -> list[dict[str, Any]]:
         """Run sequential UQ active learning loop to completion.
 
@@ -412,17 +402,17 @@ class SeqUQLearner(UQLearner):
 
 
 class ParallelUQLearner(SeqUQLearner):
-    """
-    Parallel active learner that runs multiple SeqUQLearners concurrently.
-    This class orchestrates multiple SeqUQLearner instances to run in parallel,
-    allowing for concurrent exploration of the learning space. Each learner can be
-    configured independently through per-learner UQLearnerConfig objects.
-    The parallel learner manages the lifecycle of all sequential learners and collects
-    their results when all have completed their learning processes.
+    """Parallel active learner that runs multiple SeqUQLearners concurrently.
+
+    This class orchestrates multiple SeqUQLearner instances to run in parallel, allowing for
+    concurrent exploration of the learning space. Each learner can be configured independently
+    through per-learner UQLearnerConfig objects. The parallel learner manages the lifecycle of all
+    sequential learners and collects their results when all have completed their learning processes.
     """
 
     def __init__(self, asyncflow: WorkflowEngine) -> None:
         """Initialize the Parallel Active Learner.
+
         Args:
             asyncflow:      The workflow engine instance used to manage async tasks
                             across all parallel learners.
@@ -430,10 +420,9 @@ class ParallelUQLearner(SeqUQLearner):
         super().__init__(asyncflow)
 
     def _create_sequential_learner(self, learner_name: str) -> SeqUQLearner:
-        """Create a SeqUQLearner instance for a parallel learner.
-        Creates and configures a new SeqUQLearner with the same base
-        functions as the parent parallel learner, but with a unique identifier
-        for logging and debugging purposes.
+        """Create a SeqUQLearner instance for a parallel learner. Creates and configures a new
+        SeqUQLearner with the same base functions as the parent parallel learner, but with a unique
+        identifier for logging and debugging purposes.
 
         Args:
             learner_name: Unique identifier for the learner.
@@ -457,8 +446,8 @@ class ParallelUQLearner(SeqUQLearner):
         return sequential_learner
 
     def _convert_to_sequential_config(
-        self, parallel_config: Optional[UQLearnerConfig]
-    ) -> Optional[UQLearnerConfig]:
+        self, parallel_config: UQLearnerConfig | None
+    ) -> UQLearnerConfig | None:
         """Convert a UQLearnerConfig to a UQLearnerConfig.
         Note: This method currently performs a direct copy as both parallel and
         sequential learners use the same UQLearnerConfig type. This method exists
@@ -494,13 +483,17 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
-    ) -> list[Any]:
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
+    ) -> AsyncIterator[IterationState]:
         """Run parallel UQ active learning by launching multiple SeqUQLearners.
 
         Orchestrates multiple SeqUQLearner instances to run concurrently,
-        each with potentially different configurations. All learners run
-        independently and their results are collected when all have completed.
+        each with potentially different configurations. States are streamed in
+        real time as each learner completes an iteration — use ``async for`` to
+        consume them.
+
+        Each yielded ``IterationState`` includes a ``learner_id`` field (str)
+        set to the learner's name.
 
         Args:
             learner_names: list of learner names to run concurrently.
@@ -515,14 +508,20 @@ class ParallelUQLearner(SeqUQLearner):
                 If provided, the length must match the number
                 of elements in learner_names.
 
-        Returns:
-            list containing the final IterationState from each learner, in the
-            same order as the learners were launched.
+        Yields:
+            IterationState for each iteration of each learner, in arrival order.
+            Each state has ``learner_id`` set to the learner's name (str).
 
         Raises:
             ValueError: If required base functions are not set.
             ValueError: If neither max_iter nor criterion_function is provided.
             ValueError: If learner_configs length doesn't match learner_names.
+            Exception: Re-raises any exception from a learner after all learners finish.
+
+        Example::
+
+            async for state in learner.start(learner_names=["a", "b"], model_names=[...]):
+                print(f"Learner {state.learner_id}, iter {state.iteration}: {state.metric_value}")
         """
         # Validate base functions are set
         if (
@@ -530,85 +529,60 @@ class ParallelUQLearner(SeqUQLearner):
             or not self.training_function
             or not self.active_learn_function
         ):
-            raise ValueError(
-                "Simulation, Training, and Active Learning functions must be set!"
-            )
+            raise ValueError("Simulation, Training, and Active Learning functions must be set!")
 
         if not max_iter and not self.criterion_function:
-            raise ValueError(
-                "Either max_iter or stop_criterion_function must be provided."
-            )
+            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or {name: None for name in learner_names}
         if len(learner_configs) != len(learner_names):
             raise ValueError("learner_configs length must match learner_names")
 
-        logger.info(
-            f"Starting Parallel UQ Active Learning with {len(learner_names)} learners"
-        )
+        print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
-        async def _run_sequential_learner(learner_name: str) -> Any:
-            """Run a single SeqUQLearner.
+        # Factory required: plain closure in a loop would capture the same variable reference.
+        def make_run_fn(learner_name: str):
+            async def run_learner(queue: asyncio.Queue) -> None:
+                try:
+                    sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
+                    print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
+                    async for state in sequential_learner.start(
+                        model_names=model_names,
+                        num_predictions=num_predictions,
+                        max_iter=max_iter,
+                        skip_pre_loop=skip_pre_loop,
+                        learning_config=learner_configs[learner_name],
+                    ):
+                        if self.is_stopped:
+                            sequential_learner.stop()
+                        await queue.put(
+                            ("state", dataclasses.replace(state, learner_id=learner_name))
+                        )
+                    self.metric_values_per_iteration[f"learner-{learner_name}"] = (
+                        sequential_learner.metric_values_per_iteration
+                    )
+                    self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
+                        sequential_learner.uncertainty_values_per_iteration
+                    )
+                except Exception as e:
+                    print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
+                    await queue.put(("error", e))
+                finally:
+                    await queue.put(("done", None))
 
-            Internal async function that manages the lifecycle of a single
-            SeqUQLearner within the parallel learning context.
+            return run_learner
 
-            Args:
-                learner_name: Unique identifier for this learner instance.
-
-            Returns:
-                The final IterationState from the sequential learner.
-
-            Raises:
-                Exception: Re-raises any exception from the sequential learner
-                    with additional context about which learner failed.
-            """
-            try:
-                # Create and configure the sequential learner
-                sequential_learner: SeqUQLearner = self._create_sequential_learner(
-                    learner_name
-                )
-
-                # Convert parallel config to sequential config
-                sequential_config: Optional[UQLearnerConfig] = (
-                    self._convert_to_sequential_config(learner_configs[learner_name])
-                )
-                logger.info(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
-
-                # Run the sequential learner by iterating through start()
-                final_state = None
-                async for state in sequential_learner.start(
-                    model_names=model_names,
-                    num_predictions=num_predictions,
-                    max_iter=max_iter,
-                    skip_pre_loop=skip_pre_loop,
-                    learning_config=sequential_config,
-                ):
-                    final_state = state
-                    if self.is_stopped:
-                        sequential_learner.stop()
-
-                # Book keep the iteration value from each learner
-                self.metric_values_per_iteration[f"learner-{learner_name}"] = (
-                    sequential_learner.metric_values_per_iteration
-                )
-                self.uncertainty_values_per_iteration[f"learner-{learner_name}"] = (
-                    sequential_learner.uncertainty_values_per_iteration
-                )
-                return final_state
-
-            except Exception as e:
-                logger.error(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
-                raise
-
-        # Submit all learners asynchronously
-        futures: list[Any] = [
-            _run_sequential_learner(learner_name) for learner_name in learner_names
-        ]
-
-        # Wait for all learners to complete and collect results
-        return await asyncio.gather(*futures)
+        _stop_reason = "max_iter_reached"
+        try:
+            async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
+                self._notify_trackers_iteration(state)
+                yield state
+        except Exception:
+            _stop_reason = "error"
+            raise
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
         self,
@@ -617,7 +591,7 @@ class ParallelUQLearner(SeqUQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learner_configs: Optional[dict[str, Optional[UQLearnerConfig]]] = None,
+        learner_configs: dict[str, UQLearnerConfig | None] | None = None,
     ) -> list[Any]:
         """Run parallel UQ active learning loop to completion.
 
@@ -634,23 +608,21 @@ class ParallelUQLearner(SeqUQLearner):
             learner_configs: Configuration for each learner.
 
         Returns:
-            List of results from each learner (in old format for backward
-            compatibility).
+            List of final IterationState from each learner, in learner_names order.
         """
         warnings.warn(
-            "teach() is deprecated and will be removed in a future version. "
-            "Use start() instead.",
+            "teach() is deprecated and will be removed in a future version. Use start() instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-
-        # Call start() and return the final states directly
-        # The old teach() returned the final states from each learner
-        return await self.start(
+        final_states: dict[str, IterationState | None] = {}
+        async for state in self.start(
             learner_names=learner_names,
             model_names=model_names,
             num_predictions=num_predictions,
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learner_configs=learner_configs,
-        )
+        ):
+            final_states[state.learner_id] = state
+        return [final_states.get(name) for name in learner_names]

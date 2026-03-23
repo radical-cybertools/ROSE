@@ -2,6 +2,7 @@ from rose.al import active_learner, selector
 from rose.learner import IterationState, Learner, LearnerConfig, TaskConfig
 from rose.metrics import *  # noqa: F403
 from rose.rl import reinforcement_learner
+from rose.tracking import PipelineManifest, TrackerBase
 from rose.uq import uq_active_learner, uq_learner, uq_scorer
 
 __all__ = [
@@ -17,4 +18,7 @@ __all__ = [
     "LearnerConfig",
     "TaskConfig",
     "IterationState",
+    # Tracking
+    "TrackerBase",
+    "PipelineManifest",
 ]

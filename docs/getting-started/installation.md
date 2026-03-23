@@ -24,7 +24,7 @@ machines, please refer to the following link: [RADICAL-Pilot Supported HPC Machi
     ```
     python --version
     ```
-4. create new pip virtual env: 
+4. create new pip virtual env:
     ```
     python3 -m venv rose_env
     ```

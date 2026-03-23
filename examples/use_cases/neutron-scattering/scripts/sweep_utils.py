@@ -1,12 +1,9 @@
-from __future__ import absolute_import
-
+import itertools
 from pprint import pprint
 
+import h5py
 import numpy as np
 from mpi4py import MPI
-import itertools
-import h5py
-
 
 try:
     import configparser
@@ -15,13 +12,13 @@ except ImportError:
 
 
 def read_config_file(file):
-    """Functionality to read the configue file.
+    """Functionality to read the configure file.
 
     Parameters
     ----------
     file : string
       Name of configuration file.
-      
+
     Returns
     -------
     fileParams : python dictionary
@@ -29,35 +26,35 @@ def read_config_file(file):
       (key, value) tuples.
     """
 
-    config=configparser.ConfigParser()
+    config = configparser.ConfigParser()
     config.read(file)
-    section=config.sections()
-    fileParams={}
-        
+    section = config.sections()
+    fileParams = {}
+
     # parse specified arguments (minimal validation: if arguments
     # are written several times in the file, just the first time
     # will be used)
     for sec in section:
-        for k,v in config.items(sec):
-            if not k in fileParams:
+        for k, v in config.items(sec):
+            if k not in fileParams:
                 fileParams[k] = eval(v)
-    
+
     pprint(fileParams)
 
     return fileParams
 
 
 def read_sweep_ranges(pdict):
-    """Functionality to extract range values from python dictionary.
-    The operation is applied over dictionary elements with key starting
-    by the string 'sweep'. The ranges are returned in a dictionary.
+    """Functionality to extract range values from python dictionary. The operation is applied over
+    dictionary elements with key starting by the string 'sweep'. The ranges are returned in a
+    dictionary.
 
     Parameters
     ----------
     pdict : python dictionary
       The dictionary include all the configuration parameters read from
       the configuration file.
-      
+
     Returns
     -------
     ranges : python dictionary
@@ -66,11 +63,11 @@ def read_sweep_ranges(pdict):
       to be configured as: (initial, final, step).
     """
 
-    ranges={}
+    ranges = {}
     for key in pdict.keys():
-        key_list = key.split('_')
-        if key_list[0] == 'sweep':
-            key_out = key_list[1] + '_' + key_list[2]
+        key_list = key.split("_")
+        if key_list[0] == "sweep":
+            key_out = key_list[1] + "_" + key_list[2]
             ranges[key_out] = pdict[key]
 
     return ranges
@@ -80,11 +77,11 @@ def read_sweep_ranges(pdict):
 # MPI functionality
 ######################
 
+
 def _get_rank_limits(comm, arrlen):
-    """Determine the chunk of the grid that has to be computed per
-    process. The grid has been 'flattened' and has arrlen length. The
-    chunk assigned to each process depends on its rank in the MPI
-    communicator.
+    """Determine the chunk of the grid that has to be computed per process. The grid has been
+    'flattened' and has arrlen length. The chunk assigned to each process depends on its rank in the
+    MPI communicator.
 
     Parameters
     ----------
@@ -119,12 +116,11 @@ def _get_rank_limits(comm, arrlen):
 
 
 def grid_sweep(fn, grid, prefix, fnout, comm=None):
-    """Perform a grid sweep launching simulation processes for each
-    combination of parameters specified. It is assumed that each
-    simulation returns an np array. The computation of the simulation
-    at the grid points is executed in parallel using MPI. The simulation
-    results (together with the launching parameters) are stored in hdf5 files
-    independently by each process in the communicator.
+    """Perform a grid sweep launching simulation processes for each combination of parameters
+    specified. It is assumed that each simulation returns an np array. The computation of the
+    simulation at the grid points is executed in parallel using MPI. The simulation results
+    (together with the launching parameters) are stored in hdf5 files independently by each process
+    in the communicator.
 
     The `mpi4py <https://mpi4py.readthedocs.io>`__ package is
     required for use of the ``mpiutil.grid_search`` function. It is also
@@ -173,45 +169,49 @@ def grid_sweep(fn, grid, prefix, fnout, comm=None):
 
     fprm = itertools.product(*grid)
     rank = comm.Get_rank()
-    print("TW: rank = {}, print fprm!\n".format(rank), fprm)
+    print(f"TW: rank = {rank}, print fprm!\n", fprm)
 
     # Distribute computation among processes in MPI communicator
     afprm = np.asarray(list(fprm))  # Faster to communicate array data
-    print("TW: rank = {}, print afprm!\n".format(rank), afprm)
+    print(f"TW: rank = {rank}, print afprm!\n", afprm)
 
     print("TW: rank = ", rank, " shape of afprm = ", afprm.shape)
     iterlen = afprm.shape[0]
     begin, end = _get_rank_limits(comm, iterlen)
-    rankgrid = (afprm[begin:end, :])
+    rankgrid = afprm[begin:end, :]
     if rank == 0:
         print(type(rankgrid))
         print("rankgrid = ", rankgrid)
     rankfval = np.asarray(list(map(fn, rankgrid)))
-    print("TW: rank = ", rank, " iterlen = ", iterlen, " begin = ", begin, " end = ", end)
-    print("TW: shape of rankfval = ", rankfval.shape, " shape of rankgrid = ", rankgrid.shape)
+    print(
+        "TW: rank = ", rank, " iterlen = ", iterlen, " begin = ", begin, " end = ", end
+    )
+    print(
+        "TW: shape of rankfval = ",
+        rankfval.shape,
+        " shape of rankgrid = ",
+        rankgrid.shape,
+    )
 
-    fname = prefix + fnout + '_part' + str(rank) + '.hdf5'
-    with h5py.File(fname, 'w') as f:
-        f.create_dataset('histograms', data=rankfval)
-        f.create_dataset('parameters', data=rankgrid)
-#        print('Data generated stored in file: ', fname)
+    fname = prefix + fnout + "_part" + str(rank) + ".hdf5"
+    with h5py.File(fname, "w") as f:
+        f.create_dataset("histograms", data=rankfval)
+        f.create_dataset("parameters", data=rankgrid)
+    #        print('Data generated stored in file: ', fname)
 
-    
-#    print('rankfval.shape: ', rankfval.shape)
+    #    print('rankfval.shape: ', rankfval.shape)
 
     return iterlen, rankfval.shape[2]
 
 
 def grid_sample(rank, size, fn, sample, prefix, fnout):
-
-    print("TW: rank = {}, sample.shape = {}, sample = \n{}".format(rank, sample.shape, sample))
+    print(f"TW: rank = {rank}, sample.shape = {sample.shape}, sample = \n{sample}")
     rankfval = np.asarray(list(map(fn, sample)))
-    print("TW: rank = {}, shape of rankfval = ".format(rank), rankfval.shape)
+    print(f"TW: rank = {rank}, shape of rankfval = ", rankfval.shape)
 
-    fname = prefix + fnout + '_part' + str(rank) + '.hdf5'
-    with h5py.File(fname, 'w') as f:
-        f.create_dataset('histograms', data=rankfval)
-        f.create_dataset('parameters', data=sample)
+    fname = prefix + fnout + "_part" + str(rank) + ".hdf5"
+    with h5py.File(fname, "w") as f:
+        f.create_dataset("histograms", data=rankfval)
+        f.create_dataset("parameters", data=sample)
 
     return sample.shape[0], rankfval.shape[2]
-

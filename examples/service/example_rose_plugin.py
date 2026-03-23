@@ -23,24 +23,25 @@ Usage:
     python example_rose_plugin.py --workflow debug_workflow.yaml
 """
 
+import argparse
+import logging
 import os
 import sys
 import time
-import logging
-import argparse
 from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(message)s',
-    datefmt='%H:%M:%S'
+    level=logging.DEBUG,
+    format="%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s",
+    datefmt="%H:%M:%S",
 )
-log = logging.getLogger('rose.example')
 
 # Reduce noise from HTTP libraries
 for name in ['httpx', 'httpcore', 'urllib3', 'hpack']:
     logging.getLogger(name).setLevel(logging.WARNING)
+
+log = logging.getLogger("rose.example")
 
 
 def on_state_change(topic: str, data: dict):
@@ -55,6 +56,10 @@ def on_state_change(topic: str, data: dict):
         log.info(f'[{wf_id}] {state} (iteration={iteration}, metric={metric})')
     else:
         log.info(f'[{wf_id}] {state}')
+
+def notification_cb(topic: str, data: dict):
+    """Handle workflow notifications."""
+    log.info(f"[NOTIFY] {topic}: {data}")
 
 
 def main():
@@ -86,14 +91,15 @@ def main():
     if not workflow.exists():
         workflow = Path(__file__).parent / args.workflow
     if not workflow.exists():
-        log.error(f'Workflow file not found: {args.workflow}')
+        log.error(f"Workflow not found: {args.workflow}")
         sys.exit(1)
 
     workflow = workflow.resolve()
 
-    log.info(f'Bridge:   {args.bridge_url}')
-    log.info(f'Workflow: {workflow}')
-    log.info('-' * 50)
+    log.info(f"Bridge:   {args.bridge_url}")
+    log.info(f"Workflow: {workflow}")
+    log.info(f"Job ID:   {args.job_id}")
+    log.info("-" * 60)
 
     # Import dependencies
     from radical.edge import BridgeClient
@@ -104,54 +110,61 @@ def main():
         bc = BridgeClient(url=args.bridge_url)
         edges = bc.list_edges()
     except Exception as e:
-        log.error(f'Cannot connect to bridge at {args.bridge_url}: {e}')
+        log.error(f"Cannot connect to bridge: {e}")
         sys.exit(1)
 
     if not edges:
-        log.error('No edge services connected to bridge')
+        log.error("No edges connected to bridge")
         sys.exit(1)
 
     edge_id = edges[0]
-    log.info(f'Edge: {edge_id}')
+    log.info(f"Using edge: {edge_id}")
 
     # Get ROSE plugin client
     try:
         ec = bc.get_edge_client(edge_id)
-        rose = ec.get_plugin('rose')
+        rose = ec.get_plugin("rose", job_id=args.job_id)
     except Exception as e:
-        log.error(f'Cannot get ROSE plugin: {e}')
-        log.error('Ensure ROSE plugin is loaded on the edge service')
+        log.error(f"Cannot get ROSE plugin: {e}")
+        log.error("Make sure ROSE plugin is loaded on edge service.")
         sys.exit(1)
 
-    log.info(f'Session: {rose.sid}')
-    log.info('-' * 50)
-
-    # Register notification callback
-    rose.on_workflow_state(on_state_change)
+    log.info(f"Session: {rose.sid}")
+    rose.on_workflow_state(notification_cb)
 
     try:
         # Submit workflow
-        log.info('Submitting workflow...')
-        result = rose.submit_workflow(str(workflow))
-        wf_id = result['wf_id']
-        log.info(f'Workflow ID: {wf_id}')
+        log.info(f"Submitting {workflow}...")
+        result = rose.submit_workflow(str(workflow.absolute()))
+        wf_id = result["wf_id"]
+        log.info(f"Submitted: {wf_id}")
 
-        # Poll for completion
-        terminal_states = {'COMPLETED', 'FAILED', 'CANCELED'}
+        # Monitor status
+        log.info("Monitoring (Ctrl+C to cancel)...")
         start_time = time.time()
+        terminal = {"COMPLETED", "FAILED", "CANCELED"}
+        last_state = None
 
         while time.time() - start_time < args.timeout:
+
             time.sleep(2)
 
             try:
                 status = rose.get_workflow_status(wf_id)
+                state = status.get("state", "UNKNOWN")
+                if state != last_state:
+                    log.info(f"State: {state}")
+                    last_state = state
+                if state in terminal:
+                    if state == "FAILED":
+                        log.error(f"Error: {status.get('error')}")
+                    break
             except Exception as e:
-                log.warning(f'Status check failed: {e}')
-                continue
+                log.warning(f"Status error: {e}")
 
             state = status.get('state', 'UNKNOWN')
 
-            if state in terminal_states:
+            if state in terminal:
                 log.info('-' * 50)
                 if state == 'COMPLETED':
                     log.info(f'Workflow {wf_id} completed successfully')
@@ -164,26 +177,19 @@ def main():
             log.warning(f'Timeout after {args.timeout}s')
 
         # Show final workflow list
-        log.info('-' * 50)
-        log.info('All workflows:')
+        log.info("-" * 60)
         for wid, info in rose.list_workflows().items():
-            log.info(f'  {wid}: {info.get("state")}')
+            log.info(f"  {wid}: {info.get('state')}")
 
     except KeyboardInterrupt:
         log.warning('Interrupted by user')
-        # Optionally cancel the workflow
-        try:
-            rose.cancel_workflow(wf_id)
-            log.info(f'Canceled workflow {wf_id}')
-        except Exception:
-            pass
 
     finally:
         rose.off_workflow_state(on_state_change)
         rose.close()
         bc.close()
-        log.info('Done')
+        log.info("Done")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

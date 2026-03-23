@@ -10,10 +10,10 @@ This introduces **two levels of parallelism**:
 * **Workflow-level parallelism** for executing multiple UQ–AL loops side by side.
 
 Both levels can be naturally expressed and efficiently executed using ROSE’s **custom AL policy**, enabling scalable and adaptive uncertainty-aware learning.
-```sh            
+```sh
                              (N AL WFs in Parallel)
           +-------------------+               +-------------------+
-          |      UQ WF 1      |               |      UQ WF 2      |   
+          |      UQ WF 1      |               |      UQ WF 2      |
           +-------------------+               +-------------------+
                    │                                    │
   +----------------+-----------------+  +----------------+-----------------+
@@ -26,11 +26,11 @@ Both levels can be naturally expressed and efficiently executed using ROSE’s *
   |  Train Model  1,2,...........m   |  |  Train Model  1,2,...........m   |
   +---------------+  +---------------+  +---------------+  +---------------+
           |                |                    |                 |
-    +-----------------------------+        +-----------------------------+ 
-    |      AL based on UQ WF 1    |        |    AL based on UQ WF 1      |   
-    +-----------------------------+        +-----------------------------+ 
+    +-----------------------------+        +-----------------------------+
+    |      AL based on UQ WF 1    |        |    AL based on UQ WF 1      |
+    +-----------------------------+        +-----------------------------+
 ```
- 
+
 
 ### UQ-Driven Active Learning with Parallel Workflows
 
@@ -71,8 +71,8 @@ async def prediction(*args):
 ```python
 
 # Defining the uncertainty quantification with a metric (PREDICTIVE_ENTROPY in this case)
-@learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY, 
-                                    threshold=1.0, 
+@learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY,
+                                    threshold=1.0,
                                     query_size=10)
 async def check_uq(*args):
     return f'{code_path}/check_uq.py'xs
@@ -107,7 +107,7 @@ results = await learner.start(
     learner_names=PIPELINES,
     model_names=MODELS,
     learner_configs=learner_configs,
-    max_iter=ITERATIONS, 
+    max_iter=ITERATIONS,
     num_predictions=NUM_PREDICTION
 )
 ```

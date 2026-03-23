@@ -3,7 +3,7 @@
 Import ROSE main modules:
 ```python
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 
 from rose.metrics import GREATER_THAN_THRESHOLD
 from rose.rl.reinforcement_learner import SequentialReinforcementLearner

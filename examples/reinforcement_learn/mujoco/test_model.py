@@ -1,15 +1,18 @@
-import os
 import argparse
-from dm_control import suite
-from policy import ReinforcePolicy
+import os
 import pickle
+
 import numpy as np
+from dm_control import suite
+
 
 def run_test_episode(env, policy):
     time_step = env.reset()
     total_reward = 0.0
     for _ in range(500):
-        state = time_step.observation["position"].tolist() + time_step.observation["velocity"].tolist()
+        state = (
+            time_step.observation["position"].tolist() + time_step.observation["velocity"].tolist()
+        )
         action = policy.select_action(state, deterministic=True)
         time_step = env.step(action)
         total_reward += time_step.reward or 0.0
@@ -17,25 +20,33 @@ def run_test_episode(env, policy):
             break
     return total_reward
 
+
 if __name__ == "__main__":
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Test RL policy performance')
-    parser.add_argument('--data-dir', type=str, default='.', 
-                       help='Directory to load policy file from (default: current directory)')
-    parser.add_argument('--policy-file', type=str, default='trained_policy.pkl',
-                       help='Name of the policy file to load (default: trained_policy.pkl)')
-    
+    parser = argparse.ArgumentParser(description="Test RL policy performance")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=".",
+        help="Directory to load policy file from (default: current directory)",
+    )
+    parser.add_argument(
+        "--policy-file",
+        type=str,
+        default="trained_policy.pkl",
+        help="Name of the policy file to load (default: trained_policy.pkl)",
+    )
+
     args, unknown = parser.parse_known_args()
 
-    
     # Construct full file path
     policy_path = os.path.join(args.data_dir, args.policy_file)
-    
+
     # Load policy
     try:
         with open(policy_path, "rb") as f:
             policy = pickle.load(f)
-    except FileNotFoundError: 
+    except FileNotFoundError:
         exit(1)
 
     env = suite.load(domain_name="cartpole", task_name="swingup")

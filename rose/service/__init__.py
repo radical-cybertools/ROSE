@@ -1,3 +1,3 @@
-from .models import WorkflowState, Workflow
+from .models import Workflow, WorkflowState
 
 __all__ = ["WorkflowState", "Workflow"]

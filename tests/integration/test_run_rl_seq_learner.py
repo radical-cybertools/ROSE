@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from radical.asyncflow import ConcurrentExecutionBackend, WorkflowEngine
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.metrics import GREATER_THAN_THRESHOLD
 from rose.rl.reinforcement_learner import SequentialReinforcementLearner
@@ -30,10 +31,14 @@ async def test_rl_pipeline_functions():
     async def check_reward(val, *args):
         return val > 2
 
-    await rl.learn(max_iter=1)
+    states = []
+    async for state in rl.start(max_iter=1):
+        states.append(state)
+
+    assert len(states) == 1
+    assert states[0].iteration == 0
 
     scores = rl.get_metric_results()
-
     assert scores != {}
 
     await rl.shutdown()

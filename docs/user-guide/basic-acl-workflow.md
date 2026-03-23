@@ -6,7 +6,7 @@ from rose.metrics import MEAN_SQUARED_ERROR_MSE
 from rose.al.active_learner import SequentialActiveLearner
 
 from radical.asyncflow import WorkflowEngine
-from radical.asyncflow import RadicalExecutionBackend
+from rhapsody.backends import RadicalExecutionBackend
 ```
 
 
