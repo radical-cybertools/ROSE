@@ -97,7 +97,7 @@ class TestWorkflowLoader:
         from rose.al.active_learner import SequentialActiveLearner
 
         assert isinstance(learner, SequentialActiveLearner)
-        assert learner.learner_id == hash("wf.test001")
+        assert learner.learner_id == "wf.test001"
 
     def test_import_function_valid(self):
         """Test importing a valid function path."""
@@ -286,7 +286,8 @@ class TestRoseClient:
         http = Mock()
         response = Mock()
         response.json.return_value = {"sid": "session.abc123"}
-        response.raise_for_status = Mock()
+        response.status_code = 200
+        response.is_error = False
         http.post.return_value = response
         http.get.return_value = response
         return http

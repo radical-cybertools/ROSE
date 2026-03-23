@@ -73,6 +73,9 @@ doc = [
 [tool.setuptools.packages.find]
 include = ["rose*"]
 
+[tool.setuptools.package-data]
+rose = ["service/api/*.js"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

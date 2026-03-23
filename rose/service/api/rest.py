@@ -65,6 +65,7 @@ import asyncio
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from radical.asyncflow import LocalExecutionBackend, WorkflowEngine
@@ -81,7 +82,6 @@ from radical.edge.ui_schema import (
 )
 from starlette.responses import JSONResponse
 
-from rose.al.active_learner import ParallelActiveLearner
 from rose.service.manager import WorkflowLoader
 from rose.service.models import Workflow, WorkflowState
 
@@ -163,7 +163,7 @@ class RoseSession(PluginSession):
         self._learner_tasks[wf_id] = task
 
         log.info(f"[{self.sid}] Submitted workflow {wf_id}: {workflow_file}")
-        return {"wf_id": wf_id}
+        return {"wf_id": wf_id, "state": WorkflowState.SUBMITTED.value}
 
     # --------------------------------------------------------------------------
     #
@@ -186,40 +186,23 @@ class RoseSession(PluginSession):
             wf.start_time = time.time()
             self._notify_state(wf)
 
-            config = wf_def.get("config", {})
-            learner_cfg = wf_def.get("learner", {})
-            max_iter = config.get("max_iterations", learner_cfg.get("max_iterations", 10))
+            log.info("[%s] Running workflow %s", self.sid, wf_id)
 
-            log.info(f"[{self.sid}] Running workflow {wf_id} (max_iterations={max_iter})")
+            def on_iteration(state):
+                wf.stats = (
+                    state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
+                )
+                log.info(
+                    "[%s] %s learner %s, iteration %s (metric=%s)",
+                    self.sid,
+                    wf_id,
+                    getattr(state, "learner_id", "?"),
+                    getattr(state, "iteration", "?"),
+                    getattr(state, "metric_value", "?"),
+                )
+                self._notify_state(wf)
 
-            if isinstance(learner, ParallelActiveLearner):
-                parallel = config.get("parallel_learners", learner_cfg.get("parallel_learners", 2))
-                configs = [initial_config] * parallel if initial_config else None
-
-                async for state in learner.start(
-                    parallel_learners=parallel, max_iter=max_iter, learner_configs=configs
-                ):
-                    wf.stats = (
-                        state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
-                    )
-                    learner_id = getattr(state, "learner_id", "?")
-                    iteration = getattr(state, "iteration", "?")
-                    metric = getattr(state, "metric_value", "?")
-                    log.info(
-                        f"[{self.sid}] {wf_id} learner {learner_id},"
-                        f" iteration {iteration} (metric={metric})"
-                    )
-                    self._notify_state(wf)
-
-            else:
-                # Sequential learner - async iterator
-                async for state in learner.start(max_iter=max_iter, initial_config=initial_config):
-                    wf.stats = state.to_dict()
-                    log.info(
-                        f"[{self.sid}] {wf_id} iteration {state.iteration} "
-                        f"(metric={state.metric_value})"
-                    )
-                    self._notify_state(wf)
+            await WorkflowLoader.run_learner(learner, wf_def, initial_config, on_iteration)
 
             # Completed
             wf.state = WorkflowState.COMPLETED
@@ -235,10 +218,7 @@ class RoseSession(PluginSession):
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
             wf.end_time = time.time()
-            log.error(f"[{self.sid}] Workflow {wf_id} failed: {e}")
-            import traceback
-
-            traceback.print_exc()
+            log.exception("[%s] Workflow %s failed: %s", self.sid, wf_id, e)
 
         finally:
             self._notify_state(wf)
@@ -322,10 +302,6 @@ class RoseSession(PluginSession):
             task.cancel()
 
         log.info(f"[{self.sid}] Canceling workflow {wf_id}")
-
-        if self._notify:
-            self._notify("workflow_state", {"wf_id": wf_id, "state": "CANCELING"})
-
         return {"wf_id": wf_id}
 
     # --------------------------------------------------------------------------
@@ -339,13 +315,14 @@ class RoseSession(PluginSession):
             if wf.learner_instance and wf.state == WorkflowState.RUNNING:
                 wf.learner_instance.stop()
 
-        # Cancel all tasks
-        for task in self._learner_tasks.values():
+        # Snapshot before cancelling — tasks remove themselves on completion
+        tasks = list(self._learner_tasks.values())
+        for task in tasks:
             if not task.done():
                 task.cancel()
 
-        if self._learner_tasks:
-            await asyncio.gather(*self._learner_tasks.values(), return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
             self._learner_tasks.clear()
 
         # Shutdown engine
@@ -402,7 +379,7 @@ class RoseClient(PluginClient):
         resp = self._http.post(
             self._url(f"submit/{self.sid}"), json={"workflow_file": workflow_file}
         )
-        resp.raise_for_status()
+        self._raise(resp)
 
         return resp.json()
 
@@ -421,7 +398,7 @@ class RoseClient(PluginClient):
             raise RuntimeError("No active session")
 
         resp = self._http.get(self._url(f"status/{self.sid}/{wf_id}"))
-        resp.raise_for_status()
+        self._raise(resp)
 
         return resp.json()
 
@@ -437,7 +414,7 @@ class RoseClient(PluginClient):
             raise RuntimeError("No active session")
 
         resp = self._http.get(self._url(f"workflows/{self.sid}"))
-        resp.raise_for_status()
+        self._raise(resp)
 
         return resp.json()
 
@@ -456,7 +433,7 @@ class RoseClient(PluginClient):
             raise RuntimeError("No active session")
 
         resp = self._http.post(self._url(f"cancel/{self.sid}/{wf_id}"))
-        resp.raise_for_status()
+        self._raise(resp)
 
         return resp.json()
 
@@ -483,6 +460,7 @@ class PluginRose(Plugin):
     client_class = RoseClient
     version = "0.2.0"
     session_ttl = 0  # No timeout - workflows can run for hours/days
+    ui_module = str(Path(__file__).parent / "rose.js")
 
     ui_config = UIConfig(
         icon="🌹",
