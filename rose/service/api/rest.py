@@ -144,6 +144,8 @@ class RoseSession(PluginSession):
         self._check_active()
         await self._ensure_engine()
 
+        workflow_file = str(Path(workflow_file).expanduser())
+
         # Generate workflow ID
         wf_id = f"wf.{uuid.uuid4().hex[:8]}"
 
