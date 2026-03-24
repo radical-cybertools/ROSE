@@ -181,6 +181,38 @@ class RoseSession(PluginSession):
             learner, initial_config = WorkflowLoader.create_learner(wf_id, wf_def, self._engine)
             wf.learner_instance = learner
 
+            # Wrap learner task registration to emit per-task completion events
+            task_count        = 0
+            _orig_register    = learner._register_task
+
+            def _tracked_register(task_obj, deps=None):
+                nonlocal task_count
+                task_count += 1
+                tid    = task_count
+                future = _orig_register(task_obj, deps)
+                log.debug("[%s] task %d registered for wf %s", self.sid, tid, wf_id)
+
+                def _on_done(fut):
+                    try:
+                        if fut.cancelled():
+                            return
+                        exc     = fut.exception()
+                        is_ok   = exc is None
+                        raw     = str(fut.result() or "") if is_ok else str(exc)
+                        excerpt = next((l.strip() for l in raw.splitlines() if l.strip()), "")[:120]
+                        log.info("[%s] task %d %s: %s", self.sid, tid,
+                                 "ok" if is_ok else "err", excerpt[:60])
+                        if self._notify:
+                            self._notify("task_event", {"wf_id": wf_id, "task_id": tid,
+                                                        "ok": is_ok, "excerpt": excerpt})
+                    except Exception:
+                        log.exception("[%s] task_event callback failed for task %d", self.sid, tid)
+
+                future.add_done_callback(_on_done)
+                return future
+
+            learner._register_task = _tracked_register
+
             # Run
             wf.state = WorkflowState.RUNNING
             wf.start_time = time.time()

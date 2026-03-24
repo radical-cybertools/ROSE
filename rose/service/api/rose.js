@@ -12,16 +12,29 @@ export const notificationConfig = {
 };
 
 export function onNotification(data, page, api) {
-    if (data.topic !== 'workflow_state') return;
-
     const wfId = data.data?.wf_id || '';
-    const state = (data.data?.state || '?').toUpperCase();
     if (!wfId) return;
 
-    const entryId  = `rose-task-${api.edgeName}-${wfId}`;
-    const entry    = document.getElementById(entryId);
+    const entryId = `rose-task-${api.edgeName}-${wfId}`;
+    const entry   = document.getElementById(entryId);
     if (!entry) return;
 
+    if (data.topic === 'task_event') {
+        const logEl = entry.querySelector('.rose-task-log');
+        if (!logEl) return;
+        const d      = data.data;
+        const color  = d.ok ? 'var(--green, #4caf50)' : 'var(--red, #f44336)';
+        const icon   = d.ok ? '✓' : '✗';
+        const excerpt = api.escHtml(d.excerpt || '');
+        logEl.insertAdjacentHTML('beforeend',
+            `<div style="color:${color};font-size:0.85em;">[task.${d.task_id}] ${icon} ${excerpt}</div>`
+        );
+        return;
+    }
+
+    if (data.topic !== 'workflow_state') return;
+
+    const state   = (data.data?.state || '?').toUpperCase();
     const stateEl = entry.querySelector('.rose-task-state');
     if (!stateEl) return;
 
@@ -50,5 +63,13 @@ export function onNotification(data, page, api) {
     if (error) {
         logHtml += `<pre class="err">${api.escHtml(error)}</pre>`;
     }
-    logEl.innerHTML = logHtml;
+
+    // Write state info into a stable child so task event lines below survive
+    let si = logEl.querySelector('.rose-state-info');
+    if (!si) {
+        si = document.createElement('div');
+        si.className = 'rose-state-info';
+        logEl.prepend(si);
+    }
+    si.innerHTML = logHtml;
 }
