@@ -20,6 +20,8 @@ export function onNotification(data, page, api) {
     if (!entry) return;
 
     if (data.topic === 'task_event') {
+        console.log('[rose] task_event received:', data.data?.task_id,
+                    data.data?.ok ? 'ok' : 'err', data.data?.excerpt?.slice(0, 60));
         const logEl = entry.querySelector('.rose-task-log');
         if (!logEl) return;
         const d      = data.data;
@@ -57,19 +59,21 @@ export function onNotification(data, page, api) {
 
     let logHtml = `<span style="color:var(--muted);font-size:0.9em;">[${ts}] <b>${state}</b></span>`;
     if (stats?.iteration !== undefined) {
-        const metric = stats.metric_value !== undefined ? ` metric=${stats.metric_value}` : '';
+        const metric = stats.metric_value != null ? ` metric=${stats.metric_value}` : '';
         logHtml += `<br><span style="font-size:0.85em;">iteration ${stats.iteration}${metric}</span>`;
     }
     if (error) {
         logHtml += `<pre class="err">${api.escHtml(error)}</pre>`;
     }
 
-    // Write state info into a stable child so task event lines below survive
+    // Write state info into a stable child so task event lines below survive.
+    // On first write, clear the "Waiting…" placeholder.
     let si = logEl.querySelector('.rose-state-info');
     if (!si) {
+        logEl.innerHTML = '';
         si = document.createElement('div');
         si.className = 'rose-state-info';
-        logEl.prepend(si);
+        logEl.appendChild(si);
     }
     si.innerHTML = logHtml;
 }
