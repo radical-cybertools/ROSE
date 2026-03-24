@@ -20,8 +20,6 @@ export function onNotification(data, page, api) {
     if (!entry) return;
 
     if (data.topic === 'task_event') {
-        console.log('[rose] task_event received:', data.data?.task_id,
-                    data.data?.ok ? 'ok' : 'err', data.data?.excerpt?.slice(0, 60));
         const logEl = entry.querySelector('.rose-task-log');
         if (!logEl) return;
         const d      = data.data;

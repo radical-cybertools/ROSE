@@ -190,23 +190,17 @@ class RoseSession(PluginSession):
                 task_count += 1
                 tid    = task_count
                 future = _orig_register(task_obj, deps)
-                log.debug("[%s] task %d registered for wf %s", self.sid, tid, wf_id)
 
                 def _on_done(fut):
-                    try:
-                        if fut.cancelled():
-                            return
-                        exc     = fut.exception()
-                        is_ok   = exc is None
-                        raw     = str(fut.result() or "") if is_ok else str(exc)
-                        excerpt = next((l.strip() for l in raw.splitlines() if l.strip()), "")[:120]
-                        log.info("[%s] task %d %s: %s", self.sid, tid,
-                                 "ok" if is_ok else "err", excerpt[:60])
-                        if self._notify:
-                            self._notify("task_event", {"wf_id": wf_id, "task_id": tid,
-                                                        "ok": is_ok, "excerpt": excerpt})
-                    except Exception:
-                        log.exception("[%s] task_event callback failed for task %d", self.sid, tid)
+                    if fut.cancelled():
+                        return
+                    exc     = fut.exception()
+                    is_ok   = exc is None
+                    raw     = str(fut.result() or "") if is_ok else str(exc)
+                    excerpt = next((l.strip() for l in raw.splitlines() if l.strip()), "")[:120]
+                    if self._notify:
+                        self._notify("task_event", {"wf_id": wf_id, "task_id": tid,
+                                                    "ok": is_ok, "excerpt": excerpt})
 
                 future.add_done_callback(_on_done)
                 return future
