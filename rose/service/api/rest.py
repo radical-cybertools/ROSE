@@ -199,7 +199,8 @@ class RoseSession(PluginSession):
                     exc     = fut.exception()
                     is_ok   = exc is None
                     raw     = str(fut.result() or "") if is_ok else str(exc)
-                    excerpt = next((l.strip() for l in raw.splitlines() if l.strip()), "")[:120]
+                    excerpt = next((line.strip() for line in raw.splitlines()
+                                                 if line.strip()), "")[:120]
                     if self._notify:
                         self._notify("task_event", {"wf_id": wf_id, "task_id": tid,
                                                     "ok": is_ok, "excerpt": excerpt})
