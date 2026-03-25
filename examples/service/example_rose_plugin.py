@@ -54,12 +54,10 @@ def on_state_change(topic: str, data: dict):
         iteration = stats.get('iteration', '-')
         metric = stats.get('metric_value', '-')
         log.info(f'[{wf_id}] {state} (iteration={iteration}, metric={metric})')
-    else:
+    elif wf_id and state:
         log.info(f'[{wf_id}] {state}')
-
-def notification_cb(topic: str, data: dict):
-    """Handle workflow notifications."""
-    log.info(f"[NOTIFY] {topic}: {data}")
+    else:
+        log.info(f"[NOTIFY] {topic}: {data}")
 
 
 def main():
@@ -98,7 +96,6 @@ def main():
 
     log.info(f"Bridge:   {args.bridge_url}")
     log.info(f"Workflow: {workflow}")
-    log.info(f"Job ID:   {args.job_id}")
     log.info("-" * 60)
 
     # Import dependencies
@@ -123,14 +120,14 @@ def main():
     # Get ROSE plugin client
     try:
         ec = bc.get_edge_client(edge_id)
-        rose = ec.get_plugin("rose", job_id=args.job_id)
+        rose = ec.get_plugin("rose")
     except Exception as e:
         log.error(f"Cannot get ROSE plugin: {e}")
         log.error("Make sure ROSE plugin is loaded on edge service.")
         sys.exit(1)
 
     log.info(f"Session: {rose.sid}")
-    rose.on_workflow_state(notification_cb)
+    rose.on_workflow_state(on_state_change)
 
     try:
         # Submit workflow

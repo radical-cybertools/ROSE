@@ -214,7 +214,7 @@ class RoseSession(PluginSession):
             wf.start_time = time.time()
             self._notify_state(wf)
 
-            log.info("[%s] Running workflow %s", self.sid, wf_id)
+            log.info("[{self.sid}] Running workflow {wf_id}")
 
             def on_iteration(state):
                 wf.stats = (
@@ -246,7 +246,7 @@ class RoseSession(PluginSession):
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
             wf.end_time = time.time()
-            log.exception("[%s] Workflow %s failed: %s", self.sid, wf_id, e)
+            log.exception("[{self.sid}] Workflow {wf_id} failed")
 
         finally:
             self._notify_state(wf)
