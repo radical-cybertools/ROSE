@@ -282,10 +282,9 @@ class ServiceManager:
         self._update_registry()
 
         try:
+
             def on_iteration(state):
-                wf.stats = (
-                    state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
-                )
+                wf.stats = state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
                 logger.info(
                     "Workflow %s - learner %s, iteration %s (metric=%s)",
                     wf.wf_id,

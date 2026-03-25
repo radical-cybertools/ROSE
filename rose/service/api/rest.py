@@ -184,26 +184,29 @@ class RoseSession(PluginSession):
             wf.learner_instance = learner
 
             # Wrap learner task registration to emit per-task completion events
-            task_count        = 0
-            _orig_register    = learner._register_task
+            task_count = 0
+            _orig_register = learner._register_task
 
             def _tracked_register(task_obj, deps=None):
                 nonlocal task_count
                 task_count += 1
-                tid    = task_count
+                tid = task_count
                 future = _orig_register(task_obj, deps)
 
                 def _on_done(fut):
                     if fut.cancelled():
                         return
-                    exc     = fut.exception()
-                    is_ok   = exc is None
-                    raw     = str(fut.result() or "") if is_ok else str(exc)
-                    excerpt = next((line.strip() for line in raw.splitlines()
-                                                 if line.strip()), "")[:120]
+                    exc = fut.exception()
+                    is_ok = exc is None
+                    raw = str(fut.result() or "") if is_ok else str(exc)
+                    excerpt = next((line.strip() for line in raw.splitlines() if line.strip()), "")[
+                        :120
+                    ]
                     if self._notify:
-                        self._notify("task_event", {"wf_id": wf_id, "task_id": tid,
-                                                    "ok": is_ok, "excerpt": excerpt})
+                        self._notify(
+                            "task_event",
+                            {"wf_id": wf_id, "task_id": tid, "ok": is_ok, "excerpt": excerpt},
+                        )
 
                 future.add_done_callback(_on_done)
                 return future
@@ -218,9 +221,7 @@ class RoseSession(PluginSession):
             log.info("[{self.sid}] Running workflow {wf_id}")
 
             def on_iteration(state):
-                wf.stats = (
-                    state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
-                )
+                wf.stats = state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
                 log.info(
                     "[%s] %s learner %s, iteration %s (metric=%s)",
                     self.sid,
