@@ -219,17 +219,14 @@ class RoseSession(PluginSession):
             wf.start_time = time.time()
             self._notify_state(wf)
 
-            log.info("[{self.sid}] Running workflow {wf_id}")
+            log.info(f"[{self.sid}] Running workflow {wf_id}")
 
             def on_iteration(state):
                 wf.stats = state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
                 log.info(
-                    "[%s] %s learner %s, iteration %s (metric=%s)",
-                    self.sid,
-                    wf_id,
-                    getattr(state, "learner_id", "?"),
-                    getattr(state, "iteration", "?"),
-                    getattr(state, "metric_value", "?"),
+                    f"[{self.sid}] {wf_id} learner {getattr(state, 'learner_id', '?')},"
+                    f" iteration {getattr(state, 'iteration', '?')}"
+                    f" (metric={getattr(state, 'metric_value', '?')})"
                 )
                 self._notify_state(wf)
 
@@ -250,7 +247,7 @@ class RoseSession(PluginSession):
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
             wf.end_time = time.time()
-            log.exception("[{self.sid}] Workflow {wf_id} failed")
+            log.exception(f"[{self.sid}] Workflow {wf_id} failed")
 
         finally:
             self._notify_state(wf)
@@ -360,7 +357,7 @@ class RoseSession(PluginSession):
                     timeout=5.0,
                 )
             except asyncio.TimeoutError:
-                log.warning("[%s] Timed out waiting for learner tasks to cancel", self.sid)
+                log.warning(f"[{self.sid}] Timed out waiting for learner tasks to cancel")
         self._learner_tasks.clear()
 
         # Shutdown engine
@@ -372,7 +369,7 @@ class RoseSession(PluginSession):
             try:
                 await asyncio.wait_for(self._engine.shutdown(), timeout=5.0)
             except asyncio.TimeoutError:
-                log.warning("[%s] Engine shutdown timed out, forcing exit", self.sid)
+                log.warning(f"[{self.sid}] Engine shutdown timed out, forcing exit")
             self._engine = None
 
             # asyncflow registers SIGINT/SIGTERM/SIGHUP via loop.add_signal_handler(),
@@ -394,7 +391,7 @@ class RoseSession(PluginSession):
                 if t is not current and t not in pre_shutdown_tasks and not t.done()
             ]
             if leftover:
-                log.debug("[%s] Draining %d leftover engine tasks", self.sid, len(leftover))
+                log.debug(f"[{self.sid}] Draining {len(leftover)} leftover engine tasks")
                 for t in leftover:
                     t.cancel()
                 await asyncio.gather(*leftover, return_exceptions=True)
@@ -586,12 +583,12 @@ class PluginRose(Plugin):
     #
     async def _on_shutdown(self) -> None:
         """Close all active sessions when the FastAPI app shuts down."""
-        log.info("[rose] Shutting down %d active session(s)...", len(self._sessions))
+        log.info(f"[rose] Shutting down {len(self._sessions)} active session(s)...")
         for session in list(self._sessions.values()):
             try:
                 await asyncio.wait_for(session.close(), timeout=10.0)
             except (asyncio.TimeoutError, Exception) as exc:
-                log.warning("[rose] Session %s close error during shutdown: %s", session.sid, exc)
+                log.warning(f"[rose] Session {session.sid} close error during shutdown: {exc}")
         log.info("[rose] All sessions closed")
 
     # --------------------------------------------------------------------------

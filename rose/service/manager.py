@@ -115,16 +115,16 @@ class WorkflowLoader:
                 task_func = cls._create_script_task_factory(cpath)
 
             if name == "simulation":
-                logger.info("Registering simulation task for workflow {wf_id}")
+                logger.info(f"Registering simulation task for workflow {wf_id}")
                 learner.simulation_task(as_executable=as_executable)(task_func)
             elif name == "training":
-                logger.info("Registering training task for workflow {wf_id}")
+                logger.info(f"Registering training task for workflow {wf_id}")
                 learner.training_task(as_executable=as_executable)(task_func)
             elif name == "active_learn":
-                logger.info("Registering active_learn task for workflow {wf_id}")
+                logger.info(f"Registering active_learn task for workflow {wf_id}")
                 learner.active_learn_task(as_executable=as_executable)(task_func)
             elif name == "criterion":
-                logger.info("Registering criterion task for workflow {wf_id}")
+                logger.info(f"Registering criterion task for workflow {wf_id}")
                 threshold = comp_def.get("threshold", 0.0)
                 metric = comp_def.get("metric", "CUSTOM")
                 learner.as_stop_criterion(
@@ -193,7 +193,7 @@ class ServiceManager:
 
         backend = LocalExecutionBackend()
         self.engine = await WorkflowEngine.create(backend)
-        logger.info("Service initialized at {self.service_root}")
+        logger.info(f"Service initialized at {self.service_root}")
 
     async def _process_requests(self):
         """Pick up JSON request files from requests_dir and dispatch them."""
@@ -221,7 +221,7 @@ class ServiceManager:
                 req_file.unlink()
 
             except Exception:
-                logger.exception("Error processing request {req_file}")
+                logger.exception(f"Error processing request {req_file}")
                 try:
                     req_file.unlink()
                 except Exception:
@@ -247,7 +247,7 @@ class ServiceManager:
             self._learner_tasks[wf_id] = task
 
         except Exception as e:
-            logger.exception("Failed to submit workflow {wf_id}")
+            logger.exception(f"Failed to submit workflow {wf_id}")
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
             self._update_registry()
@@ -260,7 +260,7 @@ class ServiceManager:
             WorkflowState.INITIALIZING,
             WorkflowState.SUBMITTED,
         ):
-            logger.info("Canceling workflow {wf_id}")
+            logger.info(f"Canceling workflow {wf_id}")
             if wf.learner_instance:
                 wf.learner_instance.stop()
             task = self._learner_tasks.get(wf_id)
@@ -278,7 +278,7 @@ class ServiceManager:
         """Driver loop for a single workflow."""
         wf.state = WorkflowState.RUNNING
         wf.start_time = asyncio.get_event_loop().time()
-        logger.info("Starting workflow {wf.wf_id} ({wf.workflow_file})")
+        logger.info(f"Starting workflow {wf.wf_id} ({wf.workflow_file})")
         self._update_registry()
 
         try:
@@ -286,11 +286,9 @@ class ServiceManager:
             def on_iteration(state):
                 wf.stats = state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
                 logger.info(
-                    "Workflow %s - learner %s, iteration %s (metric=%s)",
-                    wf.wf_id,
-                    getattr(state, "learner_id", "?"),
-                    getattr(state, "iteration", "?"),
-                    getattr(state, "metric_value", "?"),
+                    f"Workflow {wf.wf_id} - learner {getattr(state, 'learner_id', '?')},"
+                    f" iteration {getattr(state, 'iteration', '?')}"
+                    f" (metric={getattr(state, 'metric_value', '?')})"
                 )
                 self._update_registry()
 
@@ -298,16 +296,16 @@ class ServiceManager:
                 wf.learner_instance, wf_def, initial_l_config, on_iteration
             )
             wf.state = WorkflowState.COMPLETED
-            logger.info("Workflow {wf.wf_id} completed successfully")
+            logger.info(f"Workflow {wf.wf_id} completed successfully")
 
         except asyncio.CancelledError:
             wf.state = WorkflowState.CANCELED
-            logger.info("Workflow {wf.wf_id} canceled")
+            logger.info(f"Workflow {wf.wf_id} canceled")
 
         except Exception as e:
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
-            logger.exception("Workflow {wf.wf_id} failed")
+            logger.exception(f"Workflow {wf.wf_id} failed")
 
         finally:
             wf.end_time = asyncio.get_event_loop().time()
@@ -339,13 +337,13 @@ class ServiceManager:
         logger.info("Service Shutting Down...")
 
         if self.workflows:
-            logger.info("Stopping {len(self.workflows)} workflows")
+            logger.info(f"Stopping {len(self.workflows)} workflows")
             for wf in self.workflows.values():
                 if wf.learner_instance:
                     wf.learner_instance.stop()
 
         if self._learner_tasks:
-            logger.info("Canceling {len(self._learner_tasks)} learner tasks")
+            logger.info(f"Canceling {len(self._learner_tasks)} learner tasks")
             lerner_tasks = list(self._learner_tasks.values())
             for lerner_task in lerner_tasks:
                 if not lerner_task.done():
