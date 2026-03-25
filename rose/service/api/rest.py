@@ -63,6 +63,7 @@ __license__ = "MIT"
 
 import asyncio
 import logging
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -243,6 +244,7 @@ class RoseSession(PluginSession):
             wf.state = WorkflowState.CANCELED
             wf.end_time = time.time()
             log.info(f"[{self.sid}] Workflow {wf_id} canceled")
+            raise
 
         except Exception as e:
             wf.state = WorkflowState.FAILED
@@ -352,13 +354,50 @@ class RoseSession(PluginSession):
                 task.cancel()
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._learner_tasks.clear()
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                log.warning("[%s] Timed out waiting for learner tasks to cancel", self.sid)
+        self._learner_tasks.clear()
 
         # Shutdown engine
         if self._engine:
-            await self._engine.shutdown()
+            # Snapshot existing tasks so we can drain asyncflow's leftovers afterwards
+            current = asyncio.current_task()
+            pre_shutdown_tasks = set(asyncio.all_tasks()) - {current}
+
+            try:
+                await asyncio.wait_for(self._engine.shutdown(), timeout=5.0)
+            except asyncio.TimeoutError:
+                log.warning("[%s] Engine shutdown timed out, forcing exit", self.sid)
             self._engine = None
+
+            # asyncflow registers SIGINT/SIGTERM/SIGHUP via loop.add_signal_handler(),
+            # replacing uvicorn's own handlers and never restoring them.  Remove them
+            # so that the next Ctrl-C / SIGTERM is handled by uvicorn as normal.
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.remove_signal_handler(sig)
+                except Exception:
+                    pass
+
+            # asyncflow's cancel_all_tasks() cancels futures but never awaits them,
+            # leaving cancelled tasks in the event-loop queue.  Drain them now so the
+            # loop is clean and uvicorn can exit without spurious delays.
+            leftover = [
+                t
+                for t in asyncio.all_tasks()
+                if t is not current and t not in pre_shutdown_tasks and not t.done()
+            ]
+            if leftover:
+                log.debug("[%s] Draining %d leftover engine tasks", self.sid, len(leftover))
+                for t in leftover:
+                    t.cancel()
+                await asyncio.gather(*leftover, return_exceptions=True)
 
         return await super().close()
 
@@ -541,6 +580,19 @@ class PluginRose(Plugin):
         self.add_route_post("cancel/{sid}/{wf_id}", self.cancel_workflow)
 
         self._log_routes()
+        app.add_event_handler("shutdown", self._on_shutdown)
+
+    # --------------------------------------------------------------------------
+    #
+    async def _on_shutdown(self) -> None:
+        """Close all active sessions when the FastAPI app shuts down."""
+        log.info("[rose] Shutting down %d active session(s)...", len(self._sessions))
+        for session in list(self._sessions.values()):
+            try:
+                await asyncio.wait_for(session.close(), timeout=10.0)
+            except (asyncio.TimeoutError, Exception) as exc:
+                log.warning("[rose] Session %s close error during shutdown: %s", session.sid, exc)
+        log.info("[rose] All sessions closed")
 
     # --------------------------------------------------------------------------
     #
