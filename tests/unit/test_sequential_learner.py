@@ -28,9 +28,7 @@ class TestSequentialActiveLearner:
         """Create a fully configured SequentialActiveLearner for testing."""
         sequential_learner.simulation_function = AsyncMock(return_value="sim_result")
         sequential_learner.training_function = AsyncMock(return_value="train_result")
-        sequential_learner.active_learn_function = AsyncMock(
-            return_value="active_result"
-        )
+        sequential_learner.active_learn_function = AsyncMock(return_value="active_result")
         sequential_learner.criterion_function = AsyncMock(return_value=False)
 
         # Mock the parent class methods
@@ -193,3 +191,41 @@ class TestSequentialActiveLearner:
 
         # Should be stored as pending
         assert configured_learner._pending_config == new_config
+
+    @pytest.mark.asyncio
+    async def test_set_next_config_takes_effect_in_next_iteration(self, configured_learner):
+        """Test that a config set via set_next_config is consumed in the following iteration."""
+        from rose.learner import LearnerConfig, TaskConfig
+
+        new_config = LearnerConfig(training=TaskConfig(kwargs={"--lr": "0.0001"}))
+
+        states = []
+        iteration = 0
+        async for state in configured_learner.start(max_iter=2, skip_pre_loop=True):
+            states.append(state)
+            if iteration == 0:
+                configured_learner.set_next_config(new_config)
+            iteration += 1
+
+        assert len(states) == 2
+        # First iteration uses the initial config (None)
+        assert states[0].current_config is None
+        # Second iteration uses the new config set after the first yield
+        assert states[1].current_config is new_config
+
+    @pytest.mark.asyncio
+    async def test_skip_simulation_step_does_not_register_simulation(self, configured_learner):
+        """Test that skip_simulation_step=True skips registering simulation tasks."""
+        configured_learner._check_stop_criterion.return_value = (True, 0.01)
+
+        async for _ in configured_learner.start(
+            max_iter=0, skip_pre_loop=True, skip_simulation_step=True
+        ):
+            pass
+
+        # Every _register_task call should NOT have used simulation_function
+        for call in configured_learner._register_task.call_args_list:
+            args, _ = call
+            if args:
+                task_obj = args[0]
+                assert task_obj is not configured_learner.simulation_function

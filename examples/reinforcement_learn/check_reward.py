@@ -1,9 +1,11 @@
-import gym
-import torch
-import numpy as np
-import sys
 import os
+import sys
+
+import gym
+import numpy as np
+import torch
 from model import QNetwork
+
 
 def reward(work_dir="."):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,7 +27,7 @@ def reward(work_dir="."):
 
     episode_rewards = []
 
-    for ep in range(EPISODES):
+    for _ in range(EPISODES):
         state, _ = env.reset()
         done = False
         total_reward = 0
@@ -45,6 +47,7 @@ def reward(work_dir="."):
     env.close()
     mean_reward = np.mean(episode_rewards)
     print(f"{mean_reward:.2f}")
+
 
 if __name__ == "__main__":
     work_dir = sys.argv[1] if len(sys.argv) > 1 else "."

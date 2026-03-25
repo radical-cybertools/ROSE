@@ -11,6 +11,10 @@ ROSE leverages [**RADICAL-Cybertools**](https://radical-cybertools.github.io), a
 ROSE allows you to enable, scale, and accelerate your learning workflows across thousands of CPU cores and GPUs effectively and efficiently with just a few lines of code.
 ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.io/radical.asyncflow/) and [**RADICAL-Pilot**](https://github.com/radical-cybertools/radical.pilot) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, functions and containers effortlessly.
 
+**Preemption-safe on HPC.** Every completed iteration is written to disk before the next one starts. If the job is killed mid-run, all completed iterations are already on disk — inspect them, resume from the last checkpoint, and never rerun a finished iteration.
+
+**Clean separation of control and observability.** Your `async for` loop contains only decisions — `break`, `set_next_config()`, application logic. Tracking (MLflow, ClearML, file-based) is wired once with `learner.add_tracker(...)` and fires automatically at every lifecycle point. No tracking code belongs in the control loop.
+
 
 <figure markdown="span" style="position: relative;">
   <img src="assets/rose_mind_flow.png" alt="">
@@ -20,7 +24,7 @@ ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.i
 
 ## Key Features ⭐⭐⭐
 
-- **Express, build and run** different surrogate building worklfows on HPC such as Active, and Reinforcement Learning workflows in minutes.
+- **Express, build and run** different surrogate building workflows on HPC such as Active, and Reinforcement Learning workflows in minutes.
 - **Seamless Execution of Complex ML surrogate building Workflows on HPC** across diverse computing platforms:
     - Local desktops and laptops
     - Local and remote clusters and grids

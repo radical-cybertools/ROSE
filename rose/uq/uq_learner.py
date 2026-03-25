@@ -1,13 +1,11 @@
-import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import typeguard
 from radical.asyncflow import WorkflowEngine
 
 from ..learner import Learner, LearnerConfig, TaskConfig
-
-logger = logging.getLogger(__name__)
 
 
 class UQLearnerConfig(LearnerConfig):
@@ -18,16 +16,14 @@ class UQLearnerConfig(LearnerConfig):
             or a dictionary mapping iteration numbers to TaskConfig objects.
     """
 
-    uncertainty: Optional[Union[TaskConfig, dict[int, TaskConfig]]] = None
+    uncertainty: TaskConfig | dict[int, TaskConfig] | None = None
 
 
 class UQLearner(Learner):
-    """UQ active learner that runs iterations one after another.
-    This class implements a sequential active learning approach based
-    on Uncertainty Quantification.
-    Each iteration consists of simulation, a set of training and prediction steps,
-    and active learning phases executed in sequence.
-    The learner can be configured with per-iteration parameters using UQLearnerConfig.
+    """UQ active learner that runs iterations one after another. This class implements a sequential
+    active learning approach based on Uncertainty Quantification. Each iteration consists of
+    simulation, a set of training and prediction steps, and active learning phases executed in
+    sequence. The learner can be configured with per-iteration parameters using UQLearnerConfig.
 
     Attributes:
         learner_name (Optional[str])    :   Identifier for the learner.
@@ -42,7 +38,6 @@ class UQLearner(Learner):
 
         Args:
             asyncflow: The workflow engine instance for managing async tasks.
-
         """
         super().__init__(asyncflow, register_and_submit=False)
 
@@ -135,9 +130,7 @@ class UQLearner(Learner):
         try:
             uncertainty_value: float = float(uncertainty_task_result)
         except Exception as e:
-            raise Exception(
-                f"Failed to obtain a numerical value from criterion task: {e}"
-            ) from e
+            raise Exception(f"Failed to obtain a numerical value from criterion task: {e}") from e
 
         # check if the metric value is a number
         if isinstance(uncertainty_value, (float, int)):
@@ -148,20 +141,15 @@ class UQLearner(Learner):
             self.uncertainty_values_per_iteration[self.iteration] = uncertainty_value
             self.iteration += 1
 
-            if self.compare_metric(
-                uq_metric_name, uncertainty_value, threshold, operator
-            ):
-                logger.info(
+            if self.compare_metric(uq_metric_name, uncertainty_value, threshold, operator):
+                print(
                     f"Stop uncertainty metric: {uq_metric_name} "
                     f"is met with value of: {uncertainty_value} "
                     ". Breaking the active learning loop"
                 )
                 return True, uncertainty_value
             else:
-                logger.info(
-                    f"Uncertainty metric: {uq_metric_name} "
-                    f"is not met yet ({uncertainty_value})."
-                )
+                print(f"Uncertainty metric: {uq_metric_name} is not met yet ({uncertainty_value}).")
                 return False, uncertainty_value
         else:
             raise TypeError(
