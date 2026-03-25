@@ -220,7 +220,7 @@ class ServiceManager:
 
                 req_file.unlink()
 
-            except Exception as e:
+            except Exception:
                 logger.exception("Error processing request {req_file}")
                 try:
                     req_file.unlink()

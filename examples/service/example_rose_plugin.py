@@ -38,7 +38,7 @@ logging.basicConfig(
 )
 
 # Reduce noise from HTTP libraries
-for name in ['httpx', 'httpcore', 'urllib3', 'hpack']:
+for name in ["httpx", "httpcore", "urllib3", "hpack"]:
     logging.getLogger(name).setLevel(logging.WARNING)
 
 log = logging.getLogger("rose.example")
@@ -46,41 +46,40 @@ log = logging.getLogger("rose.example")
 
 def on_state_change(topic: str, data: dict):
     """Callback for workflow state change notifications."""
-    wf_id = data.get('wf_id', '?')
-    state = data.get('state', '?')
-    stats = data.get('stats', {})
+    wf_id = data.get("wf_id", "?")
+    state = data.get("state", "?")
+    stats = data.get("stats", {})
 
     if stats:
-        iteration = stats.get('iteration', '-')
-        metric = stats.get('metric_value', '-')
-        log.info(f'[{wf_id}] {state} (iteration={iteration}, metric={metric})')
+        iteration = stats.get("iteration", "-")
+        metric = stats.get("metric_value", "-")
+        log.info(f"[{wf_id}] {state} (iteration={iteration}, metric={metric})")
     elif wf_id and state:
-        log.info(f'[{wf_id}] {state}')
+        log.info(f"[{wf_id}] {state}")
     else:
         log.info(f"[NOTIFY] {topic}: {data}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Submit ROSE workflow via RADICAL-Edge plugin',
+        description="Submit ROSE workflow via RADICAL-Edge plugin",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
     parser.add_argument(
-        '--workflow', '-w',
-        default='debug_workflow.yaml',
-        help='Path to workflow YAML file (default: debug_workflow.yaml)'
+        "--workflow",
+        "-w",
+        default="debug_workflow.yaml",
+        help="Path to workflow YAML file (default: debug_workflow.yaml)",
     )
     parser.add_argument(
-        '--bridge-url', '-b',
-        default=os.environ.get('RADICAL_BRIDGE_URL', 'https://localhost:8443'),
-        help='Bridge URL (default: $RADICAL_BRIDGE_URL or https://localhost:8443)'
+        "--bridge-url",
+        "-b",
+        default=os.environ.get("RADICAL_BRIDGE_URL", "https://localhost:8443"),
+        help="Bridge URL (default: $RADICAL_BRIDGE_URL or https://localhost:8443)",
     )
     parser.add_argument(
-        '--timeout', '-t',
-        type=int,
-        default=300,
-        help='Timeout in seconds (default: 300)'
+        "--timeout", "-t", type=int, default=300, help="Timeout in seconds (default: 300)"
     )
     args = parser.parse_args()
 
@@ -100,6 +99,7 @@ def main():
 
     # Import dependencies
     from radical.edge import BridgeClient
+
     import rose.service.api.rest  # Register ROSE plugin client class
 
     # Connect to bridge
@@ -143,7 +143,6 @@ def main():
         last_state = None
 
         while time.time() - start_time < args.timeout:
-
             time.sleep(2)
 
             try:
@@ -159,19 +158,19 @@ def main():
             except Exception as e:
                 log.warning(f"Status error: {e}")
 
-            state = status.get('state', 'UNKNOWN')
+            state = status.get("state", "UNKNOWN")
 
             if state in terminal:
-                log.info('-' * 50)
-                if state == 'COMPLETED':
-                    log.info(f'Workflow {wf_id} completed successfully')
-                elif state == 'FAILED':
-                    log.error(f'Workflow {wf_id} failed: {status.get("error")}')
+                log.info("-" * 50)
+                if state == "COMPLETED":
+                    log.info(f"Workflow {wf_id} completed successfully")
+                elif state == "FAILED":
+                    log.error(f"Workflow {wf_id} failed: {status.get('error')}")
                 else:
-                    log.warning(f'Workflow {wf_id} was canceled')
+                    log.warning(f"Workflow {wf_id} was canceled")
                 break
         else:
-            log.warning(f'Timeout after {args.timeout}s')
+            log.warning(f"Timeout after {args.timeout}s")
 
         # Show final workflow list
         log.info("-" * 60)
@@ -179,7 +178,7 @@ def main():
             log.info(f"  {wid}: {info.get('state')}")
 
     except KeyboardInterrupt:
-        log.warning('Interrupted by user')
+        log.warning("Interrupted by user")
 
     finally:
         rose.off_workflow_state(on_state_change)
