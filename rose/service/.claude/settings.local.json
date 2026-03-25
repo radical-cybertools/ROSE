@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(python -c:*)",
+      "Bash(source:*)",
+      "Bash(ruff check:*)",
+      "Bash(python3:*)",
+      "Bash(pip show:*)",
+      "Bash(pkill:*)",
+      "Bash(pgrep:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}
