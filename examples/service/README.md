@@ -14,6 +14,7 @@ The service uses file-based IPC: the manager polls a local directory for request
 | `run_service.py` | Integration example: launches, submits, monitors, and shuts down programmatically |
 | `verify_service.py` | Demonstrates workflow cancellation flow |
 | `example_rose_plugin.py` | REST API example using RADICAL-Edge plugin |
+| `example_minimal.py` | Minimal example (30 lines) for quick reference |
 
 ---
 
@@ -268,4 +269,5 @@ python example_rose_plugin.py --workflow debug_workflow.yaml
 | File | Description |
 |------|-------------|
 | `example_rose_plugin.py` | REST API example using RADICAL-Edge plugin |
+| `example_minimal.py` | Minimal example (30 lines) for quick reference |
 | `debug_workflow.yaml` | Fast test workflow (2 iterations, ~6 seconds) |
