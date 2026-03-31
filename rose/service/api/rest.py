@@ -63,6 +63,7 @@ __license__ = "MIT"
 
 import asyncio
 import logging
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -218,17 +219,14 @@ class RoseSession(PluginSession):
             wf.start_time = time.time()
             self._notify_state(wf)
 
-            log.info("[{self.sid}] Running workflow {wf_id}")
+            log.info(f"[{self.sid}] Running workflow {wf_id}")
 
             def on_iteration(state):
                 wf.stats = state.to_dict() if hasattr(state, "to_dict") else {"result": str(state)}
                 log.info(
-                    "[%s] %s learner %s, iteration %s (metric=%s)",
-                    self.sid,
-                    wf_id,
-                    getattr(state, "learner_id", "?"),
-                    getattr(state, "iteration", "?"),
-                    getattr(state, "metric_value", "?"),
+                    f"[{self.sid}] {wf_id} learner {getattr(state, 'learner_id', '?')},"
+                    f" iteration {getattr(state, 'iteration', '?')}"
+                    f" (metric={getattr(state, 'metric_value', '?')})"
                 )
                 self._notify_state(wf)
 
@@ -243,12 +241,13 @@ class RoseSession(PluginSession):
             wf.state = WorkflowState.CANCELED
             wf.end_time = time.time()
             log.info(f"[{self.sid}] Workflow {wf_id} canceled")
+            raise
 
         except Exception as e:
             wf.state = WorkflowState.FAILED
             wf.error = str(e)
             wf.end_time = time.time()
-            log.exception("[{self.sid}] Workflow {wf_id} failed")
+            log.exception(f"[{self.sid}] Workflow {wf_id} failed")
 
         finally:
             self._notify_state(wf)
@@ -353,13 +352,50 @@ class RoseSession(PluginSession):
                 task.cancel()
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._learner_tasks.clear()
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                log.warning(f"[{self.sid}] Timed out waiting for learner tasks to cancel")
+        self._learner_tasks.clear()
 
         # Shutdown engine
         if self._engine:
-            await self._engine.shutdown()
+            # Snapshot existing tasks so we can drain asyncflow's leftovers afterwards
+            current = asyncio.current_task()
+            pre_shutdown_tasks = set(asyncio.all_tasks()) - {current}
+
+            try:
+                await asyncio.wait_for(self._engine.shutdown(), timeout=5.0)
+            except asyncio.TimeoutError:
+                log.warning(f"[{self.sid}] Engine shutdown timed out, forcing exit")
             self._engine = None
+
+            # asyncflow registers SIGINT/SIGTERM/SIGHUP via loop.add_signal_handler(),
+            # replacing uvicorn's own handlers and never restoring them.  Remove them
+            # so that the next Ctrl-C / SIGTERM is handled by uvicorn as normal.
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.remove_signal_handler(sig)
+                except Exception:
+                    pass
+
+            # asyncflow's cancel_all_tasks() cancels futures but never awaits them,
+            # leaving cancelled tasks in the event-loop queue.  Drain them now so the
+            # loop is clean and uvicorn can exit without spurious delays.
+            leftover = [
+                t
+                for t in asyncio.all_tasks()
+                if t is not current and t not in pre_shutdown_tasks and not t.done()
+            ]
+            if leftover:
+                log.debug(f"[{self.sid}] Draining {len(leftover)} leftover engine tasks")
+                for t in leftover:
+                    t.cancel()
+                await asyncio.gather(*leftover, return_exceptions=True)
 
         return await super().close()
 
@@ -542,6 +578,19 @@ class PluginRose(Plugin):
         self.add_route_post("cancel/{sid}/{wf_id}", self.cancel_workflow)
 
         self._log_routes()
+        app.add_event_handler("shutdown", self._on_shutdown)
+
+    # --------------------------------------------------------------------------
+    #
+    async def _on_shutdown(self) -> None:
+        """Close all active sessions when the FastAPI app shuts down."""
+        log.info(f"[rose] Shutting down {len(self._sessions)} active session(s)...")
+        for session in list(self._sessions.values()):
+            try:
+                await asyncio.wait_for(session.close(), timeout=10.0)
+            except (asyncio.TimeoutError, Exception) as exc:
+                log.warning(f"[rose] Session {session.sid} close error during shutdown: {exc}")
+        log.info("[rose] All sessions closed")
 
     # --------------------------------------------------------------------------
     #
