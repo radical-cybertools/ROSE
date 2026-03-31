@@ -260,8 +260,7 @@ class RoseSession(PluginSession):
         if self._plugin:
             self._plugin._dispatch_notify(
                 "workflow_state",
-                {"wf_id": wf.wf_id, "state": wf.state.value,
-                 "stats": wf.stats, "error": wf.error},
+                {"wf_id": wf.wf_id, "state": wf.state.value, "stats": wf.stats, "error": wf.error},
             )
 
     # --------------------------------------------------------------------------

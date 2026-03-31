@@ -277,7 +277,8 @@ class TestRoseSession:
 
     @pytest.mark.asyncio
     async def test_submit_workflow_dispatches_submitted_notification(
-            self, rose_session, sample_workflow_yaml):
+        self, rose_session, sample_workflow_yaml
+    ):
         """submit_workflow fires a SUBMITTED workflow_state notification."""
         mock_plugin = MagicMock()
         rose_session._plugin = mock_plugin
@@ -327,6 +328,7 @@ class TestRoseSession:
 
         # Minimal fake learner whose _register_task calls the callback synchronously
         import concurrent.futures
+
         fut = concurrent.futures.Future()
         fut.set_result("ok output")
 
@@ -342,10 +344,13 @@ class TestRoseSession:
         with (
             patch.object(rose_session, "_ensure_engine", new_callable=AsyncMock),
             patch("rose.service.api.rest.WorkflowLoader.load_yaml", return_value={}),
-            patch("rose.service.api.rest.WorkflowLoader.create_learner",
-                  return_value=(mock_learner, {})),
-            patch("rose.service.api.rest.WorkflowLoader.run_learner",
-                  new_callable=AsyncMock) as mock_run,
+            patch(
+                "rose.service.api.rest.WorkflowLoader.create_learner",
+                return_value=(mock_learner, {}),
+            ),
+            patch(
+                "rose.service.api.rest.WorkflowLoader.run_learner", new_callable=AsyncMock
+            ) as mock_run,
         ):
             rose_session._engine = Mock()
 
@@ -361,8 +366,7 @@ class TestRoseSession:
 
         # The done-callback fires synchronously on a resolved Future, so
         # _dispatch_notify should have been called with "task_event"
-        calls = [c for c in mock_plugin._dispatch_notify.call_args_list
-                 if c[0][0] == "task_event"]
+        calls = [c for c in mock_plugin._dispatch_notify.call_args_list if c[0][0] == "task_event"]
         assert calls, "Expected at least one task_event notification"
         payload = calls[0][0][1]
         assert payload["wf_id"] == "wf.te01"
