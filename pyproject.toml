@@ -91,6 +91,9 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 
+[tool.setuptools.packages.find]
+where = ["rose"]
+
 [tool.coverage.run]
 source = ["rose"]
 omit = ["tests/*"]
