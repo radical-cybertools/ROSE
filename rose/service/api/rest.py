@@ -155,8 +155,8 @@ class RoseSession(PluginSession):
         self._workflows[wf_id] = wf
 
         # Notify submission
-        if self._notify:
-            self._notify(
+        if self._plugin:
+            self._plugin._dispatch_notify(
                 "workflow_state",
                 {"wf_id": wf_id, "state": "SUBMITTED", "workflow_file": workflow_file},
             )
@@ -203,8 +203,8 @@ class RoseSession(PluginSession):
                     excerpt = next((line.strip() for line in raw.splitlines() if line.strip()), "")[
                         :120
                     ]
-                    if self._notify:
-                        self._notify(
+                    if self._plugin:
+                        self._plugin._dispatch_notify(
                             "task_event",
                             {"wf_id": wf_id, "task_id": tid, "ok": is_ok, "excerpt": excerpt},
                         )
@@ -257,8 +257,8 @@ class RoseSession(PluginSession):
     #
     def _notify_state(self, wf: Workflow):
         """Send workflow state notification."""
-        if self._notify:
-            self._notify(
+        if self._plugin:
+            self._plugin._dispatch_notify(
                 "workflow_state",
                 {"wf_id": wf.wf_id, "state": wf.state.value, "stats": wf.stats, "error": wf.error},
             )

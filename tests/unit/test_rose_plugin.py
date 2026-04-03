@@ -271,6 +271,107 @@ class TestRoseSession:
         with pytest.raises(RuntimeError, match="session is closed"):
             await rose_session.list_workflows()
 
+    # ------------------------------------------------------------------
+    # Notification (_dispatch_notify) tests
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_submit_workflow_dispatches_submitted_notification(
+        self, rose_session, sample_workflow_yaml
+    ):
+        """submit_workflow fires a SUBMITTED workflow_state notification."""
+        mock_plugin = MagicMock()
+        rose_session._plugin = mock_plugin
+
+        with (
+            patch.object(rose_session, "_ensure_engine", new_callable=AsyncMock),
+            patch.object(rose_session, "_run_workflow", new_callable=AsyncMock),
+        ):
+            rose_session._engine = Mock()
+            result = await rose_session.submit_workflow(sample_workflow_yaml)
+
+        wf_id = result["wf_id"]
+        mock_plugin._dispatch_notify.assert_called_once_with(
+            "workflow_state",
+            {"wf_id": wf_id, "state": "SUBMITTED", "workflow_file": sample_workflow_yaml},
+        )
+
+    @pytest.mark.asyncio
+    async def test_notify_state_calls_dispatch_notify(self, rose_session):
+        """_notify_state sends the current workflow state via _dispatch_notify."""
+        mock_plugin = MagicMock()
+        rose_session._plugin = mock_plugin
+
+        wf = Workflow(wf_id="wf.ns01", state=WorkflowState.RUNNING)
+        wf.stats = {"iteration": 3}
+        rose_session._workflows["wf.ns01"] = wf
+
+        rose_session._notify_state(wf)
+
+        mock_plugin._dispatch_notify.assert_called_once_with(
+            "workflow_state",
+            {"wf_id": "wf.ns01", "state": "RUNNING", "stats": {"iteration": 3}, "error": None},
+        )
+
+    @pytest.mark.asyncio
+    async def test_notify_state_no_plugin_does_not_raise(self, rose_session):
+        """_notify_state is a no-op when _plugin is None (e.g. in bare unit tests)."""
+        wf = Workflow(wf_id="wf.nop", state=WorkflowState.SUBMITTED)
+        # _plugin is None by default — must not raise AttributeError
+        rose_session._notify_state(wf)
+
+    @pytest.mark.asyncio
+    async def test_task_event_dispatched_via_plugin(self, rose_session):
+        """_run_workflow wraps learner tasks and fires task_event notifications."""
+        mock_plugin = MagicMock()
+        rose_session._plugin = mock_plugin
+
+        # Minimal fake learner whose _register_task calls the callback synchronously
+        import concurrent.futures
+
+        fut = concurrent.futures.Future()
+        fut.set_result("ok output")
+
+        orig_calls = []
+
+        def fake_register(task_obj, deps=None):
+            orig_calls.append(task_obj)
+            return fut
+
+        mock_learner = Mock()
+        mock_learner._register_task = fake_register
+
+        with (
+            patch.object(rose_session, "_ensure_engine", new_callable=AsyncMock),
+            patch("rose.service.api.rest.WorkflowLoader.load_yaml", return_value={}),
+            patch(
+                "rose.service.api.rest.WorkflowLoader.create_learner",
+                return_value=(mock_learner, {}),
+            ),
+            patch(
+                "rose.service.api.rest.WorkflowLoader.run_learner", new_callable=AsyncMock
+            ) as mock_run,
+        ):
+            rose_session._engine = Mock()
+
+            # Trigger the patched _register_task wrapper by simulating run_learner
+            async def _side_effect(learner, wf_def, cfg, on_iter):
+                learner._register_task("dummy_task")
+
+            mock_run.side_effect = _side_effect
+
+            wf = Workflow(wf_id="wf.te01", state=WorkflowState.SUBMITTED)
+            rose_session._workflows["wf.te01"] = wf
+            await rose_session._run_workflow(wf)
+
+        # The done-callback fires synchronously on a resolved Future, so
+        # _dispatch_notify should have been called with "task_event"
+        calls = [c for c in mock_plugin._dispatch_notify.call_args_list if c[0][0] == "task_event"]
+        assert calls, "Expected at least one task_event notification"
+        payload = calls[0][0][1]
+        assert payload["wf_id"] == "wf.te01"
+        assert payload["ok"] is True
+
 
 # -----------------------------------------------------------------------------
 # RoseClient Tests
