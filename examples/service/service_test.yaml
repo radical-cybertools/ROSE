@@ -1,0 +1,23 @@
+learner:
+  type: SequentialActiveLearner
+
+components:
+  simulation:
+    type: script
+    path: /bin/echo
+    config:
+      args: ["Simulation Step"]
+  training:
+    type: script
+    path: /bin/echo
+    config:
+      args: ["Training Step"]
+  active_learn:
+    type: script
+    path: /bin/echo
+    config:
+      args: ["AL Step"]
+
+config:
+  max_iterations: 3
+  work_dir: /tmp/rose_test

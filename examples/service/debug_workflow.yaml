@@ -1,0 +1,39 @@
+# Debug Workflow for ROSE Plugin Testing
+#
+# This workflow uses simple echo commands to quickly test
+# the ROSE service and plugin without heavy computation.
+#
+# Usage:
+#   python example_rose_client.py --workflow debug_workflow.yaml
+
+learner:
+  type: SequentialActiveLearner
+
+components:
+  simulation:
+    type: script
+    path: /bin/bash
+    config:
+      args:
+        - "-c"
+        - "echo '[SIM] Iteration $ROSE_ITERATION' && sleep 1"
+
+  training:
+    type: script
+    path: /bin/bash
+    config:
+      args:
+        - "-c"
+        - "echo '[TRAIN] Training model...' && sleep 1"
+
+  active_learn:
+    type: script
+    path: /bin/bash
+    config:
+      args:
+        - "-c"
+        - "echo '[AL] Active learning step' && sleep 1"
+
+config:
+  max_iterations: 2
+  work_dir: /tmp/rose_debug
