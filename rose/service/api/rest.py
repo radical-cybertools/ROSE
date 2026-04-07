@@ -577,7 +577,7 @@ class PluginRose(Plugin):
         self.add_route_post("cancel/{sid}/{wf_id}", self.cancel_workflow)
 
         self._log_routes()
-        app.add_event_handler("shutdown", self._on_shutdown)
+        app.router.on_shutdown.append(self._on_shutdown)
 
     # --------------------------------------------------------------------------
     #
