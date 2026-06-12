@@ -39,6 +39,46 @@ def test_taskdef_extra_field_rejected():
         TaskDef(type="shell", command="x", unknown_field="y")
 
 
+def test_taskdef_task_description_roundtrip():
+    t = TaskDef(type="shell", command="python sim.py", task_description={"cpu_count": 4, "gpu_count": 1})
+    assert t.task_description == {"cpu_count": 4, "gpu_count": 1}
+
+
+def test_taskdef_task_description_defaults_none():
+    t = TaskDef(type="shell", command="x")
+    assert t.task_description is None
+
+
+def test_sequential_spec_task_description_from_yaml(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: shell
+          command: python sim.py
+          task_description:
+            cpu_count: 8
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "td.yaml"
+    p.write_text(yaml)
+    cfg = SpecConfig.from_yaml(p)
+    assert cfg.simulation.task_description == {"cpu_count": 8}
+    assert cfg.training.task_description is None
+
+
 # ── SpecConfig — sequential learner ──────────────────────────────────────────
 
 SEQ_YAML = textwrap.dedent("""\

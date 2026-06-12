@@ -8,9 +8,10 @@ from .schema import RemoteConfig, TaskDef
 class TaskAdapterFactory:
     @staticmethod
     def make_closure(task_def: TaskDef, remote: RemoteConfig) -> Callable:
+        td = dict(task_def.task_description or {})
         if task_def.type == "shell":
-            return _make_shell_closure(task_def.command)
-        return _make_python_closure(task_def.function, remote.pythonpath)
+            return _make_shell_closure(task_def.command, td)
+        return _make_python_closure(task_def.function, remote.pythonpath, td)
 
     @staticmethod
     def as_executable(task_def: TaskDef) -> bool:
@@ -22,33 +23,38 @@ class TaskAdapterFactory:
         task_defs: list[TaskDef],
         remote: RemoteConfig,
     ) -> Callable:
-        """Dispatch closure for parallel learners: routes per-candidate based on learner_id kwarg."""
+        """Dispatch closure for parallel learners: routes per-candidate based on learner_id kwarg.
+        task_description uses the first candidate's value — asyncflow reads it once at registration."""
+        td = dict(task_defs[0].task_description or {})
         if task_defs[0].type == "shell":
             return _make_shell_dispatch(
-                {i: td.command for i, td in enumerate(task_defs)}, slot_name
+                {i: tdi.command for i, tdi in enumerate(task_defs)}, slot_name, td
             )
         return _make_python_dispatch(
-            {i: td.function for i, td in enumerate(task_defs)},
+            {i: tdi.function for i, tdi in enumerate(task_defs)},
             list(remote.pythonpath),
             slot_name,
+            td,
         )
 
 
-def _make_shell_closure(command: str) -> Callable:
+def _make_shell_closure(command: str, task_description: dict) -> Callable:
     _cmd = command
+    _td  = task_description
 
-    async def _task(*args, **kwargs) -> str:
+    async def _task(*args, task_description=_td, **kwargs) -> str:
         return _cmd
 
     _task.__name__ = "shell_task"
     return _task
 
 
-def _make_python_closure(spec: str, remote_paths: list[str]) -> Callable:
-    _spec = spec
+def _make_python_closure(spec: str, remote_paths: list[str], task_description: dict) -> Callable:
+    _spec  = spec
     _paths = list(remote_paths)
+    _td    = task_description
 
-    async def _task(*args, **kwargs):
+    async def _task(*args, task_description=_td, **kwargs):
         import importlib as _il
         import inspect as _ins
         import sys as _sys
@@ -65,10 +71,11 @@ def _make_python_closure(spec: str, remote_paths: list[str]) -> Callable:
     return _task
 
 
-def _make_shell_dispatch(cmds: dict[int, str], slot_name: str) -> Callable:
+def _make_shell_dispatch(cmds: dict[int, str], slot_name: str, task_description: dict) -> Callable:
     _cmds = dict(cmds)
+    _td   = task_description
 
-    async def _dispatch(*args, **kwargs) -> str:
+    async def _dispatch(*args, task_description=_td, **kwargs) -> str:
         return _cmds[kwargs.get("learner_id", 0)]
 
     _dispatch.__name__ = f"{slot_name}_dispatch"
@@ -76,12 +83,13 @@ def _make_shell_dispatch(cmds: dict[int, str], slot_name: str) -> Callable:
 
 
 def _make_python_dispatch(
-    specs: dict[int, str], remote_paths: list[str], slot_name: str
+    specs: dict[int, str], remote_paths: list[str], slot_name: str, task_description: dict
 ) -> Callable:
     _specs = dict(specs)
     _paths = list(remote_paths)
+    _td    = task_description
 
-    async def _dispatch(*args, **kwargs):
+    async def _dispatch(*args, task_description=_td, **kwargs):
         import importlib as _il
         import inspect as _ins
         import sys as _sys

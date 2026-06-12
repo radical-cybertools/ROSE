@@ -75,11 +75,18 @@ class LearnerBuilder:
         from rose.learner import LearnerConfig, TaskConfig
 
         required = _REQUIRED_SLOTS[cfg.learner.type]
-        configs = []
+        configs  = []
         max_iter = cfg.learner.max_iter
-        for i, _candidate in enumerate(cfg.candidates):
-            schedule = {n: TaskConfig(kwargs={"learner_id": i}) for n in range(max_iter + 1)}
-            schedule[-1] = TaskConfig(kwargs={"learner_id": i})
+        for i, candidate in enumerate(cfg.candidates):
+            # Build per-iteration TaskConfig kwargs, mirroring how ROSE expects LearnerConfig to work.
+            # learner_id   → dispatch routing key (popped by dispatch closure, never reaches user fn)
+            # iteration    → current iteration n, placed per-entry so get_task_config(slot, n) returns it
+            # learner_label → human-readable candidate name; only added when candidate has a label
+            base = {"learner_id": i}
+            if candidate.label:
+                base["learner_label"] = candidate.label
+            schedule = {n: TaskConfig(kwargs={**base, "iteration": n}) for n in range(max_iter + 1)}
+            schedule[-1] = TaskConfig(kwargs={**base, "iteration": max_iter})
             configs.append(
                 LearnerConfig(**{slot: schedule for slot in required}, criterion=schedule)
             )

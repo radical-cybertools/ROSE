@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -11,6 +11,7 @@ class TaskDef(BaseModel):
     type: Literal["shell", "python"]
     command: str | None = None    # required when type=="shell"
     function: str | None = None   # required when type=="python"; "module:callable"
+    task_description: dict[str, Any] | None = None  # resource hints forwarded to asyncflow backend
 
     model_config = {"extra": "forbid"}
 
