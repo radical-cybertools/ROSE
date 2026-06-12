@@ -36,6 +36,8 @@ mlflow = ["mlflow>=2.0"]
 clearml = ["clearml>=1.14"]
 tracking = ["mlflow>=2.0", "clearml>=1.14"]
 
+spec = ["pyyaml>=6.0"]
+
 # All test deps
 dev = [
     "pytest",

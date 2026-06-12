@@ -1,0 +1,267 @@
+"""Unit tests for rose.spec.schema — YAML validation without any HPC machinery."""
+import textwrap
+
+import pytest
+
+from rose.spec.schema import SpecConfig, TaskDef
+
+
+# ── TaskDef ───────────────────────────────────────────────────────────────────
+
+def test_taskdef_shell_valid():
+    t = TaskDef(type="shell", command="python sim.py")
+    assert t.type == "shell"
+    assert t.command == "python sim.py"
+
+
+def test_taskdef_python_valid():
+    t = TaskDef(type="python", function="mymod.sub:fn")
+    assert t.function == "mymod.sub:fn"
+
+
+def test_taskdef_shell_missing_command():
+    with pytest.raises(ValueError, match="shell task requires 'command'"):
+        TaskDef(type="shell")
+
+
+def test_taskdef_python_missing_function():
+    with pytest.raises(ValueError, match="python task requires 'function'"):
+        TaskDef(type="python")
+
+
+def test_taskdef_python_bad_syntax():
+    with pytest.raises(ValueError, match="module:callable"):
+        TaskDef(type="python", function="mymod.fn")
+
+
+def test_taskdef_extra_field_rejected():
+    with pytest.raises(Exception):
+        TaskDef(type="shell", command="x", unknown_field="y")
+
+
+# ── SpecConfig — sequential learner ──────────────────────────────────────────
+
+SEQ_YAML = textwrap.dedent("""\
+    learner:
+      type: sequential_active_learner
+      max_iter: 5
+
+    simulation:
+      type: shell
+      command: python sim.py
+
+    training:
+      type: python
+      function: mymod:train
+
+    active_learn:
+      type: python
+      function: mymod:select
+
+    stop_criterion:
+      metric: mse
+      threshold: 0.1
+      operator: "<"
+      evaluator:
+        type: python
+        function: mymod:eval_mse
+""")
+
+
+def test_sequential_spec_roundtrip(tmp_path):
+    p = tmp_path / "spec.yaml"
+    p.write_text(SEQ_YAML)
+    cfg = SpecConfig.from_yaml(p)
+    assert cfg.learner.type == "sequential_active_learner"
+    assert cfg.learner.max_iter == 5
+    assert cfg.simulation.command == "python sim.py"
+    assert cfg.training.function == "mymod:train"
+    assert cfg.stop_criterion.metric == "mse"
+    assert cfg.tasks == {
+        "simulation": cfg.simulation,
+        "training":   cfg.training,
+        "active_learn": cfg.active_learn,
+    }
+
+
+def test_sequential_spec_missing_slot(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+        simulation:
+          type: shell
+          command: python sim.py
+        training:
+          type: python
+          function: mymod:train
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="active_learn"):
+        SpecConfig.from_yaml(p)
+
+
+def test_sequential_spec_extra_slot(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+        simulation:
+          type: shell
+          command: python sim.py
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        environment:
+          type: shell
+          command: python env.py
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="Unexpected"):
+        SpecConfig.from_yaml(p)
+
+
+def test_unknown_learner_type(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: unknown_learner
+        simulation:
+          type: shell
+          command: x
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: shell
+            command: x
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="Unknown learner type"):
+        SpecConfig.from_yaml(p)
+
+
+# ── SpecConfig — parallel learner with candidates ────────────────────────────
+
+PAR_YAML = textwrap.dedent("""\
+    learner:
+      type: parallel_active_learner
+      max_iter: 3
+
+    candidates:
+      - label: rf
+        simulation:
+          type: shell
+          command: python sim.py --model rf
+        training:
+          type: python
+          function: mymod:train_rf
+        active_learn:
+          type: python
+          function: mymod:select
+      - label: mlp
+        simulation:
+          type: shell
+          command: python sim.py --model mlp
+        training:
+          type: python
+          function: mymod:train_mlp
+        active_learn:
+          type: python
+          function: mymod:select
+
+    stop_criterion:
+      metric: r2
+      threshold: 0.9
+      operator: ">"
+      evaluator:
+        type: python
+        function: mymod:eval_r2
+""")
+
+
+def test_parallel_candidates_roundtrip(tmp_path):
+    p = tmp_path / "par.yaml"
+    p.write_text(PAR_YAML)
+    cfg = SpecConfig.from_yaml(p)
+    assert len(cfg.candidates) == 2
+    assert cfg.candidates[0].label == "rf"
+    assert cfg.candidates[1].tasks["training"].function == "mymod:train_mlp"
+
+
+def test_parallel_candidate_missing_slot(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        candidates:
+          - label: rf
+            simulation:
+              type: shell
+              command: python sim.py
+            training:
+              type: python
+              function: mymod:train
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="active_learn"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parallel_candidates_mixed_types(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        candidates:
+          - label: a
+            simulation:
+              type: shell
+              command: python sim.py
+            training:
+              type: python
+              function: mymod:train_a
+            active_learn:
+              type: python
+              function: mymod:select
+          - label: b
+            simulation:
+              type: python
+              function: mymod:sim_b
+            training:
+              type: python
+              function: mymod:train_b
+            active_learn:
+              type: python
+              function: mymod:select
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="mixed types"):
+        SpecConfig.from_yaml(p)
