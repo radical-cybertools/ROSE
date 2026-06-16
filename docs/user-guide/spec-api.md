@@ -1,0 +1,585 @@
+# YAML Spec API
+
+The YAML spec API lets you declare a ROSE workflow as a data file instead of Python code. The spec is schema-validated when loaded — missing slots, unknown keys, and type errors are caught before any infrastructure starts. Task functions are plain Python functions with no decorators required. The same spec file works with any ROSE learner type: Active Learning, Reinforcement Learning, or UQ.
+
+---
+
+## Loading a Spec
+
+```python
+from rose.spec import load_spec
+
+spec = load_spec("workflow.yaml")  # validates schema on load
+cfg  = spec.config                 # typed SpecConfig object
+```
+
+`load_spec` raises `ValueError` with a precise message on any schema violation. It does **not** import task modules by default — see [Import Validation](#import-validation) to enable that check.
+
+---
+
+## Sequential Active Learner
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**Python API**
+
+```python
+from rose.al.active_learner import SequentialActiveLearner
+
+acl = SequentialActiveLearner(asyncflow)
+
+@acl.simulation_task(as_executable=False)
+async def simulate(*args, **kwargs):
+    ...  # return simulation result
+
+@acl.training_task(as_executable=False)
+async def train(sim_result, **kwargs):
+    ...  # return trained model
+
+@acl.active_learn_task(as_executable=False)
+async def active_learn(sim_result, model, **kwargs):
+    ...  # return updated dataset
+
+@acl.as_stop_criterion(
+    metric_name="mse",
+    threshold=0.01,
+    operator="<",
+)
+async def check_mse(*args, **kwargs):
+    ...  # return float metric
+
+async for state in acl.start(max_iter=5):
+    print(f"iter {state.iteration}  "
+          f"mse={state.metric_value:.4f}")
+
+await asyncflow.shutdown()
+```
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**YAML Spec**
+
+```yaml
+learner:
+  type: sequential_active_learner
+  max_iter: 5
+
+simulation:
+  type: python
+  function: tasks:simulate
+
+training:
+  type: python
+  function: tasks:train
+
+active_learn:
+  type: python
+  function: tasks:active_learn
+
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse
+```
+
+```python
+# run it
+from rose.spec import load_spec
+from rose.spec.builder import LearnerBuilder
+
+cfg     = load_spec("workflow.yaml").config
+builder = LearnerBuilder(cfg, asyncflow)
+learner = builder.build()
+
+async for state in learner.start(
+    max_iter=cfg.learner.max_iter
+):
+    print(f"iter {state.iteration}  "
+          f"mse={state.metric_value:.4f}")
+```
+
+</div>
+</div>
+
+Task functions referenced by `function: tasks:simulate` are ordinary Python callables in a `tasks.py` module — no ROSE decorators, no async required:
+
+```python
+# tasks.py
+def simulate(*args, **kwargs):
+    ...  # return simulation result
+
+def train(sim_result, **kwargs):
+    ...  # return trained model
+
+def active_learn(sim_result, model, **kwargs):
+    ...  # return updated dataset
+
+def check_mse(*args, **kwargs):
+    ...  # return float metric value
+```
+
+---
+
+## Parallel Learner — Shared Tasks
+
+When all parallel learners run the same task implementations, declare the task slots at the top level exactly as in the sequential case.
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**Python API**
+
+```python
+from rose.al.active_learner import ParallelActiveLearner
+
+pal = ParallelActiveLearner(asyncflow)
+
+@pal.simulation_task(as_executable=False)
+async def simulate(*args, **kwargs):
+    ...
+
+@pal.training_task(as_executable=False)
+async def train(sim_result, **kwargs):
+    ...
+
+@pal.active_learn_task(as_executable=False)
+async def active_learn(sim_result, model, **kwargs):
+    ...
+
+@pal.as_stop_criterion(
+    metric_name="mse",
+    threshold=0.01,
+)
+async def check_mse(*args, **kwargs):
+    ...
+
+async for state in pal.start(
+    parallel_learners=2,
+    max_iter=5,
+):
+    print(f"learner {state.learner_id}  "
+          f"iter {state.iteration}")
+```
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**YAML Spec**
+
+```yaml
+learner:
+  type: parallel_active_learner
+  max_iter: 5
+  parallel_learners: 2
+
+simulation:
+  type: python
+  function: tasks:simulate
+
+training:
+  type: python
+  function: tasks:train
+
+active_learn:
+  type: python
+  function: tasks:active_learn
+
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse
+```
+
+```python
+# run it
+cfg     = load_spec("workflow.yaml").config
+builder = LearnerBuilder(cfg, asyncflow)
+learner = builder.build()
+
+async for state in learner.start(
+    max_iter=cfg.learner.max_iter,
+    parallel_learners=cfg.learner.parallel_learners,
+):
+    print(f"learner {state.learner_id}  "
+          f"iter {state.iteration}")
+```
+
+</div>
+</div>
+
+Each learner receives a unique `learner_id` kwarg (0, 1, …) in its task calls. Task functions can use it to write to isolated files or namespaces.
+
+---
+
+## Parallel Learner — Distinct Tasks (`learners:` block)
+
+When each parallel learner needs its own task implementations — different models, different executables, different command-line flags — use the `learners:` block. Each entry gets a `label` that is injected as `learner_label` into every task kwarg.
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**Python API**
+
+```python
+pal = ParallelActiveLearner(asyncflow)
+
+# Manual routing by learner_id
+TRAIN_CMD = {
+    0: "python train.py --model linear",
+    1: "python train.py --model ridge",
+}
+
+@pal.simulation_task
+async def simulate(*args, **kwargs):
+    return "python sim.py"
+
+@pal.training_task
+async def train(*args, **kwargs):
+    return TRAIN_CMD[kwargs["learner_id"]]
+
+@pal.active_learn_task
+async def active_learn(*args, **kwargs):
+    return "python active_learn.py"
+
+@pal.as_stop_criterion(
+    metric_name="mse", threshold=0.01
+)
+async def check_mse(*args, **kwargs):
+    ...
+
+# Build per-learner configs manually
+from rose.learner import LearnerConfig, TaskConfig
+lcs = [
+    LearnerConfig(
+        simulation={i: TaskConfig(kwargs={"learner_id": i})
+                    for i in range(6)},
+        ...
+    )
+    for lid in range(2)
+]
+
+async for state in pal.start(
+    parallel_learners=2,
+    max_iter=5,
+    learner_configs=lcs,
+):
+    ...
+```
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**YAML Spec**
+
+```yaml
+learner:
+  type: parallel_active_learner
+  max_iter: 5
+
+learners:
+  - label: linear_regression
+    simulation:
+      type: shell
+      command: python sim.py --label a
+    training:
+      type: shell
+      command: python train.py --label a --model linear
+    active_learn:
+      type: shell
+      command: python active_learn.py --label a
+
+  - label: ridge_regression
+    simulation:
+      type: shell
+      command: python sim.py --label b
+    training:
+      type: shell
+      command: python train.py --label b --model ridge
+    active_learn:
+      type: shell
+      command: python active_learn.py --label b
+
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse
+```
+
+```python
+# run it — builder handles routing + LearnerConfig
+cfg     = load_spec("workflow.yaml").config
+builder = LearnerBuilder(cfg, asyncflow)
+learner = builder.build()
+lcs     = builder.build_learner_configs()
+
+async for state in learner.start(
+    max_iter=cfg.learner.max_iter,
+    parallel_learners=len(lcs),
+    learner_configs=lcs,
+):
+    label = cfg.learners[state.learner_id].label
+    print(f"[{label}]  iter {state.iteration}")
+```
+
+</div>
+</div>
+
+The builder creates a single dispatch closure per slot that routes to the correct command or function based on `learner_id`. The `learner_id` kwarg is consumed by the routing layer and never reaches the user function.
+
+!!! note
+    All learners in a `learners:` block must use the same task type (`python` or `shell`) for each slot. Mixed types within a slot are rejected at load time.
+
+---
+
+## Task Types
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**`type: python`**
+
+Calls a Python function directly on the worker. Data flows in-memory between tasks. Function must be importable via `module:callable` syntax.
+
+```yaml
+simulation:
+  type: python
+  function: my_package.tasks:simulate
+```
+
+```python
+# tasks.py
+def simulate(*args, **kwargs):
+    # receives positional results from
+    # prior tasks as *args
+    return {"X": ..., "y": ...}
+```
+
+The function may be sync or async. The return value is passed as the first positional argument to the next task in the chain.
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**`type: shell`**
+
+Runs a subprocess on the worker. Data flows through files on disk. The command string is the return value — ROSE submits it as an executable.
+
+```yaml
+simulation:
+  type: shell
+  command: python sim.py
+```
+
+With `parameters:` placeholders:
+
+```yaml
+simulation:
+  type: shell
+  command: python sim.py --dataset {dataset}
+```
+
+`{dataset}` is filled from `parameters.dataset` at runtime via `str.format_map(kwargs)`.
+
+The criterion evaluator must print a single float to stdout — ROSE captures stdout as the metric value.
+
+</div>
+</div>
+
+### Resource hints (`task_description`)
+
+Both task types accept an optional `task_description` dict forwarded to the execution backend as resource hints (CPU count, GPU count, etc.):
+
+```yaml
+simulation:
+  type: python
+  function: tasks:simulate
+  task_description:
+    cpu_count: 4
+    gpu_count: 1
+```
+
+!!! note
+    For parallel learners using the `learners:` block, all entries must use the same `task_description` for each slot — the backend registers it once at task-registration time.
+
+---
+
+## Stop Criterion
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**Python API**
+
+```python
+@acl.as_stop_criterion(
+    metric_name="mse",
+    threshold=0.01,
+    operator="<",
+    as_executable=False,
+)
+async def check_mse(*args, **kwargs):
+    ...  # return float
+```
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**YAML Spec**
+
+```yaml
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"        # default; also: >, ==, <=, >=
+  evaluator:
+    type: python
+    function: tasks:check_mse
+```
+
+</div>
+</div>
+
+The evaluator function follows the same `*args, **kwargs` convention as task functions. ROSE stops the loop when `metric_value <operator> threshold` is satisfied, or when `max_iter` is reached — whichever comes first.
+
+---
+
+## Parameters
+
+The `parameters:` block defines key-value pairs that are injected into every task's `**kwargs` at every iteration:
+
+```yaml
+parameters:
+  dataset: my_dataset
+  batch_size: 32
+  growing_pool: false
+```
+
+```python
+def simulate(*args, **kwargs):
+    dataset      = kwargs["dataset"]      # "my_dataset"
+    batch_size   = kwargs["batch_size"]   # 32
+    growing_pool = kwargs["growing_pool"] # False
+    iteration    = kwargs["iteration"]    # 0, 1, 2, ...
+    ...
+```
+
+### Reserved keys
+
+The following keys are injected automatically by the builder and must not appear in `parameters:`:
+
+| Key | Available in | Description |
+|-----|-------------|-------------|
+| `iteration` | all tasks | Current loop counter (0-based) |
+| `pythonpath` | all tasks | Contents of `remote.pythonpath` as a list |
+| `learner_id` | parallel tasks | Integer index of the learner (0, 1, …) |
+| `learner_label` | parallel tasks (when `label` set) | Human-readable learner name from `learners[].label` |
+
+---
+
+## Remote Config
+
+```yaml
+remote:
+  pythonpath:
+    - /path/to/my/task/modules
+    - /path/to/shared/utilities
+```
+
+`remote.pythonpath` entries are added to `sys.path` on the remote worker before any task module is imported. They are also injected into every task's `kwargs["pythonpath"]` (as a list), so task functions can construct file paths without duplicating the value in `parameters:`:
+
+```python
+def train(sim_result, **kwargs):
+    pythonpath = kwargs.get("pythonpath", [])
+    base = pythonpath[0] if pythonpath else ""
+    script = Path(base) / "scripts" / "train_model.py"
+    ...
+```
+
+`remote.pythonpath` is the single edit point for the remote worker path — changing it updates both the import path and the kwarg.
+
+---
+
+## Tracking
+
+```yaml
+tracking:
+  backend: mlflow      # mlflow | clearml | none (default)
+  experiment: my-exp   # experiment/project name
+  run_name: run-01     # optional run label
+```
+
+See [MLflow integration](../integrations/mlflow.md) and [ClearML integration](../integrations/clearml.md) for configuration details.
+
+---
+
+## Spec Variants with `workflow_with()`
+
+`workflow_with()` returns a new `WorkflowSpec` with selective overrides applied. The original spec is never mutated:
+
+```python
+base_spec  = load_spec("workflow.yaml")
+test_spec  = base_spec.workflow_with(max_iter=2, parameters={"dataset": "test_ds"})
+large_spec = base_spec.workflow_with(max_iter=50, parameters={"batch_size": 128})
+```
+
+Accepted override keys:
+
+- `parameters` — merged (not replaced) into the existing `parameters:` block
+- Any `learner` field: `max_iter`, `parallel_learners`
+- Any other top-level spec field
+
+Unknown keys raise `ValueError` immediately.
+
+---
+
+## Import Validation
+
+By default, `load_spec` does not import task modules — this is intentional when `remote.pythonpath` points to paths that only exist on the remote worker. To catch `function:` typos locally during development:
+
+```python
+spec = load_spec("workflow.yaml", validate_imports=True)
+```
+
+With `validate_imports=True`, every `module:callable` string is resolved in the current environment. All failures are collected and reported in a single `ValueError` before any infrastructure starts. Use this during development when task files are locally accessible.
+
+---
+
+## Spec Reference
+
+### Top-level keys
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `learner` | object | yes | — | Learner type and loop settings |
+| `learner.type` | string | yes | — | `sequential_active_learner`, `parallel_active_learner`, `sequential_reinforcement_learner`, `uq_active_learner` |
+| `learner.max_iter` | int | no | `0` | Maximum iterations |
+| `learner.parallel_learners` | int | no | `2` | Parallel learner count when `learners:` is absent |
+| `simulation` / `training` / `active_learn` | TaskDef | AL yes | — | Task slots for Active Learning |
+| `environment` / `update` | TaskDef | RL yes | — | Task slots for Reinforcement Learning |
+| `prediction` / `active_learn` / `uncertainty` | TaskDef | UQ yes | — | Task slots for UQ-based AL |
+| `learners` | list | no | — | Per-learner task definitions for heterogeneous parallel |
+| `stop_criterion` | object | yes | — | Stopping condition |
+| `parameters` | dict | no | `{}` | User-defined kwargs injected into all tasks |
+| `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
+| `tracking.backend` | string | no | `none` | `mlflow` / `clearml` / `none` |
+| `tracking.experiment` | string | no | `ROSE-Spec` | Experiment name |
+| `tracking.run_name` | string | no | `null` | Run label |
+
+### TaskDef fields
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `type` | `python` \| `shell` | yes | Task execution mode |
+| `function` | string | if `type: python` | `module:callable` — dotted module path and function name |
+| `command` | string | if `type: shell` | Shell command; supports `{param}` placeholders filled from `parameters:` |
+| `task_description` | dict | no | Resource hints forwarded to the execution backend |

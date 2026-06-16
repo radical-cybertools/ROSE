@@ -23,8 +23,8 @@ class TaskAdapterFactory:
         task_defs: list[TaskDef],
         remote: RemoteConfig,
     ) -> Callable:
-        """Dispatch closure for parallel learners: routes per-candidate based on learner_id kwarg.
-        task_description uses the first candidate's value — asyncflow reads it once at registration."""
+        """Dispatch closure for parallel learners: routes per-learner based on learner_id kwarg.
+        task_description uses the first learner's value — asyncflow reads it once at registration."""
         td = dict(task_defs[0].task_description or {})
         if task_defs[0].type == "shell":
             return _make_shell_dispatch(
@@ -43,7 +43,7 @@ def _make_shell_closure(command: str, task_description: dict) -> Callable:
     _td  = task_description
 
     async def _task(*args, task_description=_td, **kwargs) -> str:
-        return _cmd
+        return _cmd.format_map(kwargs)
 
     _task.__name__ = "shell_task"
     return _task
@@ -76,7 +76,8 @@ def _make_shell_dispatch(cmds: dict[int, str], slot_name: str, task_description:
     _td   = task_description
 
     async def _dispatch(*args, task_description=_td, **kwargs) -> str:
-        return _cmds[kwargs.get("learner_id", 0)]
+        cmd = _cmds[kwargs.get("learner_id", 0)]
+        return cmd.format_map(kwargs)
 
     _dispatch.__name__ = f"{slot_name}_dispatch"
     return _dispatch

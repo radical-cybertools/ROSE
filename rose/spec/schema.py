@@ -6,6 +6,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
+
+
 # ── Task definition ───────────────────────────────────────────────────────────
 class TaskDef(BaseModel):
     type: Literal["shell", "python"]
@@ -51,13 +53,13 @@ _ALL_SLOTS: frozenset[str] = frozenset().union(*_REQUIRED_SLOTS.values())
 class LearnerSpec(BaseModel):
     type: str
     max_iter: int = 0
-    parallel_learners: int = 2    # used only when candidates is absent for parallel types
+    parallel_learners: int = 2    # used only when learners: is absent for parallel types
 
     model_config = {"extra": "forbid"}
 
 
-# ── Per-candidate definition (parallel learners only) ─────────────────────────
-class CandidateDef(BaseModel):
+# ── Per-learner definition (parallel learners only) ───────────────────────────
+class LearnerDef(BaseModel):
     label:        str            = ""
     simulation:   TaskDef | None = None
     training:     TaskDef | None = None
@@ -89,6 +91,12 @@ class TrackingConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+# Keys the builder always injects — users must not put these in parameters:
+_RESERVED_PARAMETER_KEYS: frozenset[str] = frozenset(
+    {"learner_id", "learner_label", "iteration", "pythonpath"}
+)
+
+
 # ── Top-level spec ────────────────────────────────────────────────────────────
 class SpecConfig(BaseModel):
     learner:        LearnerSpec
@@ -101,10 +109,11 @@ class SpecConfig(BaseModel):
     update:         TaskDef | None = None
     prediction:     TaskDef | None = None
     uncertainty:    TaskDef | None = None
-    candidates:     list[CandidateDef] | None = None
+    learners:       list[LearnerDef] | None = None
     stop_criterion: StopCriterionDef
-    remote:         RemoteConfig   = Field(default_factory=RemoteConfig)
-    tracking:       TrackingConfig = Field(default_factory=TrackingConfig)
+    parameters:     dict[str, Any]   = Field(default_factory=dict)
+    remote:         RemoteConfig     = Field(default_factory=RemoteConfig)
+    tracking:       TrackingConfig   = Field(default_factory=TrackingConfig)
 
     model_config = {"extra": "forbid"}
 
@@ -123,20 +132,28 @@ class SpecConfig(BaseModel):
             )
         is_parallel = ltype == "parallel_active_learner"
 
-        if is_parallel and self.candidates is not None:
-            for c in self.candidates:
-                missing = required - set(c.tasks.keys())
+        if is_parallel and self.learners is not None:
+            for l in self.learners:
+                missing = required - set(l.tasks.keys())
                 if missing:
-                    raise ValueError(f"Candidate '{c.label}' missing: {sorted(missing)}")
-                extra = set(c.tasks.keys()) - required
+                    raise ValueError(f"Learner '{l.label}' missing: {sorted(missing)}")
+                extra = set(l.tasks.keys()) - required
                 if extra:
-                    raise ValueError(f"Candidate '{c.label}' unexpected fields: {sorted(extra)}")
+                    raise ValueError(f"Learner '{l.label}' unexpected fields: {sorted(extra)}")
             for slot in required:
-                types = {c.tasks[slot].type for c in self.candidates}
+                types = {l.tasks[slot].type for l in self.learners}
                 if len(types) > 1:
                     raise ValueError(
-                        f"Slot '{slot}' has mixed types across candidates: {types}. "
-                        "All candidates must use the same type for a given slot."
+                        f"Slot '{slot}' has mixed types across learners: {types}. "
+                        "All learners must use the same type for a given slot."
+                    )
+                descs = [dict(l.tasks[slot].task_description or {}) for l in self.learners]
+                if len({str(sorted(d.items())) for d in descs}) > 1:
+                    raise ValueError(
+                        f"Slot '{slot}' has different task_description values across learners. "
+                        "asyncflow registers task_description once per slot at registration time — "
+                        "all learners must use the same value. Use identical task_description "
+                        "across all learners or omit it from all but the first."
                     )
         else:
             present = set(self.tasks.keys())
@@ -146,6 +163,16 @@ class SpecConfig(BaseModel):
             extra = present - required
             if extra:
                 raise ValueError(f"Unexpected task fields for '{ltype}': {sorted(extra)}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_parameters(self) -> "SpecConfig":
+        conflicts = _RESERVED_PARAMETER_KEYS & set(self.parameters.keys())
+        if conflicts:
+            raise ValueError(
+                f"'parameters' must not use reserved keys: {sorted(conflicts)}. "
+                "These are injected automatically by the spec builder."
+            )
         return self
 
     @classmethod

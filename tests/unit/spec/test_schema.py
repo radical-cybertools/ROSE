@@ -196,14 +196,14 @@ def test_unknown_learner_type(tmp_path):
         SpecConfig.from_yaml(p)
 
 
-# ── SpecConfig — parallel learner with candidates ────────────────────────────
+# ── SpecConfig — parallel learner with learners ──────────────────────────────
 
 PAR_YAML = textwrap.dedent("""\
     learner:
       type: parallel_active_learner
       max_iter: 3
 
-    candidates:
+    learners:
       - label: rf
         simulation:
           type: shell
@@ -235,20 +235,20 @@ PAR_YAML = textwrap.dedent("""\
 """)
 
 
-def test_parallel_candidates_roundtrip(tmp_path):
+def test_parallel_learners_roundtrip(tmp_path):
     p = tmp_path / "par.yaml"
     p.write_text(PAR_YAML)
     cfg = SpecConfig.from_yaml(p)
-    assert len(cfg.candidates) == 2
-    assert cfg.candidates[0].label == "rf"
-    assert cfg.candidates[1].tasks["training"].function == "mymod:train_mlp"
+    assert len(cfg.learners) == 2
+    assert cfg.learners[0].label == "rf"
+    assert cfg.learners[1].tasks["training"].function == "mymod:train_mlp"
 
 
-def test_parallel_candidate_missing_slot(tmp_path):
+def test_parallel_learner_missing_slot(tmp_path):
     yaml = textwrap.dedent("""\
         learner:
           type: parallel_active_learner
-        candidates:
+        learners:
           - label: rf
             simulation:
               type: shell
@@ -269,11 +269,297 @@ def test_parallel_candidate_missing_slot(tmp_path):
         SpecConfig.from_yaml(p)
 
 
-def test_parallel_candidates_mixed_types(tmp_path):
+# ── SpecConfig — parameters block ────────────────────────────────────────────
+
+# ── SpecConfig — reserved parameter keys ──────────────────────────────────────
+
+# ── SpecConfig — task_description consistency across parallel learners ────────
+
+def test_parallel_learners_identical_task_description_valid(tmp_path):
     yaml = textwrap.dedent("""\
         learner:
           type: parallel_active_learner
-        candidates:
+        learners:
+          - label: a
+            simulation:
+              type: shell
+              command: python sim.py
+              task_description:
+                cpu_count: 4
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+          - label: b
+            simulation:
+              type: shell
+              command: python sim.py --model b
+              task_description:
+                cpu_count: 4
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "ok.yaml"
+    p.write_text(yaml)
+    cfg = SpecConfig.from_yaml(p)
+    assert len(cfg.learners) == 2
+
+
+def test_parallel_learners_different_task_description_raises(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        learners:
+          - label: a
+            simulation:
+              type: shell
+              command: python sim.py
+              task_description:
+                cpu_count: 4
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+          - label: b
+            simulation:
+              type: shell
+              command: python sim.py
+              task_description:
+                cpu_count: 8
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="task_description"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parallel_learners_one_has_task_description_other_absent_raises(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        learners:
+          - label: a
+            simulation:
+              type: shell
+              command: python sim.py
+              task_description:
+                cpu_count: 4
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+          - label: b
+            simulation:
+              type: shell
+              command: python sim.py
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="task_description"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parameters_reserved_key_pythonpath(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        parameters:
+          pythonpath: /some/path
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="reserved keys"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parameters_reserved_key_iteration(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        parameters:
+          iteration: 5
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="reserved keys"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parameters_reserved_key_learner_id(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        parameters:
+          learner_id: 0
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValueError, match="reserved keys"):
+        SpecConfig.from_yaml(p)
+
+
+def test_parameters_non_reserved_key_allowed(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        parameters:
+          dataset: my_ds
+    """)
+    p = tmp_path / "ok.yaml"
+    p.write_text(yaml)
+    cfg = SpecConfig.from_yaml(p)
+    assert cfg.parameters == {"dataset": "my_ds"}
+
+
+def test_parameters_roundtrip(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 5
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        parameters:
+          dataset: my_ds
+          scale: 1.5
+          growing_pool: false
+    """)
+    p = tmp_path / "params.yaml"
+    p.write_text(yaml)
+    cfg = SpecConfig.from_yaml(p)
+    assert cfg.parameters == {"dataset": "my_ds", "scale": 1.5, "growing_pool": False}
+
+
+def test_parameters_defaults_empty(tmp_path):
+    p = tmp_path / "spec.yaml"
+    p.write_text(SEQ_YAML)
+    cfg = SpecConfig.from_yaml(p)
+    assert cfg.parameters == {}
+
+
+# ── SpecConfig — parallel learners (mixed types) ─────────────────────────────
+
+def test_parallel_learners_mixed_types(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        learners:
           - label: a
             simulation:
               type: shell

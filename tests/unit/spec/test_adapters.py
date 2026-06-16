@@ -121,6 +121,34 @@ def test_python_closure_task_description_in_signature():
     assert sig.parameters["task_description"].default == {"gpu_count": 2}
 
 
+# ── Shell command interpolation ───────────────────────────────────────────────
+
+def test_shell_closure_interpolates_kwargs():
+    td = TaskDef(type="shell", command="python sim.py --dataset {dataset} --n {n}")
+    fn = TaskAdapterFactory.make_closure(td, _remote())
+    result = asyncio.run(fn(dataset="m3dc1", n=42))
+    assert result == "python sim.py --dataset m3dc1 --n 42"
+
+
+def test_shell_closure_no_placeholders_unchanged():
+    td = TaskDef(type="shell", command="python sim.py")
+    fn = TaskAdapterFactory.make_closure(td, _remote())
+    result = asyncio.run(fn(dataset="ignored"))
+    assert result == "python sim.py"
+
+
+def test_shell_dispatch_interpolates_kwargs():
+    tds = [
+        TaskDef(type="shell", command="python sim.py --model rf --dataset {dataset}"),
+        TaskDef(type="shell", command="python sim.py --model mlp --dataset {dataset}"),
+    ]
+    fn = TaskAdapterFactory.make_dispatch_closure("simulation", tds, _remote())
+    assert asyncio.run(fn(learner_id=0, dataset="m3dc1")) == \
+        "python sim.py --model rf --dataset m3dc1"
+    assert asyncio.run(fn(learner_id=1, dataset="test_ds")) == \
+        "python sim.py --model mlp --dataset test_ds"
+
+
 def test_dispatch_closure_task_description_uses_first_candidate():
     tds = [
         TaskDef(type="shell", command="cmd_0", task_description={"cpu_count": 8}),

@@ -75,6 +75,8 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.snippets:
       check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
   - attr_list
   - md_in_html
 
@@ -95,6 +97,8 @@ nav:
       - 8.Experience Banks: user-guide/experience.md
       - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
       - 10.Tracking & Observability: user-guide/tracking.md
+      - 11.YAML Spec API: user-guide/spec-api.md
+      - 12.ROSE as a Service: user-guide/rose-aas.md
   - Integrations:
       - MLflow: integrations/mlflow.md
       - ClearML: integrations/clearml.md
