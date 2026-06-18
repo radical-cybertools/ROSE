@@ -6,10 +6,6 @@ edit_uri: ""
 
 theme:
   name: material
-  features:
-    - navigation.tabs
-    - navigation.sections
-    - toc.integrate
   palette:
       - media: "(prefers-color-scheme: light)"
         scheme: default
@@ -17,14 +13,14 @@ theme:
           icon: material/weather-night
           name: Switch to dark mode
         primary: black
-        accent: indigo
+        accent: pink
       - media: "(prefers-color-scheme: dark)"
         scheme: slate
         toggle:
           icon: material/weather-sunny
           name: Switch to light mode
         primary: black
-        accent: indigo
+        accent: pink
 
   highlightjs: true
   hljs_languages:
@@ -37,6 +33,7 @@ theme:
       - navigation.top
       - navigation.tabs
       - navigation.tabs.sticky
+      - toc.integrate
       - search.highlight
       - search.share
       - search.suggest

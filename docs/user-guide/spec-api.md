@@ -147,7 +147,7 @@ async for state in learner.start(
 </div>
 </div>
 
-Task functions referenced by `function: tasks:simulate` are ordinary Python callables in a `tasks.py` module — no ROSE decorators, no async required:
+Task functions referenced by `function: tasks:simulate` are ordinary Python callables in a `tasks.py` module — no ROSE decorators required:
 
 ```python
 # tasks.py
@@ -406,7 +406,7 @@ def simulate(*args, **kwargs):
     return {"X": ..., "y": ...}
 ```
 
-The function may be sync or async. The return value is passed as the first positional argument to the next task in the chain.
+The function must be async. The return value is passed as the first positional argument to the next task in the chain.
 
 </div>
 <div style="min-width: 0; overflow-x: auto;" markdown>

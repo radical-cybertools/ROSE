@@ -9,7 +9,7 @@ ROSE leverages [**RADICAL-Cybertools**](https://radical-cybertools.github.io), a
 
 ## Why ROSE? 🚀🚀🚀
 ROSE allows you to enable, scale, and accelerate your learning workflows across thousands of CPU cores and GPUs effectively and efficiently with just a few lines of code.
-ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.io/radical.asyncflow/) and [**RADICAL-Pilot**](https://github.com/radical-cybertools/radical.pilot) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, functions and containers effortlessly.
+ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.io/radical.asyncflow/) and [**RHAPSODY**](https://radical-cybertools.github.io/rhapsody/landing.html) runtime system, a powerful execution engine that enables the distributed execution of millions of scientific tasks and applications such as executables, functions and containers effortlessly.
 
 **Preemption-safe on HPC.** Every completed iteration is written to disk before the next one starts. If the job is killed mid-run, all completed iterations are already on disk — inspect them, resume from the last checkpoint, and never rerun a finished iteration.
 
