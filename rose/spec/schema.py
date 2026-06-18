@@ -98,7 +98,7 @@ _RESERVED_PARAMETER_KEYS: frozenset[str] = frozenset(
 
 
 # ── Top-level spec ────────────────────────────────────────────────────────────
-class SpecConfig(BaseModel):
+class WorkflowConfig(BaseModel):
     learner:        LearnerSpec
     # Task slots — explicit fields keep extra="forbid" and enable IDE autocomplete.
     # Access non-None slots as a dict via the .tasks property.
@@ -122,7 +122,7 @@ class SpecConfig(BaseModel):
         return {s: getattr(self, s) for s in _ALL_SLOTS if getattr(self, s) is not None}
 
     @model_validator(mode="after")
-    def _validate_task_slots(self) -> "SpecConfig":
+    def _validate_task_slots(self) -> "WorkflowConfig":
         ltype    = self.learner.type
         required = _REQUIRED_SLOTS.get(ltype)
         if required is None:
@@ -166,7 +166,7 @@ class SpecConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_parameters(self) -> "SpecConfig":
+    def _validate_parameters(self) -> "WorkflowConfig":
         conflicts = _RESERVED_PARAMETER_KEYS & set(self.parameters.keys())
         if conflicts:
             raise ValueError(
@@ -176,7 +176,7 @@ class SpecConfig(BaseModel):
         return self
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "SpecConfig":
+    def from_yaml(cls, path: str | Path) -> "WorkflowConfig":
         import yaml
 
         raw = yaml.safe_load(Path(path).read_text())

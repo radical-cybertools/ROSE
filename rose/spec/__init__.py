@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine
 
 from .builder import LearnerBuilder
-from .schema import SpecConfig
+from .schema import WorkflowConfig
 
 __all__ = ["load_spec", "WorkflowSpec"]
 
@@ -20,13 +20,13 @@ def load_spec(path: str | Path, validate_imports: bool = False) -> "WorkflowSpec
             locally accessible. Leave False (default) when ``remote.pythonpath``
             points to paths that only exist on the remote worker.
     """
-    spec = WorkflowSpec(SpecConfig.from_yaml(path))
+    spec = WorkflowSpec(WorkflowConfig.from_yaml(path))
     if validate_imports:
         _validate_task_imports(spec.config)
     return spec
 
 
-def _collect_python_specs(cfg: "SpecConfig") -> list[str]:
+def _collect_python_specs(cfg: "WorkflowConfig") -> list[str]:
     """Return deduplicated 'module:callable' strings for all Python tasks in the spec."""
     specs: list[str] = []
     if cfg.learners is not None:
@@ -43,7 +43,7 @@ def _collect_python_specs(cfg: "SpecConfig") -> list[str]:
     return list(dict.fromkeys(specs))  # deduplicate, preserve order
 
 
-def _validate_task_imports(cfg: "SpecConfig") -> None:
+def _validate_task_imports(cfg: "WorkflowConfig") -> None:
     """Try to import every Python task callable. Raises ValueError listing all failures."""
     import importlib
     import sys as _sys
@@ -75,7 +75,7 @@ def _validate_task_imports(cfg: "SpecConfig") -> None:
 class WorkflowSpec:
     """Validated workflow spec that produces a coroutine compatible with service_utils.run()."""
 
-    def __init__(self, config: SpecConfig) -> None:
+    def __init__(self, config: WorkflowConfig) -> None:
         self.config = config
 
     def workflow_with(self, **overrides: Any) -> "WorkflowSpec":
@@ -84,7 +84,7 @@ class WorkflowSpec:
         Accepted keys:
         - ``parameters``: dict merged (not replaced) into the existing parameters block
         - Any ``LearnerSpec`` field: ``max_iter``, ``parallel_learners``
-        - Any other top-level ``SpecConfig`` field
+        - Any other top-level ``WorkflowConfig`` field
 
         Example::
 
@@ -101,7 +101,7 @@ class WorkflowSpec:
                 data[key] = value
             else:
                 raise ValueError(f"workflow_with: unknown spec field '{key}'")
-        return WorkflowSpec(SpecConfig.model_validate(data))
+        return WorkflowSpec(WorkflowConfig.model_validate(data))
 
     @property
     def workflow(self) -> Callable[..., Coroutine[Any, Any, None]]:

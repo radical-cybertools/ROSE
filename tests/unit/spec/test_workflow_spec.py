@@ -4,7 +4,7 @@ import textwrap
 import pytest
 
 from rose.spec import WorkflowSpec, load_spec
-from rose.spec.schema import SpecConfig
+from rose.spec.schema import WorkflowConfig
 
 SEQ_YAML = textwrap.dedent("""\
     learner:

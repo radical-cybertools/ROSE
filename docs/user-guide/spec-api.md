@@ -15,14 +15,25 @@ The YAML spec API lets you declare a ROSE workflow as a data file instead of Pyt
 
 ## Loading a Spec
 
+For the common case — build a learner and run it — `LearnerBuilder` loads and validates the YAML itself; you never need to touch a config object:
+
+```python
+from rose.spec.builder import LearnerBuilder
+
+builder = LearnerBuilder("workflow.yaml", asyncflow)  # validates schema on load
+cfg     = builder.config                              # typed WorkflowConfig, if you need it
+```
+
+Reach for `load_spec` instead when you need `WorkflowSpec`-level features: spec variants via [`workflow_with()`](#spec-variants-with-workflow_with), import validation, or the `.workflow` coroutine used by [ROSE as a Service](rose-aas.md):
+
 ```python
 from rose.spec import load_spec
 
 spec = load_spec("workflow.yaml")  # validates schema on load
-cfg  = spec.config                 # typed SpecConfig object
+cfg  = spec.config                 # typed WorkflowConfig object
 ```
 
-`load_spec` raises `ValueError` with a precise message on any schema violation. It does **not** import task modules by default — see [Import Validation](#import-validation) to enable that check.
+Both raise `ValueError` with a precise message on any schema violation. Neither imports task modules by default — see [Import Validation](#import-validation) to enable that check.
 
 ---
 
@@ -120,11 +131,10 @@ stop_criterion:
 
 ```python
 # run it
-from rose.spec import load_spec
 from rose.spec.builder import LearnerBuilder
 
-cfg     = load_spec("workflow.yaml").config
-builder = LearnerBuilder(cfg, asyncflow)
+builder = LearnerBuilder("workflow.yaml", asyncflow)
+cfg     = builder.config
 learner = builder.build()
 
 async for state in learner.start(
@@ -231,8 +241,8 @@ stop_criterion:
 
 ```python
 # run it
-cfg     = load_spec("workflow.yaml").config
-builder = LearnerBuilder(cfg, asyncflow)
+builder = LearnerBuilder("workflow.yaml", asyncflow)
+cfg     = builder.config
 learner = builder.build()
 
 async for state in learner.start(
@@ -349,8 +359,8 @@ stop_criterion:
 
 ```python
 # run it — builder handles routing + LearnerConfig
-cfg     = load_spec("workflow.yaml").config
-builder = LearnerBuilder(cfg, asyncflow)
+builder = LearnerBuilder("workflow.yaml", asyncflow)
+cfg     = builder.config
 learner = builder.build()
 lcs     = builder.build_learner_configs()
 
@@ -403,7 +413,7 @@ The function may be sync or async. The return value is passed as the first posit
 
 **`type: shell`**
 
-Runs a subprocess on the worker. Data flows through files on disk. The command string is the return value — ROSE submits it as an executable.
+Runs in a single or multi-process on the worker. Data flows through files on disk. The command string is the return value — ROSE submits it as an executable.
 
 ```yaml
 simulation:

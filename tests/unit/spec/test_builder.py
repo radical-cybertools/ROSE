@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from rose.spec.schema import SpecConfig
+from rose.spec.schema import WorkflowConfig
 
 
 SEQ_WITH_PARAMS = textwrap.dedent("""\
@@ -93,7 +93,7 @@ PAR_WITH_PARAMS = textwrap.dedent("""\
 def _make_builder(yaml_text, tmp_path):
     p = tmp_path / "spec.yaml"
     p.write_text(yaml_text)
-    cfg = SpecConfig.from_yaml(p)
+    cfg = WorkflowConfig.from_yaml(p)
     from rose.spec.builder import LearnerBuilder
     return LearnerBuilder(cfg, MagicMock())
 

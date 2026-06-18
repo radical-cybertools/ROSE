@@ -8,7 +8,7 @@ from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.spec import load_spec
 from rose.spec.builder import LearnerBuilder
-from rose.spec.schema import SpecConfig
+from rose.spec.schema import WorkflowConfig
 
 
 # ── Sequential AL via YAML ────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ async def test_yaml_sequential_workflow(tmp_path):
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
 
-    cfg = SpecConfig.from_yaml(p)
+    cfg = WorkflowConfig.from_yaml(p)
     builder = LearnerBuilder(cfg, asyncflow)
     learner = builder.build()
 
@@ -118,7 +118,7 @@ async def test_sequential_workflow_parameters_reach_tasks(tmp_path):
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
 
-    cfg = SpecConfig.from_yaml(p)
+    cfg = WorkflowConfig.from_yaml(p)
     builder = LearnerBuilder(cfg, asyncflow)
     learner = builder.build()
 
@@ -193,7 +193,7 @@ async def test_parallel_workflow_parameters_reach_tasks(tmp_path):
     engine = await ConcurrentExecutionBackend(ThreadPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
 
-    cfg = SpecConfig.from_yaml(p)
+    cfg = WorkflowConfig.from_yaml(p)
     builder = LearnerBuilder(cfg, asyncflow)
     learner = builder.build()
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from rose.learner import Learner
 
 from .adapters import TaskAdapterFactory
-from .schema import SpecConfig, TrackingConfig, _REQUIRED_SLOTS
+from .schema import WorkflowConfig, TrackingConfig, _REQUIRED_SLOTS
 
 # Slots that exist as fields on LearnerConfig; uncertainty is required by uq_active_learner
 # but is not a LearnerConfig field — filter it out when constructing LearnerConfig.
@@ -33,8 +35,12 @@ def _get_learner_class(learner_type: str):
 
 
 class LearnerBuilder:
-    def __init__(self, config: SpecConfig, asyncflow) -> None:
-        self.config = config
+    def __init__(self, source: str | Path | WorkflowConfig, asyncflow) -> None:
+        if isinstance(source, (str, Path)):
+            source = WorkflowConfig.from_yaml(source)
+        elif hasattr(source, "config"):  # duck-typed: also accepts a WorkflowSpec
+            source = source.config
+        self.config = source
         self.asyncflow = asyncflow
 
     def build(self) -> Learner:
@@ -59,13 +65,13 @@ class LearnerBuilder:
         _attach_tracker(learner, cfg.tracking)
         return learner
 
-    def _register_flat_tasks(self, learner: Learner, cfg: SpecConfig) -> None:
+    def _register_flat_tasks(self, learner: Learner, cfg: WorkflowConfig) -> None:
         for slot_name, task_def in cfg.tasks.items():
             closure = TaskAdapterFactory.make_closure(task_def, cfg.remote)
             as_exec = TaskAdapterFactory.as_executable(task_def)
             getattr(learner, f"{slot_name}_task")(as_executable=as_exec)(closure)
 
-    def _register_dispatched_tasks(self, learner: Learner, cfg: SpecConfig) -> None:
+    def _register_dispatched_tasks(self, learner: Learner, cfg: WorkflowConfig) -> None:
         required = _REQUIRED_SLOTS[cfg.learner.type]
         for slot_name in required:
             task_defs = [l.tasks[slot_name] for l in cfg.learners]
