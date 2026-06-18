@@ -4,7 +4,7 @@ ROSE supports different Machine Learning (ML) Metrics such as `RMSE`, `MAE`, and
 
 
 ## Standard Metrics
-For a full list of the supported metrics please refer to the following link [ROSE Standard Metrics](https://github.com/radical-cybertools/ROSE/blob/feature/al_algo_selector/rose/metrics.py)
+For a full list of the supported metrics please refer to the following link [ROSE Standard Metrics](https://github.com/radical-cybertools/ROSE/blob/main/rose/metrics.py)
 
 
 ## Custom Metrics
@@ -26,3 +26,8 @@ async def check_metric(*args):
 ```
 
 In this way, ROSE will understand the relation between the custom metric and the target threshold value.
+
+!!! note
+    `metric_name` is just a label used for logging and tracking — ROSE does not validate it
+    against a fixed list. Any string is accepted as long as the decorated function returns a
+    numerical value to compare against `threshold`.

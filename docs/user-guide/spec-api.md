@@ -4,6 +4,15 @@ The YAML spec API lets you declare a ROSE workflow as a data file instead of Pyt
 
 ---
 
+
+!!! note
+    The YAML spec currently supports only the four built-in `learner.type` values listed
+    above. Custom `Learner` subclasses are not yet expressible in YAML — `LearnerBuilder`
+    raises `ValueError` for any other `learner.type` value. Use the Python API
+    (decorator-based, e.g. `SequentialActiveLearner(asyncflow)`) if you need a custom
+    learner implementation.
+
+
 ## Loading a Spec
 
 ```python
@@ -14,6 +23,28 @@ cfg  = spec.config                 # typed SpecConfig object
 ```
 
 `load_spec` raises `ValueError` with a precise message on any schema violation. It does **not** import task modules by default — see [Import Validation](#import-validation) to enable that check.
+
+---
+
+## Resource Specification via `task_description`
+
+Every task — `simulation`, `training`, `active_learn`, `environment`, `update`, … — can
+carry an optional `task_description`. In the Python API this is a parameter on the
+decorated function itself, with a default value:
+
+```python
+@acl.simulation_task(as_executable=False)
+async def simulate(*args, task_description={"process_templates": [(4, {})]}, **kwargs):
+    ...
+```
+
+The accepted keys depend entirely on which execution backend your `asyncflow` session is
+using — see asyncflow's
+[Execution Backends guide](https://radical-cybertools.github.io/radical.asyncflow/exec_backends/?h=task_desc#assign-resources-for-your-application-task)
+for the full per-backend reference.
+
+The YAML spec exposes the same dict as a `task_description:` key on the corresponding task
+slot — see the side-by-side example in [Task Types](#task-types) below.
 
 ---
 
@@ -137,28 +168,28 @@ When all parallel learners run the same task implementations, declare the task s
 ```python
 from rose.al.active_learner import ParallelActiveLearner
 
-pal = ParallelActiveLearner(asyncflow)
+acl = ParallelActiveLearner(asyncflow)
 
-@pal.simulation_task(as_executable=False)
+@acl.simulation_task(as_executable=False)
 async def simulate(*args, **kwargs):
     ...
 
-@pal.training_task(as_executable=False)
+@acl.training_task(as_executable=False)
 async def train(sim_result, **kwargs):
     ...
 
-@pal.active_learn_task(as_executable=False)
+@acl.active_learn_task(as_executable=False)
 async def active_learn(sim_result, model, **kwargs):
     ...
 
-@pal.as_stop_criterion(
+@acl.as_stop_criterion(
     metric_name="mse",
     threshold=0.01,
 )
 async def check_mse(*args, **kwargs):
     ...
 
-async for state in pal.start(
+async for state in acl.start(
     parallel_learners=2,
     max_iter=5,
 ):
@@ -229,7 +260,7 @@ When each parallel learner needs its own task implementations — different mode
 **Python API**
 
 ```python
-pal = ParallelActiveLearner(asyncflow)
+acl = ParallelActiveLearner(asyncflow)
 
 # Manual routing by learner_id
 TRAIN_CMD = {
@@ -237,19 +268,19 @@ TRAIN_CMD = {
     1: "python train.py --model ridge",
 }
 
-@pal.simulation_task
+@acl.simulation_task
 async def simulate(*args, **kwargs):
     return "python sim.py"
 
-@pal.training_task
+@acl.training_task
 async def train(*args, **kwargs):
     return TRAIN_CMD[kwargs["learner_id"]]
 
-@pal.active_learn_task
+@acl.active_learn_task
 async def active_learn(*args, **kwargs):
     return "python active_learn.py"
 
-@pal.as_stop_criterion(
+@acl.as_stop_criterion(
     metric_name="mse", threshold=0.01
 )
 async def check_mse(*args, **kwargs):
@@ -266,7 +297,7 @@ lcs = [
     for lid in range(2)
 ]
 
-async for state in pal.start(
+async for state in acl.start(
     parallel_learners=2,
     max_iter=5,
     learner_configs=lcs,
@@ -395,18 +426,35 @@ The criterion evaluator must print a single float to stdout — ROSE captures st
 </div>
 </div>
 
-### Resource hints (`task_description`)
+### `task_description` example
 
-Both task types accept an optional `task_description` dict forwarded to the execution backend as resource hints (CPU count, GPU count, etc.):
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; overflow: hidden;" markdown>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**Python API**
+
+```python
+@acl.simulation_task(as_executable=False)
+async def simulate(*args, task_description={"process_templates": [(4, {})]}, **kwargs):
+    ...
+```
+
+</div>
+<div style="min-width: 0; overflow-x: auto;" markdown>
+
+**YAML Spec**
 
 ```yaml
 simulation:
   type: python
   function: tasks:simulate
   task_description:
-    cpu_count: 4
-    gpu_count: 1
+    process_templates:
+      - [4, {}]
 ```
+
+</div>
+</div>
 
 !!! note
     For parallel learners using the `learners:` block, all entries must use the same `task_description` for each slot — the backend registers it once at task-registration time.
@@ -574,6 +622,7 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `tracking.backend` | string | no | `none` | `mlflow` / `clearml` / `none` |
 | `tracking.experiment` | string | no | `ROSE-Spec` | Experiment name |
 | `tracking.run_name` | string | no | `null` | Run label |
+
 
 ### TaskDef fields
 

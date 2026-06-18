@@ -10,8 +10,7 @@ This tutorial demonstrates how to configure and run multiple learning pipelines 
 ---
 
 !!! note
-
-This approach can be applied for both Active and Reinforcement learners (Sequential and Parallel).
+    This approach can be applied for both Active and Reinforcement learners (Sequential and Parallel).
 
 ## Example Overview
 

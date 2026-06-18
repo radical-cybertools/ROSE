@@ -39,6 +39,10 @@ batch = bank.sample(batch_size=32, replace=True)
 
 ROSE assigns experience banks a unique session ID automatically, or session IDs can be assigned manually. The session ID is used to identify the bank and can be used to save/load the bank to/from disk:
 
+!!! note
+    Automatic session IDs require no bookkeeping on your part — pass `session_id` explicitly
+    only when you need a stable, predictable filename across runs (e.g. resuming a bank by name).
+
 ```python
 # Custom session ID
 bank = ExperienceBank(session_id="rose_session")

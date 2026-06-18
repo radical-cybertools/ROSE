@@ -6,7 +6,7 @@ This page describes ROSE's service model: how the active-learning/RL loop you de
 
 ## Core idea: BYOF — Bring Your Own Workflow
 
-ROSE does not own the science. It owns the **loop**: submit a task, wait for it, decide what runs next, check a stop criterion, repeat — until `max_iter` or the criterion is met.
+ROSE does not own the science. It owns the **orchestration loop**: submit a task, wait for it, decide what runs next, check a stop criterion, repeat — until `max_iter` or the criterion is met.
 
 You bring:
 

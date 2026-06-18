@@ -7,7 +7,7 @@ machines, please refer to the following link: [RADICAL-Pilot Supported HPC Machi
 ## For Linux and macOS 🐧
 
 1. Clone the latest version from the [official website](https://github.com/radical-cybertools/ROSE).
-   ```
+   ```bash
    git clone https://github.com/radical-cybertools/ROSE.git
    ```
 2. Run the following commands to install ROSE and its dependencies:
@@ -21,19 +21,19 @@ machines, please refer to the following link: [RADICAL-Pilot Supported HPC Machi
 1. Download the Windows WSL installer from the [official website](https://apps.microsoft.com/detail/9pdxgncfsczv?hl=en-US&gl=US).
 2. Setup you WSL user name and password.
 3. Make sure you have Python 3.9 or higher in your WSL as follows:
-    ```
+    ```bash
     python --version
     ```
 4. create new pip virtual env:
-    ```
+    ```bash
     python3 -m venv rose_env
     ```
 5. Activate the env:
-   ```
+   ```bash
    source rose_env/bin/activate
    ```
 6. Clone the latest version from the [official website](https://github.com/radical-cybertools/ROSE).
-   ```
+   ```bash
    git clone https://github.com/radical-cybertools/ROSE.git
    ```
 7. Run the following commands to install ROSE and its dependencies:
@@ -42,4 +42,5 @@ machines, please refer to the following link: [RADICAL-Pilot Supported HPC Machi
     pip install .
     ```
 
-If you encounter any issues, refer to the [Issues Section](https://github.com/radical-cybertools/ROSE/issues).
+!!! note
+    If you encounter any issues, refer to the [Issues Section](https://github.com/radical-cybertools/ROSE/issues).

@@ -38,8 +38,8 @@ async def active_learn(*args):
 ```
 
 !!! tip
-ROSE supports defining tasks with python code instead of executables (i.e., python scripts, shell scripts, etc.). To do that, the user have to
-pass the `as_executable=False` argument to the decorator as follows:
+    ROSE supports defining tasks with python code instead of executables (i.e., python scripts, shell scripts, etc.). To do that, the user have to
+    pass the `as_executable=False` argument to the decorator as follows:
 
 ```python
 @acl.simulation_task(as_executable=False)
@@ -92,7 +92,7 @@ async def check_mse(*args):
     return f'python3 check_mse.py'
 ```
 
-!!! Warning
+!!! warning
     For any metric function like `@acl.as_stop_criterion` the invoked script like `check_mse.py` must return a numerical value.
 
 

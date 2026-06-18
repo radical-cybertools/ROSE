@@ -66,7 +66,11 @@ markdown_extensions:
   - admonition
   - codehilite:
       linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.details
   - pymdownx.tasklist:
       custom_checkbox: true
@@ -88,17 +92,20 @@ nav:
       - 3.FAQ: getting-started/faq.md
   - User Guide:
       - 1.Target Resources: user-guide/target-resources.md
-      - 2.Basic AL workflow: user-guide/basic-acl-workflow.md
-      - 3.AL Metric: user-guide/acl-metrics.md
-      - 4.Building Parallel Learners: user-guide/parallel_learners_docs.md
-      - 5.Advanced AL workflow: user-guide/advanced-acl-workflow.md
-      - 6.Visualization: user-guide/visualization.md
-      - 7.Reinforcement Learning: user-guide/basic-rl-workflow.md
-      - 8.Experience Banks: user-guide/experience.md
-      - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
-      - 10.Tracking & Observability: user-guide/tracking.md
-      - 11.YAML Spec API: user-guide/spec-api.md
-      - 12.ROSE as a Service: user-guide/rose-aas.md
+      - 2.Active Learners:
+          - 1.Sequential Active Learning Example: user-guide/basic-acl-workflow.md
+          - 2.Active Learning Metrics: user-guide/acl-metrics.md
+          - 3.Parallel Active Learning Example: user-guide/parallel_learners_docs.md
+          - 4.Custom Active Learning Example: user-guide/advanced-acl-workflow.md
+          - 5.UQ-Based Active Learning Example: user-guide/uq_based-acl-workflow.md
+      - 3.Reinforcement Learners:
+          - 1.Sequential Reinforcement Learning Example: user-guide/basic-rl-workflow.md
+          - 2.Experience Banks: user-guide/experience.md
+          - 3.Parallel Reinforcement Learning Example: user-guide/advanced-rl-workflow.md
+      - 4.Visualization: user-guide/visualization.md
+      - 5.Tracking & Observability: user-guide/tracking.md
+      - 6.YAML Spec API: user-guide/spec-api.md
+      - 7.ROSE as a Service: user-guide/rose-aas.md
   - Integrations:
       - MLflow: integrations/mlflow.md
       - ClearML: integrations/clearml.md

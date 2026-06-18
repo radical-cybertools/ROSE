@@ -1,33 +1,21 @@
+# Advanced Reinforcement Learning Workflow
+
 In addition to basic reinforcement learning (RL) workflows, ROSE supports advanced RL workflows that can run multiple environment instances in parallel.
 
 The 'ParallelLearner' gives you the ability to run multiple environment tasks simultaneously, each with different parameters, and then merge their experiences for training.
 
 This is particularly useful for scenarios where you want to explore different configurations or hyperparameters in parallel, speeding up the learning process.
-```sh
-
-                +-------------------+
-                |        RL WF      |
-                +-------------------+
-                            │
-  +-------------------------+---------------------------+
-  |             (N Environment Tasks Parallel)          |
-  +---------------+  +---------------+  +---------------+
-  | Environment 1 |  | Environment 2 |  | Environment 3 |
-  +---------------+  +---------------+  +---------------+
-          |                |                    |
-          └────────────────┼────────────────────┘
-                           │
-                    +------v------+
-                    |    Merge    |
-                    +------+------+
-                           │
-                    +------v------+
-                    |   Update    |
-                    +------+------+
-                           │
-                    +------v------+
-                    |    Test     |
-                    +-------------+
+```mermaid
+graph TD
+    WF["RL WF"]
+    WF --> E1["Environment 1"]
+    WF --> E2["Environment 2"]
+    WF --> E3["Environment 3"]
+    E1 --> M["Merge"]
+    E2 --> M
+    E3 --> M
+    M --> U["Update"]
+    U --> T["Test"]
 ```
 Import ROSE parallel RL modules:
 
@@ -80,8 +68,7 @@ async def main():
 Now that each environment task is defined, we define the rest of the workflow components:
 
 !!! note
-
-This snippet of code must be inside an async context or inside `main` function
+    This snippet of code must be inside an async context or inside `main` function
 
 ```python
 @pe.update_task

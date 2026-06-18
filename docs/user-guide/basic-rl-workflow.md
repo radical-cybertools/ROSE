@@ -1,3 +1,5 @@
+# Basic Reinforcement Learning Workflow
+
 ## Define your target machine to run on
 
 Import ROSE main modules:
@@ -33,7 +35,7 @@ async def check_reward(*args):
     return 'python3 check_reward.py'
 ```
 
-!!! Warning
+!!! warning
     For any metric function like `@rl.as_stop_criterion` the invoked script like `check_reward.py` must return a numerical value.
 
 Finally invoke the tasks and register them with the reinforcement learner as a workflow:

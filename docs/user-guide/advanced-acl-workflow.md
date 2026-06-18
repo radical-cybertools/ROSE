@@ -1,26 +1,39 @@
+# Advanced Active Learning Workflow
+
 To support the rapid advancement of AL techniques, ROSE offers an additional approach to building and executing complex AL workflows.
 
 In this example, we demonstrate how to express an AL workflow with different levels of parallelism. What does that mean?
 
 In some cases, AL workflows may require the execution of N simulation or training tasks **concurrently**. But not only that—additionally, they may also require the submission of M AL workflows concurrently. This introduces two levels of parallelism: one at the task level and another at the AL workflow level. Such an approach is possible and can be easily expressed and executed using ROSE's **custom AL policy**.
 
-```sh
-                             (N AL WFs in Parallel)
-          +-------------------+               +-------------------+
-          |      AL WF 1      |               |      AL WF 2      |
-          +-------------------+               +-------------------+
-                   │                                    │
-  +----------------+-----------------+  +----------------+-----------------+
-  |       (N tasks Parallel)         |  |       (N AL tasks Parallel)      |
-  +---------------+  +---------------+  +---------------+  +---------------+
-  | Simulation 1  |  | Simulation 2  |  | Simulation 1  |  | Simulation 2  |
-  +---------------+  +---------------+  +---------------+  +---------------+
-          |                |                    |                 |
-  +---------------+  +---------------+  +---------------+  +---------------+
-  |  Training 1   |  |  Training 2   |  |  Training 1   |  |  Training 2   |
-  +---------------+  +---------------+  +---------------+  +---------------+
-          |                |                    |                 |
-        (...)            (...)                (...)             (...)
+!!! note
+    Task-level parallelism (N simulation/training tasks per iteration) and workflow-level
+    parallelism (M AL loops running side by side) are independent dimensions — you can scale
+    either one without changing the other.
+
+```mermaid
+graph TD
+    N["N AL WFs in Parallel"]
+    N --> WF1["AL WF 1"]
+    N --> WF2["AL WF 2"]
+
+    subgraph G1[" "]
+        WF1 --> S1a["Simulation 1"]
+        WF1 --> S1b["Simulation 2"]
+        S1a --> T1a["Training 1"]
+        S1b --> T1b["Training 2"]
+        T1a --> E1a["..."]
+        T1b --> E1b["..."]
+    end
+
+    subgraph G2[" "]
+        WF2 --> S2a["Simulation 1"]
+        WF2 --> S2b["Simulation 2"]
+        S2a --> T2a["Training 1"]
+        S2b --> T2b["Training 2"]
+        T2a --> E2a["..."]
+        T2b --> E2b["..."]
+    end
 ```
 
 Since we have already learned how to deploy and load ROSE, and how to instruct it to use different resources, we will skip this part and focus only on expressing the AL workflow.
