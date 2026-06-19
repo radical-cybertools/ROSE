@@ -171,6 +171,51 @@ def test_build_learner_configs_learner_1_kwargs(tmp_path):
     assert kw["iteration"] == 1
 
 
+PAR_SHARED_WITH_PARAMS = textwrap.dedent("""\
+    learner:
+      type: parallel_active_learner
+      max_iter: 2
+      parallel_learners: 3
+    simulation:
+      type: python
+      function: mymod:sim
+    training:
+      type: python
+      function: mymod:train
+    active_learn:
+      type: python
+      function: mymod:select
+    stop_criterion:
+      metric: r2
+      threshold: 0.9
+      operator: ">"
+      evaluator:
+        type: python
+        function: mymod:eval
+    parameters:
+      dataset: prod_ds
+      lr: 0.001
+""")
+
+
+def test_build_learner_configs_shared_tasks_with_parameters_falls_back_to_parallel_learners(
+    tmp_path,
+):
+    from rose.learner import LearnerConfig
+    builder = _make_builder(PAR_SHARED_WITH_PARAMS, tmp_path)
+    lcs = builder.build_learner_configs()
+    assert lcs is not None
+    assert len(lcs) == 3  # learner.parallel_learners, since learners: is absent
+    assert all(isinstance(lc, LearnerConfig) for lc in lcs)
+    kw0 = lcs[0].simulation[0].kwargs
+    assert kw0["learner_id"] == 0
+    assert kw0["dataset"] == "prod_ds"
+    assert "learner_label" not in kw0  # no per-learner label when learners: is absent
+    kw2 = lcs[2].simulation[1].kwargs
+    assert kw2["learner_id"] == 2
+    assert kw2["iteration"] == 1
+
+
 # ── pythonpath auto-injection ─────────────────────────────────────────────────
 
 SEQ_WITH_PYTHONPATH = textwrap.dedent("""\

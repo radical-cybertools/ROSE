@@ -5,15 +5,17 @@ Import ROSE main modules:
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 from rose.al.active_learner import SequentialActiveLearner
 
+from concurrent.futures import ProcessPoolExecutor
+
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 ```
 
 
 Define your resource engine, as we described in our previous [Target Resources](target-resources.md) step:
 
 ```python
-engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 asyncflow = await WorkflowEngine.create(engine)
 
 acl = SequentialActiveLearner(asyncflow)

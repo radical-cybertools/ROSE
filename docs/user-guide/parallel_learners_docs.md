@@ -78,14 +78,12 @@ from rose import LearnerConfig
 from rose.al import ParallelActiveLearner
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
-from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from concurrent.futures import ProcessPoolExecutor
 
-engine = await RadicalExecutionBackend(
-    {'runtime': 30,
-     'resource': 'local.localhost'
-     }
-     )
+from radical.asyncflow import WorkflowEngine
+from rhapsody.backends import ConcurrentExecutionBackend
+
+engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 asyncflow = await WorkflowEngine.create(engine)
 acl = ParallelActiveLearner(asyncflow)
 code_path = f'{sys.executable} {os.getcwd()}'

@@ -101,25 +101,37 @@ class LearnerBuilder:
         return LearnerConfig(**{slot: schedule for slot in lc_slots}, criterion=schedule)
 
     def build_learner_configs(self):
-        """LearnerConfig list for parallel learners, or None if no learners defined."""
+        """LearnerConfig list for parallel learners.
+
+        Returns None for non-parallel learner types (use build_learner_config
+        instead) or when there's nothing to inject: no per-learner `learners:`
+        block, no `parameters`, and no `remote.pythonpath`.
+
+        When `learners:` is absent (shared tasks across learners), the list
+        length falls back to `learner.parallel_learners` so that `parameters`/
+        `pythonpath` still reach every learner's task kwargs.
+        """
         cfg = self.config
-        if cfg.learners is None:
+        if cfg.learner.type != "parallel_active_learner":
+            return None
+        if cfg.learners is None and not cfg.parameters and not cfg.remote.pythonpath:
             return None
         from rose.learner import LearnerConfig, TaskConfig
 
-        required = _REQUIRED_SLOTS[cfg.learner.type]
-        configs  = []
-        max_iter = cfg.learner.max_iter
-        params   = dict(cfg.parameters)
+        required    = _REQUIRED_SLOTS[cfg.learner.type]
+        configs     = []
+        max_iter    = cfg.learner.max_iter
+        params      = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
-        lc_slots = required & _LEARNER_CONFIG_SLOTS
-        for i, learner_def in enumerate(cfg.learners):
+        lc_slots    = required & _LEARNER_CONFIG_SLOTS
+        learner_defs = cfg.learners or [None] * cfg.learner.parallel_learners
+        for i, learner_def in enumerate(learner_defs):
             # learner_id    → dispatch routing key (popped by closure, never reaches user fn)
             # iteration     → per-entry so get_task_config(slot, n) returns the right value
             # learner_label → human-readable learner name; only injected when non-empty
             # parameters    → user-defined values from the YAML parameters: block
             base = {"learner_id": i, **params}
-            if learner_def.label:
+            if learner_def is not None and learner_def.label:
                 base["learner_label"] = learner_def.label
             schedule = {n: TaskConfig(kwargs={**base, "iteration": n}) for n in range(max_iter + 1)}
             schedule[-1] = TaskConfig(kwargs={**base, "iteration": max_iter})

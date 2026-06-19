@@ -148,7 +148,7 @@ class WorkflowConfig(BaseModel):
                         "All learners must use the same type for a given slot."
                     )
                 descs = [dict(l.tasks[slot].task_description or {}) for l in self.learners]
-                if len({str(sorted(d.items())) for d in descs}) > 1:
+                if len(descs) > 1 and any(d != descs[0] for d in descs[1:]):
                     raise ValueError(
                         f"Slot '{slot}' has different task_description values across learners. "
                         "asyncflow registers task_description once per slot at registration time — "

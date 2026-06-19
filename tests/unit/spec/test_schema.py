@@ -317,6 +317,54 @@ def test_parallel_learners_identical_task_description_valid(tmp_path):
     assert len(cfg.learners) == 2
 
 
+def test_parallel_learners_nested_task_description_different_key_order_valid(tmp_path):
+    """Nested dicts with the same keys/values in a different insertion order
+    must compare equal — dict equality, not string-sorted serialization."""
+    yaml = textwrap.dedent("""\
+        learner:
+          type: parallel_active_learner
+        learners:
+          - label: a
+            simulation:
+              type: shell
+              command: python sim.py
+              task_description:
+                resources:
+                  gpus: 1
+                  cpus: 4
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+          - label: b
+            simulation:
+              type: shell
+              command: python sim.py --model b
+              task_description:
+                resources:
+                  cpus: 4
+                  gpus: 1
+            training:
+              type: python
+              function: mymod:train
+            active_learn:
+              type: python
+              function: mymod:select
+        stop_criterion:
+          metric: r2
+          threshold: 0.9
+          evaluator:
+            type: python
+            function: mymod:eval
+    """)
+    p = tmp_path / "ok_nested.yaml"
+    p.write_text(yaml)
+    cfg = WorkflowConfig.from_yaml(p)
+    assert len(cfg.learners) == 2
+
+
 def test_parallel_learners_different_task_description_raises(tmp_path):
     yaml = textwrap.dedent("""\
         learner:

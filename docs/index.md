@@ -1,6 +1,6 @@
 ## What is ROSE? 🌹
 
-ROSE: RADICAL Orchestrator for Surrogate Exploration (ROSE) toolkit is a framework designed to enable the distribuited, concurrent and adaptive execution of simulation, surrogate training, and selection tasks on High-Performance Computing (HPC) resources at a scale. ROSE is a Python package that provides tools for developing active and reinforcement learning (AL and RL) methods for scientific applications. It enables users to define simulation and surrogate training tasks and automatically manage their execution on HPC resources via a predefined set of Learning Policies (Learners).
+ROSE: RADICAL Orchestrator for Surrogate Exploration (ROSE) toolkit is a framework designed to enable the distributed, concurrent and adaptive execution of simulation, surrogate training, and selection tasks on High-Performance Computing (HPC) resources at a scale. ROSE is a Python package that provides tools for developing active and reinforcement learning (AL and RL) methods for scientific applications. It enables users to define simulation and surrogate training tasks and automatically manage their execution on HPC resources via a predefined set of Learning Policies (Learners).
 
 ROSE also includes tools to facilitate the selection of the most effective surrogate model for a given simulation based on performance metrics.
 

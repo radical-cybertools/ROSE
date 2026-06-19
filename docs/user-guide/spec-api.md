@@ -6,10 +6,16 @@ The YAML spec API lets you declare a ROSE workflow as a data file instead of Pyt
 
 
 !!! note
-    The YAML spec currently supports only the four built-in `learner.type` values listed
-    above. Custom `Learner` subclasses are not yet expressible in YAML — `LearnerBuilder`
-    raises `ValueError` for any other `learner.type` value. Use the Python API
-    (decorator-based, e.g. `SequentialActiveLearner(asyncflow)`) if you need a custom
+    The YAML spec currently supports only the four built-in `learner.type` values listed below:
+
+    - `SequentialActiveLearner`
+    - `ParallelActiveLearner`
+    - `SequentialReinforcementLearner`
+    - `ParallelReinforcementLearner`
+    - `SequentialUQLearner`
+    - `ParallelUQLearner`
+    
+    Custom `Learner` subclasses are not yet expressible in YAML — `LearnerBuilder` raises `ValueError` for any other `learner.type` value. Use the Python API (decorator-based, e.g. `SequentialActiveLearner(asyncflow)`) if you need a custom
     learner implementation.
 
 
