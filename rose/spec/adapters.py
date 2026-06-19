@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .schema import RemoteConfig, TaskDef
 
@@ -24,7 +24,9 @@ class TaskAdapterFactory:
         remote: RemoteConfig,
     ) -> Callable:
         """Dispatch closure for parallel learners: routes per-learner based on learner_id kwarg.
-        task_description uses the first learner's value — asyncflow reads it once at registration."""
+
+        task_description uses the first learner's value — asyncflow reads it once at registration.
+        """
         td = dict(task_defs[0].task_description or {})
         if task_defs[0].type == "shell":
             return _make_shell_dispatch(
@@ -40,7 +42,7 @@ class TaskAdapterFactory:
 
 def _make_shell_closure(command: str, task_description: dict) -> Callable:
     _cmd = command
-    _td  = task_description
+    _td = task_description
 
     async def _task(*args, task_description=_td, **kwargs) -> str:
         return _cmd.format_map(kwargs)
@@ -50,9 +52,9 @@ def _make_shell_closure(command: str, task_description: dict) -> Callable:
 
 
 def _make_python_closure(spec: str, remote_paths: list[str], task_description: dict) -> Callable:
-    _spec  = spec
+    _spec = spec
     _paths = list(remote_paths)
-    _td    = task_description
+    _td = task_description
 
     async def _task(*args, task_description=_td, **kwargs):
         import importlib as _il
@@ -73,7 +75,7 @@ def _make_python_closure(spec: str, remote_paths: list[str], task_description: d
 
 def _make_shell_dispatch(cmds: dict[int, str], slot_name: str, task_description: dict) -> Callable:
     _cmds = dict(cmds)
-    _td   = task_description
+    _td = task_description
 
     async def _dispatch(*args, task_description=_td, **kwargs) -> str:
         cmd = _cmds[kwargs.get("learner_id", 0)]
@@ -88,7 +90,7 @@ def _make_python_dispatch(
 ) -> Callable:
     _specs = dict(specs)
     _paths = list(remote_paths)
-    _td    = task_description
+    _td = task_description
 
     async def _dispatch(*args, task_description=_td, **kwargs):
         import importlib as _il

@@ -1,10 +1,10 @@
 """Unit tests for WorkflowSpec — load_spec and workflow_with()."""
+
 import textwrap
 
 import pytest
 
 from rose.spec import WorkflowSpec, load_spec
-from rose.spec.schema import WorkflowConfig
 
 SEQ_YAML = textwrap.dedent("""\
     learner:
@@ -44,52 +44,56 @@ def _make_spec(tmp_path, yaml=SEQ_YAML):
 
 # ── workflow_with: learner field override ─────────────────────────────────────
 
+
 def test_workflow_with_max_iter(tmp_path):
     spec = _make_spec(tmp_path)
-    new  = spec.workflow_with(max_iter=2)
+    new = spec.workflow_with(max_iter=2)
     assert new.config.learner.max_iter == 2
     assert spec.config.learner.max_iter == 5  # original unchanged
 
 
 def test_workflow_with_does_not_mutate_original(tmp_path):
     spec = _make_spec(tmp_path)
-    _    = spec.workflow_with(max_iter=1)
+    _ = spec.workflow_with(max_iter=1)
     assert spec.config.learner.max_iter == 5
 
 
 # ── workflow_with: parameters merge ──────────────────────────────────────────
 
+
 def test_workflow_with_parameters_merges(tmp_path):
     spec = _make_spec(tmp_path)
-    new  = spec.workflow_with(parameters={"dataset": "test_ds"})
+    new = spec.workflow_with(parameters={"dataset": "test_ds"})
     assert new.config.parameters["dataset"] == "test_ds"
     assert new.config.parameters["scale"] == 1.0  # existing key preserved
 
 
 def test_workflow_with_parameters_adds_new_key(tmp_path):
     spec = _make_spec(tmp_path)
-    new  = spec.workflow_with(parameters={"lr": 0.001})
+    new = spec.workflow_with(parameters={"lr": 0.001})
     assert new.config.parameters["lr"] == 0.001
     assert new.config.parameters["dataset"] == "base_ds"
 
 
 def test_workflow_with_parameters_does_not_mutate_original(tmp_path):
     spec = _make_spec(tmp_path)
-    _    = spec.workflow_with(parameters={"dataset": "other"})
+    _ = spec.workflow_with(parameters={"dataset": "other"})
     assert spec.config.parameters["dataset"] == "base_ds"
 
 
 # ── workflow_with: combined overrides ─────────────────────────────────────────
 
+
 def test_workflow_with_combined(tmp_path):
     spec = _make_spec(tmp_path)
-    new  = spec.workflow_with(max_iter=3, parameters={"dataset": "test_ds", "scale": 2.0})
+    new = spec.workflow_with(max_iter=3, parameters={"dataset": "test_ds", "scale": 2.0})
     assert new.config.learner.max_iter == 3
     assert new.config.parameters["dataset"] == "test_ds"
     assert new.config.parameters["scale"] == 2.0
 
 
 # ── workflow_with: unknown field raises ───────────────────────────────────────
+
 
 def test_workflow_with_unknown_field_raises(tmp_path):
     spec = _make_spec(tmp_path)
@@ -99,9 +103,10 @@ def test_workflow_with_unknown_field_raises(tmp_path):
 
 # ── workflow_with: returns WorkflowSpec with callable .workflow ───────────────
 
+
 def test_workflow_with_returns_workflow_spec(tmp_path):
     spec = _make_spec(tmp_path)
-    new  = spec.workflow_with(max_iter=1)
+    new = spec.workflow_with(max_iter=1)
     assert isinstance(new, WorkflowSpec)
     assert callable(new.workflow)
 

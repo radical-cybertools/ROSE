@@ -6,19 +6,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-
-
 # ── Task definition ───────────────────────────────────────────────────────────
 class TaskDef(BaseModel):
     type: Literal["shell", "python"]
-    command: str | None = None    # required when type=="shell"
-    function: str | None = None   # required when type=="python"; "module:callable"
+    command: str | None = None  # required when type=="shell"
+    function: str | None = None  # required when type=="python"; "module:callable"
     task_description: dict[str, Any] | None = None  # resource hints forwarded to asyncflow backend
 
     model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
-    def _check_fields(self) -> "TaskDef":
+    def _check_fields(self) -> TaskDef:
         if self.type == "shell" and not self.command:
             raise ValueError("shell task requires 'command'")
         if self.type == "python":
@@ -41,11 +39,12 @@ class StopCriterionDef(BaseModel):
 
 # ── Learner spec (YAML key: "learner") ───────────────────────────────────────
 _REQUIRED_SLOTS: dict[str, frozenset[str]] = {
-    "sequential_active_learner":        frozenset({"simulation", "training", "active_learn"}),
-    "parallel_active_learner":          frozenset({"simulation", "training", "active_learn"}),
+    "sequential_active_learner": frozenset({"simulation", "training", "active_learn"}),
+    "parallel_active_learner": frozenset({"simulation", "training", "active_learn"}),
     "sequential_reinforcement_learner": frozenset({"environment", "update"}),
-    "uq_active_learner":                frozenset({"simulation", "training", "prediction",
-                                                   "active_learn", "uncertainty"}),
+    "uq_active_learner": frozenset(
+        {"simulation", "training", "prediction", "active_learn", "uncertainty"}
+    ),
 }
 _ALL_SLOTS: frozenset[str] = frozenset().union(*_REQUIRED_SLOTS.values())
 
@@ -53,21 +52,21 @@ _ALL_SLOTS: frozenset[str] = frozenset().union(*_REQUIRED_SLOTS.values())
 class LearnerSpec(BaseModel):
     type: str
     max_iter: int = 0
-    parallel_learners: int = 2    # used only when learners: is absent for parallel types
+    parallel_learners: int = 2  # used only when learners: is absent for parallel types
 
     model_config = {"extra": "forbid"}
 
 
 # ── Per-learner definition (parallel learners only) ───────────────────────────
 class LearnerDef(BaseModel):
-    label:        str            = ""
-    simulation:   TaskDef | None = None
-    training:     TaskDef | None = None
+    label: str = ""
+    simulation: TaskDef | None = None
+    training: TaskDef | None = None
     active_learn: TaskDef | None = None
-    environment:  TaskDef | None = None
-    update:       TaskDef | None = None
-    prediction:   TaskDef | None = None
-    uncertainty:  TaskDef | None = None
+    environment: TaskDef | None = None
+    update: TaskDef | None = None
+    prediction: TaskDef | None = None
+    uncertainty: TaskDef | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -99,21 +98,21 @@ _RESERVED_PARAMETER_KEYS: frozenset[str] = frozenset(
 
 # ── Top-level spec ────────────────────────────────────────────────────────────
 class WorkflowConfig(BaseModel):
-    learner:        LearnerSpec
+    learner: LearnerSpec
     # Task slots — explicit fields keep extra="forbid" and enable IDE autocomplete.
     # Access non-None slots as a dict via the .tasks property.
-    simulation:     TaskDef | None = None
-    training:       TaskDef | None = None
-    active_learn:   TaskDef | None = None
-    environment:    TaskDef | None = None
-    update:         TaskDef | None = None
-    prediction:     TaskDef | None = None
-    uncertainty:    TaskDef | None = None
-    learners:       list[LearnerDef] | None = None
+    simulation: TaskDef | None = None
+    training: TaskDef | None = None
+    active_learn: TaskDef | None = None
+    environment: TaskDef | None = None
+    update: TaskDef | None = None
+    prediction: TaskDef | None = None
+    uncertainty: TaskDef | None = None
+    learners: list[LearnerDef] | None = None
     stop_criterion: StopCriterionDef
-    parameters:     dict[str, Any]   = Field(default_factory=dict)
-    remote:         RemoteConfig     = Field(default_factory=RemoteConfig)
-    tracking:       TrackingConfig   = Field(default_factory=TrackingConfig)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    remote: RemoteConfig = Field(default_factory=RemoteConfig)
+    tracking: TrackingConfig = Field(default_factory=TrackingConfig)
 
     model_config = {"extra": "forbid"}
 
@@ -122,32 +121,31 @@ class WorkflowConfig(BaseModel):
         return {s: getattr(self, s) for s in _ALL_SLOTS if getattr(self, s) is not None}
 
     @model_validator(mode="after")
-    def _validate_task_slots(self) -> "WorkflowConfig":
-        ltype    = self.learner.type
+    def _validate_task_slots(self) -> WorkflowConfig:
+        ltype = self.learner.type
         required = _REQUIRED_SLOTS.get(ltype)
         if required is None:
             raise ValueError(
-                f"Unknown learner type '{ltype}'. "
-                f"Supported: {sorted(_REQUIRED_SLOTS.keys())}"
+                f"Unknown learner type '{ltype}'. Supported: {sorted(_REQUIRED_SLOTS.keys())}"
             )
         is_parallel = ltype == "parallel_active_learner"
 
         if is_parallel and self.learners is not None:
-            for l in self.learners:
-                missing = required - set(l.tasks.keys())
+            for ld in self.learners:
+                missing = required - set(ld.tasks.keys())
                 if missing:
-                    raise ValueError(f"Learner '{l.label}' missing: {sorted(missing)}")
-                extra = set(l.tasks.keys()) - required
+                    raise ValueError(f"Learner '{ld.label}' missing: {sorted(missing)}")
+                extra = set(ld.tasks.keys()) - required
                 if extra:
-                    raise ValueError(f"Learner '{l.label}' unexpected fields: {sorted(extra)}")
+                    raise ValueError(f"Learner '{ld.label}' unexpected fields: {sorted(extra)}")
             for slot in required:
-                types = {l.tasks[slot].type for l in self.learners}
+                types = {ld.tasks[slot].type for ld in self.learners}
                 if len(types) > 1:
                     raise ValueError(
                         f"Slot '{slot}' has mixed types across learners: {types}. "
                         "All learners must use the same type for a given slot."
                     )
-                descs = [dict(l.tasks[slot].task_description or {}) for l in self.learners]
+                descs = [dict(ld.tasks[slot].task_description or {}) for ld in self.learners]
                 if len(descs) > 1 and any(d != descs[0] for d in descs[1:]):
                     raise ValueError(
                         f"Slot '{slot}' has different task_description values across learners. "
@@ -166,7 +164,7 @@ class WorkflowConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_parameters(self) -> "WorkflowConfig":
+    def _validate_parameters(self) -> WorkflowConfig:
         conflicts = _RESERVED_PARAMETER_KEYS & set(self.parameters.keys())
         if conflicts:
             raise ValueError(
@@ -176,7 +174,7 @@ class WorkflowConfig(BaseModel):
         return self
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "WorkflowConfig":
+    def from_yaml(cls, path: str | Path) -> WorkflowConfig:
         import yaml
 
         raw = yaml.safe_load(Path(path).read_text())

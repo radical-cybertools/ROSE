@@ -22,6 +22,7 @@ async def criterion(*args, **kwargs):
 
 # ── Parameter-capturing variants ──────────────────────────────────────────────
 
+
 async def sim_capture(*args, **kwargs):
     received_kwargs.append(dict(kwargs))
     return [1.0, 2.0, 3.0]

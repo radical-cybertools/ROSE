@@ -1,11 +1,9 @@
 """Unit tests for rose.spec.builder — LearnerConfig construction, no HPC needed."""
+
 import textwrap
 from unittest.mock import MagicMock
 
-import pytest
-
 from rose.spec.schema import WorkflowConfig
-
 
 SEQ_WITH_PARAMS = textwrap.dedent("""\
     learner:
@@ -95,10 +93,12 @@ def _make_builder(yaml_text, tmp_path):
     p.write_text(yaml_text)
     cfg = WorkflowConfig.from_yaml(p)
     from rose.spec.builder import LearnerBuilder
+
     return LearnerBuilder(cfg, MagicMock())
 
 
 # ── build_learner_config (sequential path) ────────────────────────────────────
+
 
 def test_build_learner_config_no_parameters_returns_none(tmp_path):
     builder = _make_builder(SEQ_NO_PARAMS, tmp_path)
@@ -107,6 +107,7 @@ def test_build_learner_config_no_parameters_returns_none(tmp_path):
 
 def test_build_learner_config_returns_learner_config(tmp_path):
     from rose.learner import LearnerConfig
+
     builder = _make_builder(SEQ_WITH_PARAMS, tmp_path)
     lc = builder.build_learner_config()
     assert lc is not None
@@ -136,6 +137,7 @@ def test_build_learner_config_criterion_schedule_included(tmp_path):
 
 # ── build_learner_configs (parallel path) ────────────────────────────────────
 
+
 def test_build_learner_configs_no_learners_returns_none(tmp_path):
     builder = _make_builder(SEQ_WITH_PARAMS, tmp_path)
     assert builder.build_learner_configs() is None
@@ -143,6 +145,7 @@ def test_build_learner_configs_no_learners_returns_none(tmp_path):
 
 def test_build_learner_configs_with_parameters(tmp_path):
     from rose.learner import LearnerConfig
+
     builder = _make_builder(PAR_WITH_PARAMS, tmp_path)
     lcs = builder.build_learner_configs()
     assert lcs is not None
@@ -202,6 +205,7 @@ def test_build_learner_configs_shared_tasks_with_parameters_falls_back_to_parall
     tmp_path,
 ):
     from rose.learner import LearnerConfig
+
     builder = _make_builder(PAR_SHARED_WITH_PARAMS, tmp_path)
     lcs = builder.build_learner_configs()
     assert lcs is not None

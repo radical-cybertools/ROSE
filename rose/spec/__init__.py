@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from .builder import LearnerBuilder
 from .schema import WorkflowConfig
@@ -9,7 +10,7 @@ from .schema import WorkflowConfig
 __all__ = ["load_spec", "WorkflowSpec"]
 
 
-def load_spec(path: str | Path, validate_imports: bool = False) -> "WorkflowSpec":
+def load_spec(path: str | Path, validate_imports: bool = False) -> WorkflowSpec:
     """Load and validate a YAML workflow spec. Raises ValueError on schema errors.
 
     Args:
@@ -26,12 +27,12 @@ def load_spec(path: str | Path, validate_imports: bool = False) -> "WorkflowSpec
     return spec
 
 
-def _collect_python_specs(cfg: "WorkflowConfig") -> list[str]:
+def _collect_python_specs(cfg: WorkflowConfig) -> list[str]:
     """Return deduplicated 'module:callable' strings for all Python tasks in the spec."""
     specs: list[str] = []
     if cfg.learners is not None:
-        for l in cfg.learners:
-            for td in l.tasks.values():
+        for ld in cfg.learners:
+            for td in ld.tasks.values():
                 if td.type == "python":
                     specs.append(td.function)
     else:
@@ -43,8 +44,11 @@ def _collect_python_specs(cfg: "WorkflowConfig") -> list[str]:
     return list(dict.fromkeys(specs))  # deduplicate, preserve order
 
 
-def _validate_task_imports(cfg: "WorkflowConfig") -> None:
-    """Try to import every Python task callable. Raises ValueError listing all failures."""
+def _validate_task_imports(cfg: WorkflowConfig) -> None:
+    """Try to import every Python task callable.
+
+    Raises ValueError listing all failures.
+    """
     import importlib
     import sys as _sys
 
@@ -78,7 +82,7 @@ class WorkflowSpec:
     def __init__(self, config: WorkflowConfig) -> None:
         self.config = config
 
-    def workflow_with(self, **overrides: Any) -> "WorkflowSpec":
+    def workflow_with(self, **overrides: Any) -> WorkflowSpec:
         """Return a new WorkflowSpec with selective overrides applied.
 
         Accepted keys:
@@ -111,9 +115,7 @@ class WorkflowSpec:
             import rhapsody
             from radical.asyncflow import WorkflowEngine
 
-            engine = await rhapsody.get_backend(
-                "edge", bridge_url=bridge_url, edge_name=edge_name
-            )
+            engine = await rhapsody.get_backend("edge", bridge_url=bridge_url, edge_name=edge_name)
             asyncflow = await WorkflowEngine.create(engine)
 
             builder = LearnerBuilder(cfg, asyncflow)
@@ -124,7 +126,7 @@ class WorkflowSpec:
                 lcs = builder.build_learner_configs()
                 if lcs is not None:
                     start_kwargs["parallel_learners"] = len(lcs)
-                    start_kwargs["learner_configs"]   = lcs
+                    start_kwargs["learner_configs"] = lcs
                 else:
                     start_kwargs["parallel_learners"] = cfg.learner.parallel_learners
             else:

@@ -1,4 +1,5 @@
 """Integration tests for the YAML spec layer — full AL loop, no HPC required."""
+
 import textwrap
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,7 +10,6 @@ from rhapsody.backends import ConcurrentExecutionBackend
 from rose.spec import load_spec
 from rose.spec.builder import LearnerBuilder
 from rose.spec.schema import WorkflowConfig
-
 
 # ── Sequential AL via YAML ────────────────────────────────────────────────────
 
@@ -63,6 +63,7 @@ async def test_yaml_sequential_workflow(tmp_path):
 
 # ── load_spec convenience wrapper ─────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_load_spec_returns_workflow_spec(tmp_path):
@@ -110,6 +111,7 @@ SEQ_WITH_PARAMS_YAML = textwrap.dedent("""\
 @pytest.mark.integration
 async def test_sequential_workflow_parameters_reach_tasks(tmp_path):
     import tests.integration.spec.helpers as helpers
+
     helpers.received_kwargs.clear()
 
     p = tmp_path / "spec.yaml"
@@ -185,6 +187,7 @@ PAR_WITH_PARAMS_YAML = textwrap.dedent("""\
 @pytest.mark.integration
 async def test_parallel_workflow_parameters_reach_tasks(tmp_path):
     import tests.integration.spec.helpers as helpers
+
     helpers.received_kwargs.clear()
 
     p = tmp_path / "spec.yaml"

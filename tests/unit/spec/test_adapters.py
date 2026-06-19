@@ -1,8 +1,7 @@
 """Unit tests for rose.spec.adapters — closure factories, no HPC needed."""
+
 import asyncio
 import inspect
-
-import pytest
 
 from rose.spec.adapters import TaskAdapterFactory
 from rose.spec.schema import RemoteConfig, TaskDef
@@ -14,12 +13,12 @@ def _remote() -> RemoteConfig:
 
 # ── Shell closure ─────────────────────────────────────────────────────────────
 
+
 def test_shell_closure_returns_command():
     td = TaskDef(type="shell", command="echo hello")
     fn = TaskAdapterFactory.make_closure(td, _remote())
     result = asyncio.run(fn())
     assert result == "echo hello"
-
 
 
 def test_shell_as_executable_true():
@@ -28,6 +27,7 @@ def test_shell_as_executable_true():
 
 
 # ── Python closure ────────────────────────────────────────────────────────────
+
 
 def test_python_closure_calls_sync_function():
     td = TaskDef(type="python", function="os.path:join")
@@ -41,9 +41,11 @@ def test_python_closure_calls_async_function():
         return x * 2
 
     import types
+
     mod = types.ModuleType("_test_async_mod")
     mod.double = _async_fn
     import sys
+
     sys.modules["_test_async_mod"] = mod
 
     td = TaskDef(type="python", function="_test_async_mod:double")
@@ -69,6 +71,7 @@ def test_python_closure_injects_remote_path(tmp_path):
 
 # ── Shell dispatch ────────────────────────────────────────────────────────────
 
+
 def test_shell_dispatch_routes_by_learner_id():
     tds = [
         TaskDef(type="shell", command="cmd_0"),
@@ -87,6 +90,7 @@ def test_shell_dispatch_defaults_to_zero():
 
 # ── Python dispatch ───────────────────────────────────────────────────────────
 
+
 def test_python_dispatch_routes_by_learner_id():
     tds = [
         TaskDef(type="python", function="os.path:basename"),
@@ -98,6 +102,7 @@ def test_python_dispatch_routes_by_learner_id():
 
 
 # ── task_description default kwarg injection ──────────────────────────────────
+
 
 def test_shell_closure_task_description_in_signature():
     td = TaskDef(type="shell", command="echo hi", task_description={"cpu_count": 4})
@@ -123,6 +128,7 @@ def test_python_closure_task_description_in_signature():
 
 # ── Shell command interpolation ───────────────────────────────────────────────
 
+
 def test_shell_closure_interpolates_kwargs():
     td = TaskDef(type="shell", command="python sim.py --dataset {dataset} --n {n}")
     fn = TaskAdapterFactory.make_closure(td, _remote())
@@ -143,10 +149,13 @@ def test_shell_dispatch_interpolates_kwargs():
         TaskDef(type="shell", command="python sim.py --model mlp --dataset {dataset}"),
     ]
     fn = TaskAdapterFactory.make_dispatch_closure("simulation", tds, _remote())
-    assert asyncio.run(fn(learner_id=0, dataset="m3dc1")) == \
-        "python sim.py --model rf --dataset m3dc1"
-    assert asyncio.run(fn(learner_id=1, dataset="test_ds")) == \
-        "python sim.py --model mlp --dataset test_ds"
+    assert (
+        asyncio.run(fn(learner_id=0, dataset="m3dc1")) == "python sim.py --model rf --dataset m3dc1"
+    )
+    assert (
+        asyncio.run(fn(learner_id=1, dataset="test_ds"))
+        == "python sim.py --model mlp --dataset test_ds"
+    )
 
 
 def test_dispatch_closure_task_description_uses_first_candidate():

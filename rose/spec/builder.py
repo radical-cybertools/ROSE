@@ -5,7 +5,7 @@ from pathlib import Path
 from rose.learner import Learner
 
 from .adapters import TaskAdapterFactory
-from .schema import WorkflowConfig, TrackingConfig, _REQUIRED_SLOTS
+from .schema import _REQUIRED_SLOTS, TrackingConfig, WorkflowConfig
 
 # Slots that exist as fields on LearnerConfig; uncertainty is required by uq_active_learner
 # but is not a LearnerConfig field — filter it out when constructing LearnerConfig.
@@ -74,7 +74,7 @@ class LearnerBuilder:
     def _register_dispatched_tasks(self, learner: Learner, cfg: WorkflowConfig) -> None:
         required = _REQUIRED_SLOTS[cfg.learner.type]
         for slot_name in required:
-            task_defs = [l.tasks[slot_name] for l in cfg.learners]
+            task_defs = [ld.tasks[slot_name] for ld in cfg.learners]
             as_exec = task_defs[0].type == "shell"
             closure = TaskAdapterFactory.make_dispatch_closure(slot_name, task_defs, cfg.remote)
             getattr(learner, f"{slot_name}_task")(as_executable=as_exec)(closure)
@@ -82,9 +82,9 @@ class LearnerBuilder:
     def build_learner_config(self):
         """Single LearnerConfig for sequential learners.
 
-        Passed as initial_config to learner.start() so that parameters and
-        iteration reach task kwargs via the same ROSE-native mechanism used
-        by the parallel path.  Returns None when no parameters are defined.
+        Passed as initial_config to learner.start() so that parameters and iteration reach task
+        kwargs via the same ROSE-native mechanism used by the parallel path.  Returns None when no
+        parameters are defined.
         """
         cfg = self.config
         if not cfg.parameters and not cfg.remote.pythonpath:
@@ -93,7 +93,7 @@ class LearnerBuilder:
 
         required = _REQUIRED_SLOTS[cfg.learner.type]
         max_iter = cfg.learner.max_iter
-        params   = dict(cfg.parameters)
+        params = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
         schedule = {n: TaskConfig(kwargs={**params, "iteration": n}) for n in range(max_iter + 1)}
         schedule[-1] = TaskConfig(kwargs={**params, "iteration": max_iter})
@@ -118,12 +118,12 @@ class LearnerBuilder:
             return None
         from rose.learner import LearnerConfig, TaskConfig
 
-        required    = _REQUIRED_SLOTS[cfg.learner.type]
-        configs     = []
-        max_iter    = cfg.learner.max_iter
-        params      = dict(cfg.parameters)
+        required = _REQUIRED_SLOTS[cfg.learner.type]
+        configs = []
+        max_iter = cfg.learner.max_iter
+        params = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
-        lc_slots    = required & _LEARNER_CONFIG_SLOTS
+        lc_slots = required & _LEARNER_CONFIG_SLOTS
         learner_defs = cfg.learners or [None] * cfg.learner.parallel_learners
         for i, learner_def in enumerate(learner_defs):
             # learner_id    → dispatch routing key (popped by closure, never reaches user fn)

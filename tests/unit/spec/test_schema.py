@@ -1,12 +1,14 @@
 """Unit tests for rose.spec.schema — YAML validation without any HPC machinery."""
+
 import textwrap
 
 import pytest
+from pydantic import ValidationError
 
-from rose.spec.schema import WorkflowConfig, TaskDef
-
+from rose.spec.schema import TaskDef, WorkflowConfig
 
 # ── TaskDef ───────────────────────────────────────────────────────────────────
+
 
 def test_taskdef_shell_valid():
     t = TaskDef(type="shell", command="python sim.py")
@@ -35,12 +37,14 @@ def test_taskdef_python_bad_syntax():
 
 
 def test_taskdef_extra_field_rejected():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         TaskDef(type="shell", command="x", unknown_field="y")
 
 
 def test_taskdef_task_description_roundtrip():
-    t = TaskDef(type="shell", command="python sim.py", task_description={"cpu_count": 4, "gpu_count": 1})
+    t = TaskDef(
+        type="shell", command="python sim.py", task_description={"cpu_count": 4, "gpu_count": 1}
+    )
     assert t.task_description == {"cpu_count": 4, "gpu_count": 1}
 
 
@@ -119,7 +123,7 @@ def test_sequential_spec_roundtrip(tmp_path):
     assert cfg.stop_criterion.metric == "mse"
     assert cfg.tasks == {
         "simulation": cfg.simulation,
-        "training":   cfg.training,
+        "training": cfg.training,
         "active_learn": cfg.active_learn,
     }
 
@@ -275,6 +279,7 @@ def test_parallel_learner_missing_slot(tmp_path):
 
 # ── WorkflowConfig — task_description consistency across parallel learners ────────
 
+
 def test_parallel_learners_identical_task_description_valid(tmp_path):
     yaml = textwrap.dedent("""\
         learner:
@@ -318,8 +323,8 @@ def test_parallel_learners_identical_task_description_valid(tmp_path):
 
 
 def test_parallel_learners_nested_task_description_different_key_order_valid(tmp_path):
-    """Nested dicts with the same keys/values in a different insertion order
-    must compare equal — dict equality, not string-sorted serialization."""
+    """Nested dicts with the same keys/values in a different insertion order must compare equal —
+    dict equality, not string-sorted serialization."""
     yaml = textwrap.dedent("""\
         learner:
           type: parallel_active_learner
@@ -602,6 +607,7 @@ def test_parameters_defaults_empty(tmp_path):
 
 
 # ── WorkflowConfig — parallel learners (mixed types) ─────────────────────────────
+
 
 def test_parallel_learners_mixed_types(tmp_path):
     yaml = textwrap.dedent("""\
