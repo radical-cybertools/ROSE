@@ -27,7 +27,7 @@ A ROSE learner doesn't run anything itself — it submits tasks through whicheve
 | Backend | Where the orchestration loop runs | Where tasks execute | Documented at |
 |---|---|---|---|
 | `DragonExecutionBackendV3` (RHAPSODY) | Wherever your script runs — it submits a pilot job and blocks inside it | Inside the pilot job it just submitted | [Target Resources](target-resources.md) |
-| Edge backend (RHAPSODY, `bridge_url` + `edge_name`) | Wherever your script runs — does **not** need to be the HPC machine | Inside a separate, already-running edge agent — possibly on a different machine entirely | this page |
+| Orbit backend (RHAPSODY, `bridge_url` + `endpoint_name`) | Wherever your script runs — does **not** need to be the HPC machine | Inside a separate, already-running orbit endpoint — possibly on a different machine entirely | this page |
 
 The first model is "submit a job, then run my loop inside it." The second is "run my loop here; dispatch tasks to a job running somewhere else." That second model is what makes ROSE service-like: the loop's control plane (your `learner.start()` call, deciding when to stop, talking to MLflow/ClearML) is decoupled from the compute plane (the HPC allocation actually executing `simulate`/`train`).
 
@@ -35,10 +35,10 @@ The first model is "submit a job, then run my loop inside it." The second is "ru
 
 ## How ROSE operates within a job
 
-The edge backend connects two things over a bridge:
+The orbit backend connects two things over a bridge:
 
-1. **An edge agent**, running inside an HPC job allocation. The job itself is requested through whatever your site normally uses to get an allocation — it doesn't have to be requested by ROSE. Once the job starts, the edge agent comes up inside it and stays alive for the allocation's lifetime, ready to accept task descriptions.
-2. **Your orchestration process**, running anywhere — your laptop, a long-lived service host, a CI runner. It builds the learner from your spec (`LearnerBuilder(cfg, asyncflow).build()`), starts the loop (`learner.start(...)`), and for every `simulation`/`training`/`active_learn`/... task it submits, the asyncflow engine forwards that task description over the bridge to the edge, waits for the result, and resumes the loop.
+1. **An orbit endpoint**, running inside an HPC job allocation. The job itself is requested through whatever your site normally uses to get an allocation — it doesn't have to be requested by ROSE. Once the job starts, the endpoint comes up inside it and stays alive for the allocation's lifetime, ready to accept task descriptions.
+2. **Your orchestration process**, running anywhere — your laptop, a long-lived service host, a CI runner. It builds the learner from your spec (`LearnerBuilder(cfg, asyncflow).build()`), starts the loop (`learner.start(...)`), and for every `simulation`/`training`/`active_learn`/... task it submits, the asyncflow engine forwards that task description over the bridge to the endpoint, waits for the result, and resumes the loop.
 
 The practical effect: you submit a ROSE workflow to HPC without an interactive session on the cluster, and without your laptop needing to stay connected to the scheduler — only to the bridge. The job allocation is what's expensive and scheduler-queued; your control process is cheap and can be restarted independently of it. Stop-criterion checks, `set_next_config()` decisions, and tracking calls all happen on your side of the bridge, on every iteration, with no per-iteration job resubmission.
 

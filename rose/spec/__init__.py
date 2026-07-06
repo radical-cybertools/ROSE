@@ -111,11 +111,11 @@ class WorkflowSpec:
     def workflow(self) -> Callable[..., Coroutine[Any, Any, None]]:
         cfg = self.config
 
-        async def _workflow(bridge_url: str, edge_name: str) -> None:
+        async def _workflow(bridge_url: str, endpoint_name: str) -> None:
             import rhapsody
             from radical.asyncflow import WorkflowEngine
 
-            engine = await rhapsody.get_backend("edge", bridge_url=bridge_url, edge_name=edge_name)
+            engine = await rhapsody.get_backend("orbit", bridge_url=bridge_url, endpoint_name=endpoint_name)
             asyncflow = await WorkflowEngine.create(engine)
 
             builder = LearnerBuilder(cfg, asyncflow)
