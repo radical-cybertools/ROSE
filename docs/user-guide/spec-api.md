@@ -73,7 +73,7 @@ slot — see the side-by-side example in [Task Types](#task-types) below.
 **Python API**
 
 ```python
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 acl = SequentialActiveLearner(asyncflow)
 
@@ -182,7 +182,7 @@ When all parallel learners run the same task implementations, declare the task s
 **Python API**
 
 ```python
-from rose.al.active_learner import ParallelActiveLearner
+from rose.al import ParallelActiveLearner
 
 acl = ParallelActiveLearner(asyncflow)
 
@@ -580,11 +580,11 @@ def train(sim_result, **kwargs):
 
 | Value | Backend class | When to use |
 |---|---|---|
-| `dragon_v3` | `DragonExecutionBackendV3` | Default; requires Dragon installed on the compute side |
-| `concurrent` | `ConcurrentExecutionBackend` | CPU-only runs, no Dragon needed |
-| `dragon_v1`, `dragon_v2` | older Dragon backends | Legacy Dragon versions |
 | `dask` | `DaskExecutionBackend` | Dask-based execution |
-| `radical_pilot` | `RadicalExecutionBackend` | RADICAL-Pilot |
+| `concurrent` | `ConcurrentExecutionBackend` | CPU-only runs, no Dragon needed |
+| `dragon` | `DragonExecutionBackendV3` |  For highly compute intensive surrogates |
+
+
 
 Example — switch to `concurrent` for a CPU-only endpoint:
 

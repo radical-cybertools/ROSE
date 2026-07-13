@@ -27,7 +27,7 @@ For tutorials and walkthrough notebooks please check [here](examples)
 import asyncio
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import RadicalExecutionBackend

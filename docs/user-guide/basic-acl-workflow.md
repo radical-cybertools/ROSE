@@ -3,7 +3,7 @@
 Import ROSE main modules:
 ```python
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 from concurrent.futures import ProcessPoolExecutor
 

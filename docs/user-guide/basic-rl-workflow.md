@@ -10,7 +10,7 @@ from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.metrics import GREATER_THAN_THRESHOLD
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner
+from rose.rl import SequentialReinforcementLearner
 ```
 
 You can use and setup an HPC engine as we described in our previous [Target Resources](target-resources.md) step:

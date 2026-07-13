@@ -8,7 +8,7 @@ from typing import Any
 
 from radical.asyncflow import WorkflowEngine
 
-from rose.uq.uq_learner import UQLearner, UQLearnerConfig
+from rose.uncertainty_quantification.uq_learner import UQLearner, UQLearnerConfig
 
 from ..learner import IterationState, TaskConfig, _stream_parallel
 

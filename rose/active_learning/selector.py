@@ -97,7 +97,7 @@ class AlgorithmSelector(Learner):
             Configured SequentialActiveLearner instance.
         """
         # Import here to avoid circular imports
-        from rose.al import SequentialActiveLearner
+        from rose.active_learning import SequentialActiveLearner
 
         # Create a new sequential learner with the same asyncflow
         sequential_learner: SequentialActiveLearner = SequentialActiveLearner(self.asyncflow)

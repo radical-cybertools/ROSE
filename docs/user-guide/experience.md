@@ -14,7 +14,7 @@ The `Experience` class captures a single environment interaction containing:
 
 Use the helper function to create experiences during environment interactions:
 ```python
-from rose.rl.experience import Experience, create_experience
+from rose.rl import Experience, create_experience
 
 experience = create_experience(state, action, reward, next_state, done, info={"step": 42})
 ```
@@ -23,7 +23,7 @@ experience = create_experience(state, action, reward, next_state, done, info={"s
 Experience Banks provide persistent storage and efficient sampling for RL experiences:
 
 ```python
-from rose.rl.experience import ExperienceBank
+from rose.rl import ExperienceBank
 
 # Create a bank with size limit
 bank = ExperienceBank(max_size=10000)

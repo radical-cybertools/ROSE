@@ -24,6 +24,9 @@ dependencies = [
     'rhapsody-py[dragon]; python_version >= "3.10" and python_version <= "3.12"',
 ]
 
+[project.scripts]
+rose = "rose.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/radical-cybertools/ROSE"
 Issues = "https://github.com/radical-cybertools/ROSE/issues"

@@ -22,7 +22,7 @@ Import ROSE parallel RL modules:
 ```python
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import DragonExecutionBackendV3
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner
+from rose.rl import SequentialReinforcementLearner
 ```
 
 

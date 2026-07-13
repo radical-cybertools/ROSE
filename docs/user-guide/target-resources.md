@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
 
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 
@@ -35,7 +35,7 @@ import os
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import DragonExecutionBackendV3
 
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 
 hpc_engine = await DragonExecutionBackendV3()

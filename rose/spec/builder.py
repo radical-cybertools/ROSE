@@ -16,19 +16,19 @@ _LEARNER_CONFIG_SLOTS: frozenset[str] = frozenset(
 
 def _get_learner_class(learner_type: str):
     if learner_type == "sequential_active_learner":
-        from rose.al.active_learner import SequentialActiveLearner
+        from rose.active_learning.active_learner import SequentialActiveLearner
 
         return SequentialActiveLearner
     if learner_type == "parallel_active_learner":
-        from rose.al.active_learner import ParallelActiveLearner
+        from rose.active_learning.active_learner import ParallelActiveLearner
 
         return ParallelActiveLearner
     if learner_type == "sequential_reinforcement_learner":
-        from rose.rl.reinforcement_learner import SequentialReinforcementLearner
+        from rose.reinforcement_learning.reinforcement_learner import SequentialReinforcementLearner
 
         return SequentialReinforcementLearner
     if learner_type == "uq_active_learner":
-        from rose.uq.uq_active_learner import SeqUQLearner
+        from rose.uncertainty_quantification.uq_active_learner import SeqUQLearner
 
         return SeqUQLearner
     raise ValueError(f"No learner class registered for type '{learner_type}'")
