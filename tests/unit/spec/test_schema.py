@@ -452,6 +452,69 @@ def test_parallel_learners_one_has_task_description_other_absent_raises(tmp_path
         WorkflowConfig.from_yaml(p)
 
 
+def test_remote_backends_custom(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        remote:
+          backends: [concurrent]
+    """)
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml)
+    cfg = WorkflowConfig.from_yaml(p)
+    assert cfg.remote.backends == ["concurrent"]
+
+
+def test_remote_backends_default():
+    from rose.spec.schema import RemoteConfig
+    assert RemoteConfig().backends == ["dragon_v3"]
+
+
+def test_remote_extra_field_rejected(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        remote:
+          foo: bar
+    """)
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml)
+    with pytest.raises(ValidationError):
+        WorkflowConfig.from_yaml(p)
+
+
 def test_parameters_reserved_key_pythonpath(tmp_path):
     yaml = textwrap.dedent("""\
         learner:

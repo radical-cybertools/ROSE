@@ -557,7 +557,10 @@ remote:
   pythonpath:
     - /path/to/my/task/modules
     - /path/to/shared/utilities
+  backends: [dragon_v3]   # optional — default shown; use [concurrent] for CPU-only runs
 ```
+
+### `remote.pythonpath`
 
 `remote.pythonpath` entries are added to `sys.path` on the remote worker before any task module is imported. They are also injected into every task's `kwargs["pythonpath"]` (as a list), so task functions can construct file paths without duplicating the value in `parameters:`:
 
@@ -570,6 +573,28 @@ def train(sim_result, **kwargs):
 ```
 
 `remote.pythonpath` is the single edit point for the remote worker path — changing it updates both the import path and the kwarg.
+
+### `remote.backends`
+
+`remote.backends` selects which [Rhapsody](https://github.com/radical-cybertools/rhapsody) backends are instantiated on the remote orbit endpoint session. The value is a list of backend name strings:
+
+| Value | Backend class | When to use |
+|---|---|---|
+| `dragon_v3` | `DragonExecutionBackendV3` | Default; requires Dragon installed on the compute side |
+| `concurrent` | `ConcurrentExecutionBackend` | CPU-only runs, no Dragon needed |
+| `dragon_v1`, `dragon_v2` | older Dragon backends | Legacy Dragon versions |
+| `dask` | `DaskExecutionBackend` | Dask-based execution |
+| `radical_pilot` | `RadicalExecutionBackend` | RADICAL-Pilot |
+
+Example — switch to `concurrent` for a CPU-only endpoint:
+
+```yaml
+remote:
+  pythonpath: [...]
+  backends: [concurrent]
+```
+
+`backends` is consumed only at engine-creation time and is **not** injected into task `kwargs`.
 
 ---
 
@@ -635,6 +660,7 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `stop_criterion` | object | yes | — | Stopping condition |
 | `parameters` | dict | no | `{}` | User-defined kwargs injected into all tasks |
 | `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
+| `remote.backends` | list[str] | no | `["dragon_v3"]` | Rhapsody backends requested on the remote orbit session |
 | `tracking.backend` | string | no | `none` | `mlflow` / `clearml` / `none` |
 | `tracking.experiment` | string | no | `ROSE-Spec` | Experiment name |
 | `tracking.run_name` | string | no | `null` | Run label |
