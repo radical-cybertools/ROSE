@@ -78,7 +78,7 @@ class LearnerDef(BaseModel):
 # ── Remote / tracking ────────────────────────────────────────────────────────
 class RemoteConfig(BaseModel):
     pythonpath: list[str] = []
-    backends:   list[str] = ["dragon_v3"]
+    backends: list[str] = ["dragon_v3"]
 
     model_config = {"extra": "forbid"}
 

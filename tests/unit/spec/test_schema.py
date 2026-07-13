@@ -483,6 +483,7 @@ def test_remote_backends_custom(tmp_path):
 
 def test_remote_backends_default():
     from rose.spec.schema import RemoteConfig
+
     assert RemoteConfig().backends == ["dragon_v3"]
 
 

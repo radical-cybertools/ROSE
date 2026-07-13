@@ -115,9 +115,12 @@ class WorkflowSpec:
             import rhapsody
             from radical.asyncflow import WorkflowEngine
 
-            engine = await rhapsody.get_backend("orbit", bridge_url=bridge_url,
-                                                endpoint_name=endpoint_name,
-                                                backends=cfg.remote.backends)
+            engine = await rhapsody.get_backend(
+                "orbit",
+                bridge_url=bridge_url,
+                endpoint_name=endpoint_name,
+                backends=cfg.remote.backends,
+            )
             asyncflow = await WorkflowEngine.create(engine)
 
             builder = LearnerBuilder(cfg, asyncflow)

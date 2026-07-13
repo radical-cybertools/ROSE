@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
-
-from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 from rose.uq import UQ_REGISTRY, register_uq
 from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
+
+from rose.metrics import MEAN_SQUARED_ERROR_MSE, PREDICTIVE_ENTROPY
 
 
 @pytest.mark.asyncio
