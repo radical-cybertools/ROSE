@@ -53,14 +53,19 @@ class StreamingActiveLearner(Learner):
             batch_size: Number of streamed items per learning window.
             max_wait: Flush a partial window after this many seconds of
                 waiting for more items. None waits for a full window.
-            conflate: If True, drop backlog and keep only the newest
-                ``batch_size`` items when iterations are slower than the
-                stream ("latest wins").
+            conflate: If True, drop the oldest backlog at ingestion time and
+                keep only the newest ~``batch_size`` items when iterations
+                are slower than the stream ("latest wins"); the internal
+                queue stays bounded.
             sources: One or more async iterators to consume as data
                 sources; equivalent to calling :meth:`attach_source` for
                 each.
         """
         super().__init__(asyncflow, register_and_submit=True)
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+        if max_wait is not None and max_wait <= 0:
+            raise ValueError(f"max_wait must be positive or None, got {max_wait}")
         self.batch_size = batch_size
         self.max_wait = max_wait
         self.conflate = conflate
@@ -80,6 +85,14 @@ class StreamingActiveLearner(Learner):
 
     async def feed(self, item: Any) -> None:
         """Feed a single data item into the learner's stream."""
+        await self._put(item)
+
+    async def _put(self, item: Any) -> None:
+        """Enqueue a data item; when conflating, drop the oldest backlog first so the queue stays
+        bounded to roughly ``batch_size`` items even while an iteration is running."""
+        if self.conflate:
+            while self._queue.qsize() >= self.batch_size:
+                self._drain_sentinel(self._queue.get_nowait())
         await self._queue.put(item)
 
     def attach_source(self, source: AsyncIterator[Any]) -> None:
@@ -99,7 +112,7 @@ class StreamingActiveLearner(Learner):
         async def pump() -> None:
             try:
                 async for item in source:
-                    await self._queue.put(item)
+                    await self._put(item)
             finally:
                 await self._queue.put(self._END)
 

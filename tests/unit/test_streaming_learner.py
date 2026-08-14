@@ -162,3 +162,19 @@ async def test_missing_tasks_raise():
     with pytest.raises(ValueError):
         async for _ in learner.start():
             pass
+
+
+def test_invalid_params_raise():
+    with pytest.raises(ValueError):
+        StreamingActiveLearner(MagicMock(spec=WorkflowEngine), batch_size=0)
+    with pytest.raises(ValueError):
+        StreamingActiveLearner(MagicMock(spec=WorkflowEngine), max_wait=-1.0)
+
+
+@pytest.mark.asyncio
+async def test_conflate_bounds_queue_at_ingestion():
+    learner, _ = make_learner(batch_size=2, conflate=True)
+    for i in range(100):
+        await learner.feed(i)
+    # backlog is dropped at ingestion, not at window collection
+    assert learner._queue.qsize() <= 2
