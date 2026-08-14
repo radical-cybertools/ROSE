@@ -55,9 +55,7 @@ async def rose_al():
         return {"sum": sum(out)}
 
     # Defining the stop criterion with a metric (MSE in this case)
-    @acl.as_stop_criterion(
-        as_executable=False, metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1
-    )
+    @acl.as_stop_criterion(as_executable=False, metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
     async def check_mse(*args):
         return 0.01
 
