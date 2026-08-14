@@ -15,8 +15,6 @@
 
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
-import os
-import sys
 
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
@@ -78,7 +76,7 @@ async def rose_al():
     acl.on_model_ready(on_model_callback)
 
     # start learner
-    async for i in acl.start():
+    async for _ in acl.start():
         await asyncio.sleep(0)
 
     acl.stop()
