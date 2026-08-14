@@ -1,5 +1,5 @@
-"""Unit tests for StreamingActiveLearner: windowing, publish-gate criterion,
-stop() and source-exhaustion termination."""
+"""Unit tests for StreamingActiveLearner: windowing, publish-gate criterion, stop() and source-
+exhaustion termination."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
@@ -13,8 +13,8 @@ from rose.al.streaming_learner import StreamingActiveLearner
 def make_learner(batch_size=2, max_wait=None, conflate=False, criterion_results=None, sources=None):
     """Create a learner with mocked task submission.
 
-    Training results echo the received window; criterion results are taken
-    from the given list (metric, compared as '< 1.0').
+    Training results echo the received window; criterion results are taken from the given list
+    (metric, compared as '< 1.0').
     """
     learner = StreamingActiveLearner(
         MagicMock(spec=WorkflowEngine),

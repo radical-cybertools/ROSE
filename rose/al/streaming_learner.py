@@ -85,9 +85,8 @@ class StreamingActiveLearner(Learner):
     def attach_source(self, source: AsyncIterator[Any]) -> None:
         """Attach an async iterator as a data source.
 
-        Sources attached before :meth:`start` are only consumed once the
-        learner loop runs. The loop ends once all attached sources are
-        exhausted and the queue is drained; learners fed only via
+        Sources attached before :meth:`start` are only consumed once the learner loop runs. The loop
+        ends once all attached sources are exhausted and the queue is drained; learners fed only via
         :meth:`feed` run until :meth:`stop` is called.
         """
         self._open_sources += 1
@@ -109,9 +108,8 @@ class StreamingActiveLearner(Learner):
     def on_model_ready(self, callback: Callable[[IterationState], Any]) -> None:
         """Register a callback fired whenever the stop criterion is met.
 
-        In streaming mode the criterion acts as a publish gate, not a
-        terminal condition. Callbacks receive the IterationState and may
-        be sync or async.
+        In streaming mode the criterion acts as a publish gate, not a terminal condition. Callbacks
+        receive the IterationState and may be sync or async.
         """
         self._model_callbacks.append(callback)
 
