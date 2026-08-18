@@ -76,11 +76,96 @@ class LearnerDef(BaseModel):
 
 
 # ── Remote / tracking ────────────────────────────────────────────────────────
+class TargetConfig(BaseModel):
+    """Bootstrap config for `rose run --remote`: how to launch the remote
+    ORBIT endpoint before the workflow's tasks run on it.
+
+    ``kind`` selects the launch mechanism:
+    - ``iri``/``sfapi``: submit a job to `resource_id` through the broker's
+      ``iri_connect``/``sfapi_connect`` plugin (NERSC currently should use
+      ``sfapi`` — IRI's ``/compute/*`` routes are broken server-side there;
+      OLCF has no such issue and stays on ``iri``).
+    - ``psij``: submit a job via PsiJ. Normally on an already-connected
+      login-node endpoint (``edge_name``); with ``remote.embedded: true``,
+      ``edge_name`` is not needed — PsiJ runs on the embedded broker itself
+      (see ``RemoteConfig.embedded``).
+    """
+
+    kind: Literal["iri", "sfapi", "psij"]
+
+    # iri / sfapi
+    endpoint: str | None = None          # 'nersc' | 'olcf'
+    resource_id: str | None = None
+    home_dir: str | None = None          # user $HOME on target; resolves the wrapper path
+    login_host: str | None = None        # for tunnel='forward'
+
+    # psij
+    edge_name: str | None = None         # login-node endpoint already in the topology
+    executor: str | None = None
+
+    # shared submission attributes
+    account: str | None = None
+    queue_name: str | None = None
+    walltime_min: int = 30
+    n_nodes: int = 1
+    constraint: str | None = None
+    reservation: str | None = None
+    workdir: str | None = None
+    environment: dict[str, str] = {}
+    setup: list[str] = []
+    tunnel: Literal["none", "forward", "reverse"] = "none"
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _check_fields(self) -> TargetConfig:
+        if self.kind in ("iri", "sfapi"):
+            if not self.endpoint:
+                raise ValueError(f"remote.target.kind={self.kind!r} requires 'endpoint'")
+            if not self.resource_id:
+                raise ValueError(f"remote.target.kind={self.kind!r} requires 'resource_id'")
+            if not self.home_dir:
+                raise ValueError(f"remote.target.kind={self.kind!r} requires 'home_dir'")
+        # 'psij' + 'edge_name' is checked at the RemoteConfig level: whether
+        # edge_name is required depends on RemoteConfig.embedded, a sibling
+        # field this model can't see.
+        if not self.account:
+            raise ValueError(f"remote.target.kind={self.kind!r} requires 'account'")
+        return self
+
+
 class RemoteConfig(BaseModel):
     pythonpath: list[str] = []
     backends: list[str] = ["dragon_v3"]
+    broker_url: str | None = None
+    target: TargetConfig | None = None
+    # Host the ORBIT broker in-process (EmbeddedBroker) instead of connecting
+    # to an already-running one — no separate radical-orbit-broker.py
+    # deployment needed. Mutually exclusive with broker_url. Combined with
+    # target.kind: psij, target.edge_name is not required — PsiJ runs on the
+    # embedded broker itself.
+    embedded: bool = False
 
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _check_embedded(self) -> RemoteConfig:
+        if self.embedded and self.broker_url:
+            raise ValueError(
+                "remote.embedded and remote.broker_url are mutually exclusive "
+                "— the embedded broker provides its own URL"
+            )
+        if (
+            self.target is not None
+            and self.target.kind == "psij"
+            and not self.embedded
+            and not self.target.edge_name
+        ):
+            raise ValueError(
+                "remote.target.kind='psij' requires 'edge_name' "
+                "(unless remote.embedded is true)"
+            )
+        return self
 
 
 class TrackingConfig(BaseModel):

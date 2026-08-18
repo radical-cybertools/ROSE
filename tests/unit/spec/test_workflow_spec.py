@@ -1,6 +1,9 @@
 """Unit tests for WorkflowSpec — load_spec and workflow_with()."""
 
+import sys
 import textwrap
+import types
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -250,3 +253,45 @@ def test_validate_imports_default_false_skips_check(tmp_path):
     p.write_text(BAD_MODULE_YAML)
     spec = load_spec(p)  # validate_imports=False by default — should not raise
     assert spec is not None
+
+
+# ── workflow: calls rhapsody.get_backend with broker_url, not bridge_url ──────
+#
+# Regression test for the orbit Bridge -> Broker rename: OrbitExecutionBackend
+# (rhapsody) takes `broker_url=`, and this call site used to pass the stale
+# `bridge_url=` kwarg (a TypeError against current rhapsody). `rhapsody` and
+# `radical.asyncflow` are stubbed out and made to fail immediately inside
+# get_backend, so this isolates the kwarg names without needing to simulate
+# the rest of the execution stack (LearnerBuilder / learner.start / asyncflow).
+
+
+class _Sentinel(Exception):
+    pass
+
+
+async def test_workflow_calls_get_backend_with_broker_url(tmp_path, monkeypatch):
+    spec = _make_spec(tmp_path)
+    captured = {}
+
+    async def fake_get_backend(name, **kwargs):
+        captured["name"] = name
+        captured.update(kwargs)
+        raise _Sentinel
+
+    fake_rhapsody = types.ModuleType("rhapsody")
+    fake_rhapsody.get_backend = fake_get_backend
+
+    fake_asyncflow_mod = types.ModuleType("radical.asyncflow")
+    fake_asyncflow_mod.WorkflowEngine = MagicMock()
+
+    monkeypatch.setitem(sys.modules, "rhapsody", fake_rhapsody)
+    monkeypatch.setitem(sys.modules, "radical.asyncflow", fake_asyncflow_mod)
+
+    with pytest.raises(_Sentinel):
+        await spec.workflow("https://broker.example:8000", "ep-1")
+
+    assert captured["name"] == "orbit"
+    assert "bridge_url" not in captured
+    assert captured["broker_url"] == "https://broker.example:8000"
+    assert captured["endpoint_name"] == "ep-1"
+    assert captured["backends"] == spec.config.remote.backends

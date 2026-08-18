@@ -77,7 +77,8 @@ def _validate_task_imports(cfg: WorkflowConfig) -> None:
 
 
 class WorkflowSpec:
-    """Validated workflow spec that produces a coroutine compatible with service_utils.run()."""
+    """Validated workflow spec that produces a coroutine compatible with
+    ``rose.remote.run_remote()`` (``workflow(broker_url, endpoint_name)``)."""
 
     def __init__(self, config: WorkflowConfig) -> None:
         self.config = config
@@ -111,13 +112,13 @@ class WorkflowSpec:
     def workflow(self) -> Callable[..., Coroutine[Any, Any, None]]:
         cfg = self.config
 
-        async def _workflow(bridge_url: str, endpoint_name: str) -> None:
+        async def _workflow(broker_url: str, endpoint_name: str) -> None:
             import rhapsody
             from radical.asyncflow import WorkflowEngine
 
             engine = await rhapsody.get_backend(
                 "orbit",
-                bridge_url=bridge_url,
+                broker_url=broker_url,
                 endpoint_name=endpoint_name,
                 backends=cfg.remote.backends,
             )

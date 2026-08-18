@@ -43,6 +43,19 @@ def _run_local(yaml_path: Path, backend: str) -> None:
     asyncio.run(_main())
 
 
+def _run_remote(yaml_path: Path) -> None:
+    from rose.remote import run_remote
+    from rose.spec import load_spec
+
+    spec = load_spec(yaml_path)
+    if spec.config.remote.target is None:
+        sys.exit(
+            "--remote requires a 'remote.target' block in the spec "
+            f"({yaml_path}) — see docs/user-guide/spec-api.md#remote-config"
+        )
+    asyncio.run(run_remote(spec))
+
+
 def main():
     parser = argparse.ArgumentParser(prog="rose")
     sub = parser.add_subparsers(dest="command")
@@ -53,17 +66,28 @@ def main():
         "--local", action="store_true", help="Run locally using rhapsody concurrent backend"
     )
     run_p.add_argument(
+        "--remote",
+        action="store_true",
+        help="Run on a remote HPC target via the ORBIT broker "
+             "(spec-driven; see 'remote.target' in the YAML)",
+    )
+    run_p.add_argument(
         "--backend",
-        default="concurrent",
+        default="dragon_v3",
         help="Rhapsody backend name for --local (default: concurrent)",
     )
 
     args = parser.parse_args()
 
     if args.command == "run":
-        if not args.local:
-            parser.error("specify a mode: --local  (--orbit coming soon)")
-        _run_local(args.yaml, args.backend)
+        if args.local and args.remote:
+            parser.error("--local and --remote are mutually exclusive")
+        elif args.local:
+            _run_local(args.yaml, args.backend)
+        elif args.remote:
+            _run_remote(args.yaml)
+        else:
+            parser.error("specify a mode: --local | --remote")
     else:
         parser.print_help()
         sys.exit(1)

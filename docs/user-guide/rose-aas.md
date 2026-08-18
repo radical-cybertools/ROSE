@@ -27,7 +27,7 @@ A ROSE learner doesn't run anything itself — it submits tasks through whicheve
 | Backend | Where the orchestration loop runs | Where tasks execute | Documented at |
 |---|---|---|---|
 | `DragonExecutionBackendV3` (RHAPSODY) | Wherever your script runs — it submits a pilot job and blocks inside it | Inside the pilot job it just submitted | [Target Resources](target-resources.md) |
-| Orbit backend (RHAPSODY, `bridge_url` + `endpoint_name`) | Wherever your script runs — does **not** need to be the HPC machine | Inside a separate, already-running orbit endpoint — possibly on a different machine entirely | this page |
+| Orbit backend (RHAPSODY, `broker_url` + `endpoint_name`) | Wherever your script runs — does **not** need to be the HPC machine | Inside a separate, already-running orbit endpoint — possibly on a different machine entirely | this page |
 
 The first model is "submit a job, then run my loop inside it." The second is "run my loop here; dispatch tasks to a job running somewhere else." That second model is what makes ROSE service-like: the loop's control plane (your `learner.start()` call, deciding when to stop, talking to MLflow/ClearML) is decoupled from the compute plane (the HPC allocation actually executing `simulate`/`train`).
 
@@ -35,12 +35,14 @@ The first model is "submit a job, then run my loop inside it." The second is "ru
 
 ## How ROSE operates within a job
 
-The orbit backend connects two things over a bridge:
+The orbit backend connects two things over the ORBIT broker:
 
-1. **An orbit endpoint**, running inside an HPC job allocation. The job itself is requested through whatever your site normally uses to get an allocation — it doesn't have to be requested by ROSE. Once the job starts, the endpoint comes up inside it and stays alive for the allocation's lifetime, ready to accept task descriptions.
-2. **Your orchestration process**, running anywhere — your laptop, a long-lived service host, a CI runner. It builds the learner from your spec (`LearnerBuilder(cfg, asyncflow).build()`), starts the loop (`learner.start(...)`), and for every `simulation`/`training`/`active_learn`/... task it submits, the asyncflow engine forwards that task description over the bridge to the endpoint, waits for the result, and resumes the loop.
+1. **An orbit endpoint**, running inside an HPC job allocation. Historically this job had to be requested through whatever your site normally uses to get an allocation, outside of ROSE. `rose run <yaml> --remote` now automates this step too: given a `remote.target` block in the spec (see the [YAML Spec API](spec-api.md#remote-config)), it submits the bootstrap job itself — via IRI, NERSC's Superfacility API (SFAPI), or PsiJ on an already-connected login node — and waits for the endpoint to register before handing off to step 2. Once the job starts, the endpoint comes up inside it and stays alive for the allocation's lifetime, ready to accept task descriptions.
+2. **Your orchestration process**, running anywhere — your laptop, a long-lived service host, a CI runner. It builds the learner from your spec (`LearnerBuilder(cfg, asyncflow).build()`), starts the loop (`learner.start(...)`), and for every `simulation`/`training`/`active_learn`/... task it submits, the asyncflow engine forwards that task description over the broker to the endpoint, waits for the result, and resumes the loop.
 
-The practical effect: you submit a ROSE workflow to HPC without an interactive session on the cluster, and without your laptop needing to stay connected to the scheduler — only to the bridge. The job allocation is what's expensive and scheduler-queued; your control process is cheap and can be restarted independently of it. Stop-criterion checks, `set_next_config()` decisions, and tracking calls all happen on your side of the bridge, on every iteration, with no per-iteration job resubmission.
+The practical effect: you submit a ROSE workflow to HPC without an interactive session on the cluster, and without your laptop needing to stay connected to the scheduler — only to the broker. The job allocation is what's expensive and scheduler-queued; your control process is cheap and can be restarted independently of it. Stop-criterion checks, `set_next_config()` decisions, and tracking calls all happen on your side of the broker, on every iteration, with no per-iteration job resubmission.
+
+**No standalone broker required either.** `remote.embedded: true` (see the [YAML Spec API](spec-api.md#remoteembedded--run-without-a-standalone-broker)) hosts the broker inside your own orchestration process — nothing to deploy or keep running separately. Combined with `target.kind: psij`, running `rose run --remote` directly on a login node needs no bootstrap connection at all: PsiJ submits the compute-node job from the same process that's coordinating the loop. This is the fullest "as a Service" story so far — one command, one process, no infrastructure to stand up first (you still need an operator-placed broker cert/token under `~/.radical/orbit`, same as any broker).
 
 This is additive to the model in [Target Resources](target-resources.md), not a replacement — both go through the same `WorkflowEngine`/`LearnerBuilder` plumbing. Which backend you choose only changes *where* the edge lives; the spec, the learner, and the loop semantics are identical either way.
 

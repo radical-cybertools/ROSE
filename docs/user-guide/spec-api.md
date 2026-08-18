@@ -596,6 +596,81 @@ remote:
 
 `backends` is consumed only at engine-creation time and is **not** injected into task `kwargs`.
 
+### `remote.target` — bootstrapping the endpoint for `rose run --remote`
+
+`remote.target` tells `rose run <yaml> --remote` how to launch the remote
+orbit endpoint itself, instead of assuming one is already running. Omit it
+to keep today's manual-bootstrap behavior (start the endpoint yourself, use
+`--local`/the orbit backend directly).
+
+```yaml
+remote:
+  backends: [dragon_v3]
+  target:
+    kind: sfapi            # iri | sfapi | psij
+    endpoint: nersc          # iri/sfapi only: nersc | olcf
+    resource_id: perlmutter
+    account: amsc007
+    queue_name: debug
+    walltime_min: 30
+    n_nodes: 1
+    constraint: cpu
+    home_dir: /global/u2/m/merzky
+    tunnel: none            # none | forward | reverse
+```
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `remote.target.kind` | `iri` \| `sfapi` \| `psij` | yes | Bootstrap mechanism. Use `sfapi` for NERSC (IRI's `/compute/*` routes are broken server-side there); `iri` for OLCF; `psij` to submit via an already-connected login-node endpoint instead of IRI/SFAPI. |
+| `remote.target.endpoint` | string | `iri`/`sfapi` only | `nersc` or `olcf`. |
+| `remote.target.resource_id` | string | `iri`/`sfapi` only | Target compute resource, e.g. `perlmutter`, `odo`. |
+| `remote.target.home_dir` | string | `iri`/`sfapi` only | User `$HOME` on the target — resolves the endpoint wrapper script path. |
+| `remote.target.login_host` | string | when `tunnel: forward` | Login host to tunnel through. |
+| `remote.target.edge_name` | string | `psij` only, unless `remote.embedded: true` | Name of the already-connected login-node endpoint to submit through. Not needed when `remote.embedded: true` — PsiJ runs on the embedded broker itself. |
+| `remote.target.executor` | string | no | PsiJ executor name (default: `local`). |
+| `remote.target.account` | string | yes | Allocation/project account. |
+| `remote.target.queue_name` | string | no | Queue/partition. |
+| `remote.target.walltime_min` | int | no | Default `30`. |
+| `remote.target.n_nodes` | int | no | Default `1`. |
+| `remote.target.constraint` | string | no | Scheduler constraint (e.g. `cpu`). |
+| `remote.target.reservation` | string | no | Reservation name. |
+| `remote.target.workdir` | string | no | Job working directory. |
+| `remote.target.environment` | dict | no | Extra environment variables for the bootstrap job. |
+| `remote.target.setup` | list[str] | no | Shell setup lines run before the endpoint starts. |
+| `remote.target.tunnel` | `none` \| `forward` \| `reverse` | no | Default `none`. SSH tunnel mode for the endpoint's broker connection. |
+
+Credentials are read from disk/env, never stored in the spec: `iri` reads a
+bearer token from `~/.amsc/token_<endpoint>`; `sfapi` reads a client ID from
+`$SFAPI_CLIENT_ID` and a private key from `~/.amsc/sfapi_key_<endpoint>.pem`.
+
+### `remote.embedded` — run without a standalone broker
+
+`remote.embedded: true` hosts the ORBIT broker inside the `rose run --remote`
+process itself (`EndpointRuntime`/`EmbeddedBroker`) instead of connecting to
+one already running elsewhere. No separate `radical-orbit-broker.py`
+deployment is needed. Mutually exclusive with `remote.broker_url`.
+
+```yaml
+remote:
+  embedded: true
+  target:
+    kind: psij
+    account: amsc007
+    queue_name: debug
+    # edge_name omitted — PsiJ runs on the embedded broker itself
+```
+
+The embedded broker is still a **real** broker: it needs the same
+operator-placed cert/key/token under `~/.radical/orbit` (or their env-var
+redirects) as a standalone one — see `radical.orbit`'s `CLAUDE.md`
+`TOKEN_RECIPE` if those aren't set up yet.
+
+Combined with `target.kind: psij`, `target.edge_name` is not required — PsiJ
+loads directly on the embedded broker (this only works when the process
+running `rose run --remote` itself has batch-scheduler access, e.g. you're
+on a login node). `target.kind: iri`/`sfapi` work the same as without
+`embedded` — only where the broker lives changes.
+
 ---
 
 ## Tracking
@@ -661,6 +736,9 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `parameters` | dict | no | `{}` | User-defined kwargs injected into all tasks |
 | `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
 | `remote.backends` | list[str] | no | `["dragon_v3"]` | Rhapsody backends requested on the remote orbit session |
+| `remote.broker_url` | string | no | `$RADICAL_ORBIT_BROKER_URL` | Broker URL override for `--remote` (no on-disk fallback — orbit resolves URL from CLI/API/env only) |
+| `remote.target` | object | no | `null` | Bootstrap config for `--remote` — see [`remote.target`](#remotetarget--bootstrapping-the-endpoint-for-rose-run---remote) |
+| `remote.embedded` | bool | no | `false` | Host the broker in-process instead of connecting to one — see [`remote.embedded`](#remoteembedded--run-without-a-standalone-broker) |
 | `tracking.backend` | string | no | `none` | `mlflow` / `clearml` / `none` |
 | `tracking.experiment` | string | no | `ROSE-Spec` | Experiment name |
 | `tracking.run_name` | string | no | `null` | Run label |

@@ -5,7 +5,7 @@ import textwrap
 import pytest
 from pydantic import ValidationError
 
-from rose.spec.schema import TaskDef, WorkflowConfig
+from rose.spec.schema import RemoteConfig, TargetConfig, TaskDef, WorkflowConfig
 
 # ── TaskDef ───────────────────────────────────────────────────────────────────
 
@@ -671,6 +671,210 @@ def test_parameters_defaults_empty(tmp_path):
 
 
 # ── WorkflowConfig — parallel learners (mixed types) ─────────────────────────────
+
+
+# ── RemoteConfig.target (TargetConfig) ───────────────────────────────────────
+
+
+def test_remote_target_default_none():
+    assert RemoteConfig().target is None
+
+
+def test_remote_embedded_default_false():
+    assert RemoteConfig().embedded is False
+
+
+def test_remote_embedded_and_broker_url_mutually_exclusive():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        RemoteConfig(embedded=True, broker_url="https://broker:8000")
+
+
+def test_remote_embedded_without_broker_url_valid():
+    cfg = RemoteConfig(embedded=True)
+    assert cfg.embedded is True
+    assert cfg.broker_url is None
+
+
+def test_remote_psij_edge_name_required_unless_embedded():
+    with pytest.raises(ValueError, match="requires 'edge_name'"):
+        RemoteConfig(
+            embedded=False,
+            target=TargetConfig(kind="psij", account="amsc007"),
+        )
+
+
+def test_remote_psij_edge_name_not_required_when_embedded():
+    cfg = RemoteConfig(
+        embedded=True,
+        target=TargetConfig(kind="psij", account="amsc007"),
+    )
+    assert cfg.target.edge_name is None
+
+
+def test_remote_psij_edge_name_still_valid_when_embedded():
+    """A user may still set edge_name when embedded — harmless, ignored by
+    the RemoteConfig-level requirement check."""
+    cfg = RemoteConfig(
+        embedded=True,
+        target=TargetConfig(kind="psij", edge_name="login1", account="amsc007"),
+    )
+    assert cfg.target.edge_name == "login1"
+
+
+def test_remote_iri_target_unaffected_by_embedded_validator():
+    cfg = RemoteConfig(
+        embedded=True,
+        target=TargetConfig(
+            kind="iri", endpoint="olcf", resource_id="odo",
+            account="fus183", home_dir="/home/x",
+        ),
+    )
+    assert cfg.target.kind == "iri"
+
+
+def test_target_config_sfapi_valid():
+    t = TargetConfig(
+        kind="sfapi",
+        endpoint="nersc",
+        resource_id="perlmutter",
+        account="amsc007",
+        home_dir="/global/u2/m/merzky",
+    )
+    assert t.kind == "sfapi"
+    assert t.tunnel == "none"
+    assert t.walltime_min == 30
+
+
+def test_target_config_iri_missing_endpoint_raises():
+    with pytest.raises(ValueError, match="requires 'endpoint'"):
+        TargetConfig(kind="iri", resource_id="odo", account="fus183", home_dir="/home/x")
+
+
+def test_target_config_iri_missing_resource_id_raises():
+    with pytest.raises(ValueError, match="requires 'resource_id'"):
+        TargetConfig(kind="iri", endpoint="olcf", account="fus183", home_dir="/home/x")
+
+
+def test_target_config_iri_missing_home_dir_raises():
+    with pytest.raises(ValueError, match="requires 'home_dir'"):
+        TargetConfig(kind="iri", endpoint="olcf", resource_id="odo", account="fus183")
+
+
+def test_target_config_psij_missing_edge_name_allowed_standalone():
+    """TargetConfig alone no longer enforces 'edge_name' for kind='psij' —
+    whether it's required depends on RemoteConfig.embedded, a sibling field
+    this model can't see. See RemoteConfig-level tests below for the actual
+    enforcement (edge_name required unless embedded=True)."""
+    t = TargetConfig(kind="psij", account="amsc007")
+    assert t.edge_name is None
+
+
+def test_target_config_psij_valid():
+    t = TargetConfig(kind="psij", edge_name="perlmutter-login", account="amsc007")
+    assert t.edge_name == "perlmutter-login"
+
+
+def test_target_config_missing_account_raises():
+    with pytest.raises(ValueError, match="requires 'account'"):
+        TargetConfig(kind="psij", edge_name="login1")
+
+
+def test_target_config_extra_field_rejected():
+    with pytest.raises(ValidationError):
+        TargetConfig(
+            kind="psij", edge_name="login1", account="a", bogus_field="x"
+        )
+
+
+def test_target_config_bad_tunnel_value_rejected():
+    with pytest.raises(ValidationError):
+        TargetConfig(kind="psij", edge_name="login1", account="a", tunnel="yes")
+
+
+def test_remote_target_roundtrip_from_yaml(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        remote:
+          backends: [dragon_v3]
+          target:
+            kind: sfapi
+            endpoint: nersc
+            resource_id: perlmutter
+            account: amsc007
+            queue_name: debug
+            walltime_min: 30
+            n_nodes: 1
+            constraint: cpu
+            home_dir: /global/u2/m/merzky
+    """)
+    p = tmp_path / "remote.yaml"
+    p.write_text(yaml)
+    cfg = WorkflowConfig.from_yaml(p)
+    assert cfg.remote.target is not None
+    assert cfg.remote.target.kind == "sfapi"
+    assert cfg.remote.target.endpoint == "nersc"
+    assert cfg.remote.target.constraint == "cpu"
+
+
+def test_remote_embedded_psij_roundtrip_from_yaml(tmp_path):
+    yaml = textwrap.dedent("""\
+        learner:
+          type: sequential_active_learner
+          max_iter: 1
+        simulation:
+          type: python
+          function: mymod:sim
+        training:
+          type: python
+          function: mymod:train
+        active_learn:
+          type: python
+          function: mymod:select
+        stop_criterion:
+          metric: mse
+          threshold: 0.1
+          evaluator:
+            type: python
+            function: mymod:eval
+        remote:
+          embedded: true
+          target:
+            kind: psij
+            account: amsc007
+            queue_name: debug
+    """)
+    p = tmp_path / "embedded.yaml"
+    p.write_text(yaml)
+    cfg = WorkflowConfig.from_yaml(p)
+    assert cfg.remote.embedded is True
+    assert cfg.remote.target.kind == "psij"
+    assert cfg.remote.target.edge_name is None
+
+
+def test_remote_without_target_still_valid(tmp_path):
+    """Specs written before remote.target existed (e.g. the m3dc1 use case)
+    must keep validating unchanged."""
+    p = tmp_path / "spec.yaml"
+    p.write_text(SEQ_YAML)
+    cfg = WorkflowConfig.from_yaml(p)
+    assert cfg.remote.target is None
 
 
 def test_parallel_learners_mixed_types(tmp_path):
