@@ -69,7 +69,7 @@ def main():
         "--remote",
         action="store_true",
         help="Run on a remote HPC target via the ORBIT broker "
-             "(spec-driven; see 'remote.target' in the YAML)",
+        "(spec-driven; see 'remote.target' in the YAML)",
     )
     run_p.add_argument(
         "--backend",

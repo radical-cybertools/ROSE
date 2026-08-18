@@ -77,8 +77,8 @@ class LearnerDef(BaseModel):
 
 # ── Remote / tracking ────────────────────────────────────────────────────────
 class TargetConfig(BaseModel):
-    """Bootstrap config for `rose run --remote`: how to launch the remote
-    ORBIT endpoint before the workflow's tasks run on it.
+    """Bootstrap config for `rose run --remote`: how to launch the remote ORBIT endpoint before the
+    workflow's tasks run on it.
 
     ``kind`` selects the launch mechanism:
     - ``iri``/``sfapi``: submit a job to `resource_id` through the broker's
@@ -94,13 +94,13 @@ class TargetConfig(BaseModel):
     kind: Literal["iri", "sfapi", "psij"]
 
     # iri / sfapi
-    endpoint: str | None = None          # 'nersc' | 'olcf'
+    endpoint: str | None = None  # 'nersc' | 'olcf'
     resource_id: str | None = None
-    home_dir: str | None = None          # user $HOME on target; resolves the wrapper path
-    login_host: str | None = None        # for tunnel='forward'
+    home_dir: str | None = None  # user $HOME on target; resolves the wrapper path
+    login_host: str | None = None  # for tunnel='forward'
 
     # psij
-    edge_name: str | None = None         # login-node endpoint already in the topology
+    edge_name: str | None = None  # login-node endpoint already in the topology
     executor: str | None = None
 
     # shared submission attributes
@@ -162,8 +162,7 @@ class RemoteConfig(BaseModel):
             and not self.target.edge_name
         ):
             raise ValueError(
-                "remote.target.kind='psij' requires 'edge_name' "
-                "(unless remote.embedded is true)"
+                "remote.target.kind='psij' requires 'edge_name' (unless remote.embedded is true)"
             )
         return self
 

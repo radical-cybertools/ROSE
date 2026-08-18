@@ -1,6 +1,7 @@
-"""Unit tests for rose.remote — bootstrap/execute/teardown orchestration for
-`rose run --remote`. radical.orbit's EndpointRuntime is mocked throughout;
-these tests never touch a real broker or HPC system.
+"""Unit tests for rose.remote — bootstrap/execute/teardown orchestration for `rose run --remote`.
+
+radical.orbit's EndpointRuntime is mocked throughout; these tests never touch a real broker or HPC
+system.
 """
 
 import textwrap
@@ -158,8 +159,12 @@ def test_teardown_iri_cancels_and_disconnects():
     instance = MagicMock()
     connect_client = MagicMock()
     created = {
-        "kind": "sfapi", "client": instance, "connect_client": connect_client,
-        "endpoint_key": "nersc", "resource_id": "perlmutter", "job_id": "j1",
+        "kind": "sfapi",
+        "client": instance,
+        "connect_client": connect_client,
+        "endpoint_key": "nersc",
+        "resource_id": "perlmutter",
+        "job_id": "j1",
     }
     remote._teardown(created)
     instance.cancel_job.assert_called_once_with("perlmutter", "j1")
@@ -168,8 +173,13 @@ def test_teardown_iri_cancels_and_disconnects():
 
 def test_teardown_psij_cancels_only():
     psij = MagicMock()
-    created = {"kind": "psij", "client": psij, "job_id": "j1",
-              "parent_edge": "login1", "endpoint_name": "rose-login1-abc"}
+    created = {
+        "kind": "psij",
+        "client": psij,
+        "job_id": "j1",
+        "parent_edge": "login1",
+        "endpoint_name": "rose-login1-abc",
+    }
     remote._teardown(created)
     psij.cancel_job.assert_called_once_with("j1")
 
@@ -179,8 +189,12 @@ def test_teardown_swallows_cancel_errors():
     instance.cancel_job.side_effect = RuntimeError("already gone")
     connect_client = MagicMock()
     created = {
-        "kind": "iri", "client": instance, "connect_client": connect_client,
-        "endpoint_key": "olcf", "resource_id": "odo", "job_id": "j1",
+        "kind": "iri",
+        "client": instance,
+        "connect_client": connect_client,
+        "endpoint_key": "olcf",
+        "resource_id": "odo",
+        "job_id": "j1",
     }
     remote._teardown(created)  # must not raise
     connect_client.disconnect.assert_called_once_with("olcf")
@@ -230,6 +244,7 @@ async def test_run_remote_psij_edge_not_in_topology_raises(tmp_path, monkeypatch
     monkeypatch.setattr(remote, "_teardown", MagicMock())
 
     import radical.orbit
+
     monkeypatch.setattr(radical.orbit, "EndpointRuntime", MagicMock(return_value=fake_rt))
 
     with pytest.raises(RuntimeError, match="login1"):
@@ -260,13 +275,13 @@ async def test_run_remote_sfapi_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(type(spec), "workflow", property(lambda self: fake_workflow))
 
     import radical.orbit
+
     monkeypatch.setattr(radical.orbit, "EndpointRuntime", MagicMock(return_value=fake_rt))
 
     await remote.run_remote(spec)
 
     fake_rt.get_plugin.assert_called_once_with("broker", "sfapi_connect")
-    connect_client.connect.assert_called_once_with("nersc", "abc123",
-                                                    "-----BEGIN KEY-----\n...")
+    connect_client.connect.assert_called_once_with("nersc", "abc123", "-----BEGIN KEY-----\n...")
     instance.submit_job.assert_called_once()
     resource_id, job_spec = instance.submit_job.call_args[0]
     assert resource_id == "perlmutter"
@@ -292,12 +307,14 @@ def test_launch_psij_embedded_uses_broker_and_local_home(monkeypatch):
     rt.get_plugin.return_value = psij
 
     from rose.spec.schema import TargetConfig
+
     target = TargetConfig(kind="psij", account="amsc007")
 
     class _FakeHomePath:
         @staticmethod
         def home():
             from pathlib import Path as _RealPath
+
             return _RealPath("/home/local")
 
     # Rebind the name `Path` inside rose.remote only — must not touch the
@@ -319,6 +336,7 @@ def test_launch_psij_embedded_prefers_explicit_home_dir():
     rt.get_plugin.return_value = psij
 
     from rose.spec.schema import TargetConfig
+
     target = TargetConfig(kind="psij", account="amsc007", home_dir="/custom/home")
 
     remote._launch_psij(rt, target, "https://broker:8000", embedded=True)
@@ -337,6 +355,7 @@ def test_launch_psij_non_embedded_uses_edge_and_remote_sysinfo():
     rt.get_plugin.side_effect = lambda edge, name: {"psij": psij, "sysinfo": sysinfo}[name]
 
     from rose.spec.schema import TargetConfig
+
     target = TargetConfig(kind="psij", edge_name="login1", account="amsc007")
 
     remote._launch_psij(rt, target, "https://broker:8000", embedded=False)
@@ -374,6 +393,7 @@ async def test_run_remote_embedded_constructs_and_tears_down_broker(tmp_path, mo
 
     import radical.orbit
     import radical.orbit.embedded
+
     monkeypatch.setattr(radical.orbit, "EndpointRuntime", MagicMock(return_value=fake_rt))
     fake_embedded_broker_cls = MagicMock(return_value=fake_eb)
     monkeypatch.setattr(radical.orbit.embedded, "EmbeddedBroker", fake_embedded_broker_cls)
@@ -400,9 +420,9 @@ async def test_run_remote_embedded_stops_broker_if_runtime_start_fails(tmp_path,
 
     import radical.orbit
     import radical.orbit.embedded
+
     monkeypatch.setattr(radical.orbit, "EndpointRuntime", MagicMock(return_value=fake_rt))
-    monkeypatch.setattr(radical.orbit.embedded, "EmbeddedBroker",
-                        MagicMock(return_value=fake_eb))
+    monkeypatch.setattr(radical.orbit.embedded, "EmbeddedBroker", MagicMock(return_value=fake_eb))
 
     with pytest.raises(RuntimeError, match="registration failed"):
         await remote.run_remote(spec)

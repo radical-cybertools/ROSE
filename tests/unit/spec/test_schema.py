@@ -712,8 +712,8 @@ def test_remote_psij_edge_name_not_required_when_embedded():
 
 
 def test_remote_psij_edge_name_still_valid_when_embedded():
-    """A user may still set edge_name when embedded — harmless, ignored by
-    the RemoteConfig-level requirement check."""
+    """A user may still set edge_name when embedded — harmless, ignored by the RemoteConfig-level
+    requirement check."""
     cfg = RemoteConfig(
         embedded=True,
         target=TargetConfig(kind="psij", edge_name="login1", account="amsc007"),
@@ -725,8 +725,11 @@ def test_remote_iri_target_unaffected_by_embedded_validator():
     cfg = RemoteConfig(
         embedded=True,
         target=TargetConfig(
-            kind="iri", endpoint="olcf", resource_id="odo",
-            account="fus183", home_dir="/home/x",
+            kind="iri",
+            endpoint="olcf",
+            resource_id="odo",
+            account="fus183",
+            home_dir="/home/x",
         ),
     )
     assert cfg.target.kind == "iri"
@@ -761,10 +764,12 @@ def test_target_config_iri_missing_home_dir_raises():
 
 
 def test_target_config_psij_missing_edge_name_allowed_standalone():
-    """TargetConfig alone no longer enforces 'edge_name' for kind='psij' —
-    whether it's required depends on RemoteConfig.embedded, a sibling field
-    this model can't see. See RemoteConfig-level tests below for the actual
-    enforcement (edge_name required unless embedded=True)."""
+    """TargetConfig alone no longer enforces 'edge_name' for kind='psij' — whether it's required
+    depends on RemoteConfig.embedded, a sibling field this model can't see.
+
+    See RemoteConfig-level tests below for the actual enforcement (edge_name required unless
+    embedded=True).
+    """
     t = TargetConfig(kind="psij", account="amsc007")
     assert t.edge_name is None
 
@@ -781,9 +786,7 @@ def test_target_config_missing_account_raises():
 
 def test_target_config_extra_field_rejected():
     with pytest.raises(ValidationError):
-        TargetConfig(
-            kind="psij", edge_name="login1", account="a", bogus_field="x"
-        )
+        TargetConfig(kind="psij", edge_name="login1", account="a", bogus_field="x")
 
 
 def test_target_config_bad_tunnel_value_rejected():
@@ -869,8 +872,8 @@ def test_remote_embedded_psij_roundtrip_from_yaml(tmp_path):
 
 
 def test_remote_without_target_still_valid(tmp_path):
-    """Specs written before remote.target existed (e.g. the m3dc1 use case)
-    must keep validating unchanged."""
+    """Specs written before remote.target existed (e.g. the m3dc1 use case) must keep validating
+    unchanged."""
     p = tmp_path / "spec.yaml"
     p.write_text(SEQ_YAML)
     cfg = WorkflowConfig.from_yaml(p)

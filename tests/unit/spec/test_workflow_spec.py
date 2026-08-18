@@ -3,7 +3,7 @@
 import sys
 import textwrap
 import types
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -265,7 +265,7 @@ def test_validate_imports_default_false_skips_check(tmp_path):
 # the rest of the execution stack (LearnerBuilder / learner.start / asyncflow).
 
 
-class _Sentinel(Exception):
+class _SentinelError(Exception):
     pass
 
 
@@ -276,7 +276,7 @@ async def test_workflow_calls_get_backend_with_broker_url(tmp_path, monkeypatch)
     async def fake_get_backend(name, **kwargs):
         captured["name"] = name
         captured.update(kwargs)
-        raise _Sentinel
+        raise _SentinelError
 
     fake_rhapsody = types.ModuleType("rhapsody")
     fake_rhapsody.get_backend = fake_get_backend
@@ -287,7 +287,7 @@ async def test_workflow_calls_get_backend_with_broker_url(tmp_path, monkeypatch)
     monkeypatch.setitem(sys.modules, "rhapsody", fake_rhapsody)
     monkeypatch.setitem(sys.modules, "radical.asyncflow", fake_asyncflow_mod)
 
-    with pytest.raises(_Sentinel):
+    with pytest.raises(_SentinelError):
         await spec.workflow("https://broker.example:8000", "ep-1")
 
     assert captured["name"] == "orbit"
