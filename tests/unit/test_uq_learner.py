@@ -5,11 +5,11 @@ import pytest
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
+
+from rose.learner import IterationState
 from rose.uq import UQScorer
 from rose.uq.uq_active_learner import ParallelUQLearner, SeqUQLearner
 from rose.uq.uq_learner import UQLearnerConfig
-
-from rose.learner import IterationState
 
 
 async def mock_start_iterator(*args, **kwargs):

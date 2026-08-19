@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from radical.asyncflow import WorkflowEngine
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 
 from rose.learner import TaskConfig
+from rose.rl.reinforcement_learner import SequentialReinforcementLearner
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")

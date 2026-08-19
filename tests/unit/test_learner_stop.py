@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from radical.asyncflow import WorkflowEngine
-from rose.al.active_learner import ParallelActiveLearner, SequentialActiveLearner
 
+from rose.al.active_learner import ParallelActiveLearner, SequentialActiveLearner
 from rose.learner import IterationState
 
 

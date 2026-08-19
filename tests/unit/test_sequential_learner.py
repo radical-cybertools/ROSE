@@ -4,8 +4,8 @@ import pytest
 
 # Assuming these imports based on the code structure
 from radical.asyncflow import WorkflowEngine
-from rose.al.active_learner import SequentialActiveLearner
 
+from rose.al.active_learner import SequentialActiveLearner
 from rose.learner import TaskConfig
 
 
