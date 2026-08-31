@@ -557,7 +557,7 @@ remote:
   pythonpath:
     - /path/to/my/task/modules
     - /path/to/shared/utilities
-  backends: [dragon_v3]   # optional — default shown; use [concurrent] for CPU-only runs
+  backends: [dragon]   # optional — default shown; use [concurrent] for CPU-only runs
 ```
 
 ### `remote.pythonpath`
@@ -582,7 +582,7 @@ def train(sim_result, **kwargs):
 |---|---|---|
 | `dask` | `DaskExecutionBackend` | Dask-based execution |
 | `concurrent` | `ConcurrentExecutionBackend` | CPU-only runs, no Dragon needed |
-| `dragon` | `DragonExecutionBackendV3` |  For highly compute intensive surrogates |
+| `dragon` | `DragonExecutionBackend` |  For highly compute intensive surrogates |
 
 
 
@@ -608,7 +608,7 @@ for an interactive wizard that walks you through getting this working.
 
 ```yaml
 remote:
-  backends: [dragon_v3]
+  backends: [dragon]
   target:
     kind: sfapi            # iri | sfapi | psij
     endpoint: nersc          # iri/sfapi only: nersc | olcf
@@ -738,7 +738,7 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `stop_criterion` | object | yes | — | Stopping condition |
 | `parameters` | dict | no | `{}` | User-defined kwargs injected into all tasks |
 | `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
-| `remote.backends` | list[str] | no | `["dragon_v3"]` | Rhapsody backends requested on the remote orbit session |
+| `remote.backends` | list[str] | no | `["dragon"]` | Rhapsody backends requested on the remote orbit session |
 | `remote.broker_url` | string | no | `$RADICAL_ORBIT_BROKER_URL` | Broker URL override for `--remote` (no on-disk fallback — orbit resolves URL from CLI/API/env only) |
 | `remote.target` | object | no | `null` | Bootstrap config for `--remote` — see [`remote.target`](#remotetarget-bootstrapping-the-endpoint-for-rose-run-remote) |
 | `remote.embedded` | bool | no | `false` | Host the broker in-process instead of connecting to one — see [`remote.embedded`](#remoteembedded-run-without-a-standalone-broker) |

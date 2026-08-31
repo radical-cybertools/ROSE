@@ -140,7 +140,7 @@ class TargetConfig(BaseModel):
 
 class RemoteConfig(BaseModel):
     pythonpath: list[str] = []
-    backends: list[str] = ["dragon_v3"]
+    backends: list[str] = ["dragon"]
     broker_url: str | None = None
     target: TargetConfig | None = None
     # Host the ORBIT broker in-process (EmbeddedBroker) instead of connecting

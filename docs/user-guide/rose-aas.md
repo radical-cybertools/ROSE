@@ -26,7 +26,7 @@ A ROSE learner doesn't run anything itself — it submits tasks through whicheve
 
 | Backend | Where the orchestration loop runs | Where tasks execute | Documented at |
 |---|---|---|---|
-| `DragonExecutionBackendV3` (RHAPSODY) | Wherever your script runs — it submits a pilot job and blocks inside it | Inside the pilot job it just submitted | [Target Resources](target-resources.md) |
+| `DragonExecutionBackend` (RHAPSODY) | Wherever your script runs — it submits a pilot job and blocks inside it | Inside the pilot job it just submitted | [Target Resources](target-resources.md) |
 | Orbit backend (RHAPSODY, `broker_url` + `endpoint_name`) | Wherever your script runs — does **not** need to be the HPC machine | Inside a separate, already-running orbit endpoint — possibly on a different machine entirely | this page |
 
 The first model is "submit a job, then run my loop inside it." The second is "run my loop here; dispatch tasks to a job running somewhere else." That second model is what makes ROSE service-like: the loop's control plane (your `learner.start()` call, deciding when to stop, talking to MLflow/ClearML) is decoupled from the compute plane (the HPC allocation actually executing `simulate`/`train`).

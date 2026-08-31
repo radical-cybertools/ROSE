@@ -97,8 +97,8 @@ def main():
     )
     run_p.add_argument(
         "--backend",
-        default="dragon_v3",
-        help="Rhapsody backend name for --local (default: concurrent)",
+        default="dragon",
+        help="Rhapsody backend name for --local (default: dragon)",
     )
 
     args = parser.parse_args()

@@ -484,7 +484,7 @@ def test_remote_backends_custom(tmp_path):
 def test_remote_backends_default():
     from rose.spec.schema import RemoteConfig
 
-    assert RemoteConfig().backends == ["dragon_v3"]
+    assert RemoteConfig().backends == ["dragon"]
 
 
 def test_remote_extra_field_rejected(tmp_path):
@@ -840,7 +840,7 @@ def test_remote_target_roundtrip_from_yaml(tmp_path):
             type: python
             function: mymod:eval
         remote:
-          backends: [dragon_v3]
+          backends: [dragon]
           target:
             kind: sfapi
             endpoint: nersc

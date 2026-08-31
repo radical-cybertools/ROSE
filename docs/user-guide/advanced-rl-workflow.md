@@ -21,7 +21,7 @@ Import ROSE parallel RL modules:
 
 ```python
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import DragonExecutionBackendV3
+from rhapsody.backends import DragonExecutionBackend
 from rose.rl import SequentialReinforcementLearner
 ```
 
@@ -32,7 +32,7 @@ from rose.rl import SequentialReinforcementLearner
 
 async def main():
 
-    execution_engine = await DragonExecutionBackendV3()
+    execution_engine = await DragonExecutionBackend()
 
     asyncflow = await WorkflowEngine.create(execution_engine)
 

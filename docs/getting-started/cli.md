@@ -21,7 +21,7 @@ rose run <yaml> --remote
 
 - **`--local`** runs the workflow on this machine via a
   [rhapsody](https://github.com/radical-cybertools/rhapsody) backend.
-  `--backend NAME` selects which one (default: `dragon_v3`).
+  `--backend NAME` selects which one (default: `dragon`).
 - **`--remote`** runs the workflow on a remote HPC target through the ORBIT
   broker, spec-driven — no separate bootstrap step. It requires a
   `remote.target` block in the YAML; see [ROSE as a Service](../user-guide/rose-aas.md)
