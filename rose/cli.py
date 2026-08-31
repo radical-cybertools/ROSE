@@ -56,9 +56,33 @@ def _run_remote(yaml_path: Path) -> None:
     asyncio.run(run_remote(spec))
 
 
+def _run_setup(wait_timeout: float | None) -> None:
+    from rose.remote import run_setup_wizard
+
+    if wait_timeout is None:
+        print(
+            "Using the default wait timeout of 300s for HPC job checks. "
+            "To change this, re-run with: rose setup --wait-timeout SECONDS"
+        )
+        wait_timeout = 300.0
+
+    ok = run_setup_wizard(wait_timeout=wait_timeout)
+    sys.exit(0 if ok else 1)
+
+
 def main():
     parser = argparse.ArgumentParser(prog="rose")
     sub = parser.add_subparsers(dest="command")
+
+    setup_p = sub.add_parser(
+        "setup", help="Interactive first-time setup wizard for `rose run --remote`"
+    )
+    setup_p.add_argument(
+        "--wait-timeout",
+        type=float,
+        default=None,
+        help="Seconds to wait for HPC test jobs during setup (default: 300)",
+    )
 
     run_p = sub.add_parser("run", help="Execute a ROSE workflow YAML")
     run_p.add_argument("yaml", type=Path, help="Path to workflow YAML")
@@ -88,6 +112,8 @@ def main():
             _run_remote(args.yaml)
         else:
             parser.error("specify a mode: --local | --remote")
+    elif args.command == "setup":
+        _run_setup(args.wait_timeout)
     else:
         parser.print_help()
         sys.exit(1)

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import rose.remote as remote
+import rose.remote.execute as remote
 from rose.spec import load_spec
 
 SFAPI_TARGET_YAML = textwrap.dedent("""\
@@ -132,6 +132,26 @@ def test_read_sfapi_credentials_missing_client_id_raises(tmp_path, monkeypatch):
         remote._read_sfapi_credentials("nersc")
 
 
+def test_read_sfapi_credentials_uses_client_id_file_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(remote, "AMSC_DIR", tmp_path)
+    monkeypatch.delenv("SFAPI_CLIENT_ID", raising=False)
+    (tmp_path / "sfapi_client_id_nersc").write_text("abc123\n")
+    (tmp_path / "sfapi_key_nersc.pem").write_text("-----BEGIN KEY-----\n...")
+
+    client_id, key = remote._read_sfapi_credentials("nersc")
+    assert client_id == "abc123"
+
+
+def test_read_sfapi_credentials_env_var_wins_over_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(remote, "AMSC_DIR", tmp_path)
+    monkeypatch.setenv("SFAPI_CLIENT_ID", "from-env")
+    (tmp_path / "sfapi_client_id_nersc").write_text("from-file\n")
+    (tmp_path / "sfapi_key_nersc.pem").write_text("-----BEGIN KEY-----\n...")
+
+    client_id, _ = remote._read_sfapi_credentials("nersc")
+    assert client_id == "from-env"
+
+
 def test_read_sfapi_credentials_missing_key_file_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(remote, "AMSC_DIR", tmp_path)
     monkeypatch.setenv("SFAPI_CLIENT_ID", "abc123")
@@ -252,7 +272,7 @@ async def test_run_remote_psij_edge_not_in_topology_raises(tmp_path, monkeypatch
     fake_rt.stop.assert_called_once()
 
 
-async def test_run_remote_sfapi_end_to_end(tmp_path, monkeypatch):
+async def test_run_remote_sfapi_end_to_end(tmp_path, monkeypatch, capsys):
     spec = _make_spec(tmp_path, SFAPI_TARGET_YAML)
     monkeypatch.setattr(remote, "AMSC_DIR", tmp_path)
     monkeypatch.setenv("SFAPI_CLIENT_ID", "abc123")
@@ -292,6 +312,50 @@ async def test_run_remote_sfapi_end_to_end(tmp_path, monkeypatch):
     assert call_args[0] == "https://broker:8000"
 
     instance.cancel_job.assert_called_once()
+
+    # endpoint_timeout_min wasn't set in the spec -> default (30 min) used,
+    # and the fallback must be announced, not silent.
+    remote._wait_for_endpoint.assert_called_once()
+    assert remote._wait_for_endpoint.call_args.kwargs["timeout"] == 30 * 60
+    assert "endpoint_timeout_min not set" in capsys.readouterr().out
+
+
+async def test_run_remote_uses_explicit_endpoint_timeout_min_silently(
+    tmp_path, monkeypatch, capsys
+):
+    yaml_with_timeout = SFAPI_TARGET_YAML.replace(
+        "    home_dir: /global/u2/m/merzky",
+        "    home_dir: /global/u2/m/merzky\n    endpoint_timeout_min: 5",
+    )
+    spec = _make_spec(tmp_path, yaml_with_timeout)
+    assert spec.config.remote.target.endpoint_timeout_min == 5
+
+    monkeypatch.setattr(remote, "AMSC_DIR", tmp_path)
+    monkeypatch.setenv("SFAPI_CLIENT_ID", "abc123")
+    (tmp_path / "sfapi_key_nersc.pem").write_text("-----BEGIN KEY-----\n...")
+
+    instance = MagicMock()
+    instance.submit_job.return_value = {"job_id": "job-42"}
+    connect_client = MagicMock()
+    connect_client.connect.return_value = instance
+
+    fake_rt = MagicMock()
+    fake_rt.start.return_value = fake_rt
+    fake_rt.broker_url = "https://broker:8000"
+    fake_rt.get_plugin.return_value = connect_client
+
+    monkeypatch.setattr(remote, "_wait_for_endpoint", MagicMock())
+    fake_workflow = AsyncMock()
+    monkeypatch.setattr(type(spec), "workflow", property(lambda self: fake_workflow))
+
+    import radical.orbit
+
+    monkeypatch.setattr(radical.orbit, "EndpointRuntime", MagicMock(return_value=fake_rt))
+
+    await remote.run_remote(spec)
+
+    assert remote._wait_for_endpoint.call_args.kwargs["timeout"] == 5 * 60
+    assert "endpoint_timeout_min not set" not in capsys.readouterr().out
     connect_client.disconnect.assert_called_once_with("nersc")
     fake_rt.stop.assert_called_once()
 

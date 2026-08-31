@@ -1,7 +1,6 @@
 /* ============================================================
-   ROSE docs — fluid theme refinement
-   Cohesive rose/pink brand palette, softened rounded surfaces,
-   smooth motion, and viewport-responsive (fluid) type & spacing.
+   ROSE docs — RHAPSODY-style theme, ROSE's rose/pink brand palette
+   Flat solid surfaces, restrained motion, viewport-responsive type.
    ============================================================ */
 
 /* ---- 1. Brand palette --------------------------------------- */
@@ -57,15 +56,41 @@ html {
   max-width: clamp(960px, 90vw, 1440px);
 }
 
-/* ---- 3. Header & tabs: subtle gradient instead of flat fill --- */
+/* Typography: forced heading color/weight (RHAPSODY pattern) */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  color: var(--rose-600);
+  font-weight: 700;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1,
+[data-md-color-scheme="slate"] .md-typeset h2,
+[data-md-color-scheme="slate"] .md-typeset h3 {
+  color: var(--rose-300);
+}
+
+/* ---- 3. Header & tabs: flat fill (RHAPSODY pattern) ------------ */
 .md-header {
-  background: linear-gradient(135deg, var(--rose-600), var(--rose-700));
-  box-shadow: 0 2px 12px rgba(194, 24, 91, 0.25);
+  background-color: var(--rose-600);
   transition: box-shadow var(--rose-transition), transform var(--rose-transition);
 }
 
 .md-tabs {
-  background: linear-gradient(135deg, var(--rose-700), var(--rose-900));
+  background-color: var(--rose-700);
+}
+
+.md-tabs__link {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.md-tabs__link:hover {
+  color: #fff !important;
+}
+
+.md-tabs__link--active {
+  color: #fff !important;
+  border-bottom: 2px solid white;
 }
 
 /* ---- 4. Motion: links, nav, tabs ------------------------------ */
@@ -77,9 +102,13 @@ a,
     opacity var(--rose-transition);
 }
 
+.md-nav__link {
+  border-radius: 4px;
+}
+
 .md-nav__link--active {
   color: var(--rose-600) !important;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 [data-md-color-scheme="slate"] .md-nav__link--active {
@@ -87,7 +116,8 @@ a,
 }
 
 .md-nav__link:hover {
-  opacity: 0.75;
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--rose-600);
 }
 
 .md-typeset a:hover {
@@ -97,10 +127,10 @@ a,
 /* ---- 5. Softened, elevated surfaces ---------------------------- */
 .md-typeset .admonition,
 .md-typeset details {
-  border-radius: var(--rose-radius);
+  border-radius: var(--rose-radius-lg);
   box-shadow: var(--rose-shadow);
   border-width: 0;
-  border-left: 4px solid var(--md-accent-fg-color);
+  border-left: 6px solid var(--md-accent-fg-color);
   overflow: hidden;
   transition: box-shadow var(--rose-transition);
 }
@@ -110,10 +140,20 @@ a,
   box-shadow: var(--rose-shadow-hover);
 }
 
+/* Code blocks: accent border + explicit light/dark background (RHAPSODY pattern) */
 .md-typeset pre,
 .md-typeset .highlight {
   border-radius: var(--rose-radius);
   box-shadow: var(--rose-shadow);
+}
+
+.highlight pre {
+  border-left: 4px solid var(--rose-500);
+  background-color: #f8f9fa !important;
+}
+
+[data-md-color-scheme="slate"] .highlight pre {
+  background-color: #1e262b !important;
 }
 
 .md-typeset code {
@@ -156,11 +196,25 @@ a,
   box-shadow: 0 0 0 3px var(--md-accent-fg-color--transparent);
 }
 
-/* ---- 7. Buttons / copy button ----------------------------------- */
-.md-typeset .md-button,
-.md-clipboard {
-  border-radius: var(--rose-radius);
+/* ---- 7. Buttons / copy button (RHAPSODY pill pattern) ----------- */
+.md-typeset .md-button {
+  border-radius: 20px;
+  padding: 0.5rem 1.5rem;
+  font-weight: 500;
+  text-transform: none;
   transition: transform var(--rose-transition), box-shadow var(--rose-transition);
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--rose-500);
+  border-color: var(--rose-500);
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: var(--rose-700);
+  border-color: var(--rose-700);
+  box-shadow: var(--rose-shadow-hover);
+  transform: translateY(-1px);
 }
 
 .md-typeset .md-button:hover {
@@ -168,19 +222,43 @@ a,
   box-shadow: var(--rose-shadow);
 }
 
-/* ---- 8. Scroll-reveal (paired with scripts/custom.js) ----------- */
-.rose-reveal {
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 420ms ease, transform 420ms ease;
+.md-clipboard {
+  border-radius: var(--rose-radius);
+  transition: transform var(--rose-transition), box-shadow var(--rose-transition);
 }
 
-.rose-reveal.rose-revealed {
-  opacity: 1;
-  transform: translateY(0);
+/* ---- 8. Grid cards (RHAPSODY pattern, available for future pages) ---- */
+.grid.cards > * {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 2rem;
+  background: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  transition: transform var(--rose-transition), box-shadow var(--rose-transition),
+    border-color var(--rose-transition);
 }
 
-/* ---- 9. Config-reference table (existing component, restyled) --- */
+[data-md-color-scheme="slate"] .grid.cards > * {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.grid.cards > *:hover {
+  border-color: var(--rose-500);
+  box-shadow: var(--rose-shadow-hover);
+  transform: translateY(-4px);
+}
+
+/* ---- 9. Footer ---------------------------------------------------- */
+.md-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.md-footer-meta {
+  background-color: var(--rose-900);
+}
+
+/* ---- 10. Config-reference table (existing component, unchanged) --- */
 table#config {
   font-family: monospace;
   font-size: 13px;
@@ -234,7 +312,7 @@ table#config td .anchor:target::before {
   overflow-x: inherit;
 }
 
-/* ---- 10. Respect reduced-motion preference ----------------------- */
+/* ---- 11. Respect reduced-motion preference ------------------------ */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -242,9 +320,5 @@ table#config td .anchor:target::before {
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
-  }
-  .rose-reveal {
-    opacity: 1;
-    transform: none;
   }
 }

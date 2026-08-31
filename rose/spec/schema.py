@@ -107,6 +107,10 @@ class TargetConfig(BaseModel):
     account: str | None = None
     queue_name: str | None = None
     walltime_min: int = 30
+    # How long `--remote` waits for the bootstrapped endpoint to register
+    # with the broker before giving up (queue wait time, not walltime_min
+    # above — that's the HPC job's own duration once it starts running).
+    endpoint_timeout_min: int = 30
     n_nodes: int = 1
     constraint: str | None = None
     reservation: str | None = None

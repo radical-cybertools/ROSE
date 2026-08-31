@@ -40,7 +40,7 @@ ROSE is built on the [**RADICAL-AsyncFlow**](https://radical-cybertools.github.i
 
 - **Heterogeneous Task Execution** on GPUs, CPUs, with MPI and/or sequential tasks.
 
-<figure markdown="span" style="position: relative; left: 600px; top: -160px">
+<figure markdown="span">
   <img src="assets/nsf_logo.png" alt="Image title" width="120">
   <figcaption>NSF Funded Project (#2212550)</figcaption>
 </figure>

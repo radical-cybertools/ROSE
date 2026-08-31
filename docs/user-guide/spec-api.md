@@ -601,7 +601,10 @@ remote:
 `remote.target` tells `rose run <yaml> --remote` how to launch the remote
 orbit endpoint itself, instead of assuming one is already running. Omit it
 to keep today's manual-bootstrap behavior (start the endpoint yourself, use
-`--local`/the orbit backend directly).
+`--local`/the orbit backend directly). See the
+[Command-Line Interface](../getting-started/cli.md#rose-run) page for the
+`--local`/`--remote` flags themselves, and [`rose setup`](../getting-started/cli.md#rose-setup)
+for an interactive wizard that walks you through getting this working.
 
 ```yaml
 remote:
@@ -737,8 +740,8 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
 | `remote.backends` | list[str] | no | `["dragon_v3"]` | Rhapsody backends requested on the remote orbit session |
 | `remote.broker_url` | string | no | `$RADICAL_ORBIT_BROKER_URL` | Broker URL override for `--remote` (no on-disk fallback — orbit resolves URL from CLI/API/env only) |
-| `remote.target` | object | no | `null` | Bootstrap config for `--remote` — see [`remote.target`](#remotetarget--bootstrapping-the-endpoint-for-rose-run---remote) |
-| `remote.embedded` | bool | no | `false` | Host the broker in-process instead of connecting to one — see [`remote.embedded`](#remoteembedded--run-without-a-standalone-broker) |
+| `remote.target` | object | no | `null` | Bootstrap config for `--remote` — see [`remote.target`](#remotetarget-bootstrapping-the-endpoint-for-rose-run-remote) |
+| `remote.embedded` | bool | no | `false` | Host the broker in-process instead of connecting to one — see [`remote.embedded`](#remoteembedded-run-without-a-standalone-broker) |
 | `tracking.backend` | string | no | `none` | `mlflow` / `clearml` / `none` |
 | `tracking.experiment` | string | no | `ROSE-Spec` | Experiment name |
 | `tracking.run_name` | string | no | `null` | Run label |

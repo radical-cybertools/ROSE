@@ -42,5 +42,14 @@ machines, please refer to the following link: [RADICAL-Pilot Supported HPC Machi
     pip install .
     ```
 
+## Verify Your Install
+
+```bash
+rose --help
+```
+
+This should print the `rose` command's usage. See the [Command-Line Interface](cli.md)
+page for what `rose run` and `rose setup` do.
+
 !!! note
     If you encounter any issues, refer to the [Issues Section](https://github.com/radical-cybertools/ROSE/issues).

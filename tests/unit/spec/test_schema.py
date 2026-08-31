@@ -746,6 +746,31 @@ def test_target_config_sfapi_valid():
     assert t.kind == "sfapi"
     assert t.tunnel == "none"
     assert t.walltime_min == 30
+    assert t.endpoint_timeout_min == 30
+
+
+def test_target_config_endpoint_timeout_min_custom():
+    t = TargetConfig(
+        kind="sfapi",
+        endpoint="nersc",
+        resource_id="perlmutter",
+        account="amsc007",
+        home_dir="/global/u2/m/merzky",
+        endpoint_timeout_min=90,
+    )
+    assert t.endpoint_timeout_min == 90
+    assert "endpoint_timeout_min" in t.model_fields_set
+
+
+def test_target_config_endpoint_timeout_min_not_in_fields_set_by_default():
+    t = TargetConfig(
+        kind="sfapi",
+        endpoint="nersc",
+        resource_id="perlmutter",
+        account="amsc007",
+        home_dir="/global/u2/m/merzky",
+    )
+    assert "endpoint_timeout_min" not in t.model_fields_set
 
 
 def test_target_config_iri_missing_endpoint_raises():

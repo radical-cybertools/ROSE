@@ -1,4 +1,4 @@
-"""rose.remote — bootstrap and run a ROSE workflow on a remote ORBIT endpoint.
+"""rose.remote.execute — bootstrap and run a ROSE workflow on a remote ORBIT endpoint.
 
 Three phases, driven by the ``remote.target`` block of the workflow spec
 (see ``rose.spec.schema.TargetConfig``) instead of interactive prompts:
@@ -66,7 +66,17 @@ def _read_iri_token(endpoint: str) -> str:
 def _read_sfapi_credentials(endpoint: str) -> tuple:
     client_id = os.environ.get("SFAPI_CLIENT_ID", "").strip()
     if not client_id:
-        raise RuntimeError("SFAPI_CLIENT_ID env var is required for remote.target.kind='sfapi'")
+        # File fallback (written by `rose setup`) so the client ID can be
+        # persisted without touching the user's shell rc files. Env var
+        # still wins when set, matching existing precedence elsewhere.
+        id_path = AMSC_DIR / f"sfapi_client_id_{endpoint}"
+        if id_path.exists():
+            client_id = id_path.read_text().strip()
+    if not client_id:
+        raise RuntimeError(
+            "SFAPI client ID is required for remote.target.kind='sfapi' — "
+            f"set $SFAPI_CLIENT_ID or write it to {AMSC_DIR / f'sfapi_client_id_{endpoint}'}"
+        )
     key_path = AMSC_DIR / f"sfapi_key_{endpoint}.pem"
     if not key_path.exists():
         raise RuntimeError(f"SFAPI private key not found: {key_path}")
@@ -305,7 +315,13 @@ async def run_remote(spec: WorkflowSpec) -> None:
         else:
             created = _launch_iri_or_sfapi(rt, target, broker_url)
 
-        _wait_for_endpoint(rt, created["endpoint_name"])
+        if "endpoint_timeout_min" not in target.model_fields_set:
+            print(
+                "[rose --remote] remote.target.endpoint_timeout_min not set — "
+                "waiting up to 30 min by default. Add it under remote.target "
+                "in your spec to change this."
+            )
+        _wait_for_endpoint(rt, created["endpoint_name"], timeout=target.endpoint_timeout_min * 60)
         print(f"[rose --remote] endpoint {created['endpoint_name']!r} is up")
 
         await spec.workflow(broker_url, created["endpoint_name"])
