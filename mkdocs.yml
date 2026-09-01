@@ -6,10 +6,6 @@ edit_uri: ""
 
 theme:
   name: material
-  features:
-    - navigation.tabs
-    - navigation.sections
-    - toc.integrate
   palette:
       - media: "(prefers-color-scheme: light)"
         scheme: default
@@ -17,39 +13,36 @@ theme:
           icon: material/weather-night
           name: Switch to dark mode
         primary: black
-        accent: indigo
+        accent: pink
       - media: "(prefers-color-scheme: dark)"
         scheme: slate
         toggle:
           icon: material/weather-sunny
           name: Switch to light mode
         primary: black
-        accent: indigo
+        accent: pink
 
-  highlightjs: true
-  hljs_languages:
-        - yaml
-        - json
-        - bash
   features:
       - header.autohide
       - navigation.instant
       - navigation.top
       - navigation.tabs
-      - navigation.tabs.sticky
+      - navigation.path
+      - navigation.sections
+      - navigation.tracking
+      - navigation.indexes
+      - toc.follow
       - search.highlight
       - search.share
       - search.suggest
       - content.code.annotate
+      - content.code.copy
+      - content.code.select
       - content.tooltips
       - content.tabs.link
-      - content.code.copy
   font:
-    text: 'Segoe UI'
+    text: Open Sans
     code: Roboto Mono
-
-  #logo: assets/rose-removebg-preview.png
-
 
 
 # Plugins
@@ -64,37 +57,61 @@ markdown_extensions:
   - toc:
       permalink: true
   - admonition
-  - codehilite:
-      linenums: true
-  - pymdownx.superfences
+  - attr_list
+  - md_in_html
+  - pymdownx.betterem:
+      smart_enable: all
   - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: radical-cybertools
+      repo: ROSE
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.snippets:
-      check_paths: true
-  - attr_list
-  - md_in_html
 
 nav:
   - Home: index.md
   - Getting Started:
       - 1.Installation: getting-started/installation.md
-      - 2.Dry Run: getting-started/dry-run.md
-      - 3.FAQ: getting-started/faq.md
+      - 2.Command-Line Interface: getting-started/cli.md
+      - 3.Dry Run: getting-started/dry-run.md
+      - 4.FAQ: getting-started/faq.md
   - User Guide:
       - 1.Target Resources: user-guide/target-resources.md
-      - 2.Basic AL workflow: user-guide/basic-acl-workflow.md
-      - 3.AL Metric: user-guide/acl-metrics.md
-      - 4.Building Parallel Learners: user-guide/parallel_learners_docs.md
-      - 5.Advanced AL workflow: user-guide/advanced-acl-workflow.md
-      - 6.Visualization: user-guide/visualization.md
-      - 7.Reinforcement Learning: user-guide/basic-rl-workflow.md
-      - 8.Experience Banks: user-guide/experience.md
-      - 9.Advanced RL workflow: user-guide/advanced-rl-workflow.md
-      - 10.Tracking & Observability: user-guide/tracking.md
+      - 2.Active Learners:
+          - 1.Sequential Active Learning Example: user-guide/basic-acl-workflow.md
+          - 2.Active Learning Metrics: user-guide/acl-metrics.md
+          - 3.Parallel Active Learning Example: user-guide/parallel_learners_docs.md
+          - 4.Custom Active Learning Example: user-guide/advanced-acl-workflow.md
+          - 5.UQ-Based Active Learning Example: user-guide/uq_based-acl-workflow.md
+      - 3.Reinforcement Learners:
+          - 1.Sequential Reinforcement Learning Example: user-guide/basic-rl-workflow.md
+          - 2.Experience Banks: user-guide/experience.md
+          - 3.Parallel Reinforcement Learning Example: user-guide/advanced-rl-workflow.md
+      - 4.Visualization: user-guide/visualization.md
+      - 5.Tracking & Observability: user-guide/tracking.md
+      - 6.YAML Spec API: user-guide/spec-api.md
+      - 7.ROSE as a Service: user-guide/rose-aas.md
   - Integrations:
       - MLflow: integrations/mlflow.md
       - ClearML: integrations/clearml.md
@@ -102,6 +119,3 @@ nav:
 
 extra_css:
   - styles/custom.css
-
-extra_javascript:
-  - scripts/custom.js

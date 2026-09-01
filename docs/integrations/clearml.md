@@ -61,6 +61,10 @@ For **parallel learners**, `state.learner_id` is included automatically. The tra
 each state as a separate `series` inside the same scalar title, making per-learner curves
 directly comparable without any user code.
 
+!!! note
+    No user code is required to get this overlay — `state.learner_id` is already populated
+    by the parallel learner framework before the tracker ever sees the state.
+
 ### Task tags — logged in `on_stop`
 
 | ClearML tag | Value |

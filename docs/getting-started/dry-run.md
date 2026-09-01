@@ -12,7 +12,7 @@ import os
 import sys
 import asyncio
 
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
 
 from radical.asyncflow import WorkflowEngine
 

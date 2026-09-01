@@ -1,0 +1,31 @@
+remote:
+  pythonpath:
+    - examples/spec/sequential_python # for HPC runs with dragon runtime only
+
+learner:
+  type: sequential_active_learner
+  max_iter: 5
+
+simulation:
+  type: python
+  function: tasks:simulate
+  task_description:          # optional: resource hints forwarded to the execution backend
+    cpu_count: 2
+
+training:
+  type: python
+  function: tasks:train
+  task_description:
+    cpu_count: 4
+
+active_learn:
+  type: python
+  function: tasks:active_learn
+
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse

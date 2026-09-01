@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ROSE"
+name = "rose-surrogate-explorer"
 version = "0.3.0"
 description = "Toolkit to express and execute ML surrogate building workflows on HPC"
 
@@ -16,13 +16,28 @@ maintainers = [
 ]
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
 
 dependencies = [
     "numpy",
+    "typeguard",
     "radical.asyncflow",
+    "radical.orbit",
     "rhapsody-py[radical_pilot]",
     'rhapsody-py[dragon]; python_version >= "3.10" and python_version <= "3.12"',
 ]
+
+[project.scripts]
+rose = "rose.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/radical-cybertools/ROSE"
@@ -35,6 +50,8 @@ lint = ["ruff"]
 mlflow = ["mlflow>=2.0"]
 clearml = ["clearml>=1.14"]
 tracking = ["mlflow>=2.0", "clearml>=1.14"]
+
+spec = ["pyyaml>=6.0"]
 
 # All test deps
 dev = [
@@ -71,6 +88,15 @@ select = ["E", "F", "W", "B", "I", "N", "UP"]
 # N801: allow non-CapWords class names for ML acronyms (MC_Dropout_CNN, etc.)
 # N812/N813/N816/N817: allow ML import aliases (functional as F, etc.)
 ignore = ["N803", "N806", "N801", "N812", "N813", "N816", "N817"]
+
+[tool.ruff.lint.isort]
+# Without this, ruff's I001 (import sort) falls back to auto-detecting
+# first-party packages, which is environment-dependent (e.g. whether `rose`
+# happens to be resolvable/installed in the linting environment) — the exact
+# cause of local pre-commit runs and CI's isolated hook venv disagreeing on
+# whether `rose.*` imports belong in their own group. Pinning it explicitly
+# makes the classification deterministic everywhere.
+known-first-party = ["rose"]
 
 [tool.ruff.lint.per-file-ignores]
 # task_description={"shell": True} is a ROSE API pattern introspected by decorators

@@ -27,16 +27,15 @@ For tutorials and walkthrough notebooks please check [here](examples)
 import asyncio
 
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
+
+from concurrent.futures import ProcessPoolExecutor
 
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 
 async def main():
-    execution_engine = await RadicalExecutionBackend(
-        {'runtime': 30,
-        'resource': 'local.localhost'}
-        )
+    execution_engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 
     asyncflow = await WorkflowEngine.create(execution_engine)
     acl = SequentialActiveLearner(asyncflow)

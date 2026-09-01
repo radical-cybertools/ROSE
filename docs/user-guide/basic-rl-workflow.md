@@ -1,17 +1,22 @@
+# Basic Reinforcement Learning Workflow
+
 ## Define your target machine to run on
 
 Import ROSE main modules:
 ```python
+from concurrent.futures import ProcessPoolExecutor
+
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 
 from rose.metrics import GREATER_THAN_THRESHOLD
-from rose.rl.reinforcement_learner import SequentialReinforcementLearner
+from rose.rl import SequentialReinforcementLearner
 ```
 
-Define your resource engine, as we described in our previous [Target Resources](target-resources.md) step:
+You can use and setup an HPC engine as we described in our previous [Target Resources](target-resources.md) step:
+
 ```python
-engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 asyncflow = await WorkflowEngine.create(engine)
 
 rl = SequentialReinforcementLearner(asyncflow)
@@ -33,7 +38,7 @@ async def check_reward(*args):
     return 'python3 check_reward.py'
 ```
 
-!!! Warning
+!!! warning
     For any metric function like `@rl.as_stop_criterion` the invoked script like `check_reward.py` must return a numerical value.
 
 Finally invoke the tasks and register them with the reinforcement learner as a workflow:
