@@ -3,17 +3,19 @@
 Import ROSE main modules:
 ```python
 from rose.metrics import MEAN_SQUARED_ERROR_MSE
-from rose.al.active_learner import SequentialActiveLearner
+from rose.al import SequentialActiveLearner
+
+from concurrent.futures import ProcessPoolExecutor
 
 from radical.asyncflow import WorkflowEngine
-from rhapsody.backends import RadicalExecutionBackend
+from rhapsody.backends import ConcurrentExecutionBackend
 ```
 
 
 Define your resource engine, as we described in our previous [Target Resources](target-resources.md) step:
 
 ```python
-engine = await RadicalExecutionBackend({'resource': 'local.localhost'})
+engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
 asyncflow = await WorkflowEngine.create(engine)
 
 acl = SequentialActiveLearner(asyncflow)
@@ -38,8 +40,8 @@ async def active_learn(*args):
 ```
 
 !!! tip
-ROSE supports defining tasks with python code instead of executables (i.e., python scripts, shell scripts, etc.). To do that, the user have to
-pass the `as_executable=False` argument to the decorator as follows:
+    ROSE supports defining tasks with python code instead of executables (i.e., python scripts, shell scripts, etc.). To do that, the user have to
+    pass the `as_executable=False` argument to the decorator as follows:
 
 ```python
 @acl.simulation_task(as_executable=False)
@@ -92,7 +94,7 @@ async def check_mse(*args):
     return f'python3 check_mse.py'
 ```
 
-!!! Warning
+!!! warning
     For any metric function like `@acl.as_stop_criterion` the invoked script like `check_mse.py` must return a numerical value.
 
 

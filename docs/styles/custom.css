@@ -1,15 +1,264 @@
-/* Change the banner background color to dark rose */
+/* ============================================================
+   ROSE docs — RHAPSODY-style theme, ROSE's rose/pink brand palette
+   Flat solid surfaces, restrained motion, viewport-responsive type.
+   ============================================================ */
+
+/* ---- 1. Brand palette --------------------------------------- */
+:root {
+  --rose-50:  #fdf2f6;
+  --rose-100: #fbe4ee;
+  --rose-300: #f06ea6;
+  --rose-500: #d81b60;
+  --rose-600: #c2185b;
+  --rose-700: #a3134c;
+  --rose-900: #6e0e35;
+
+  --md-primary-fg-color:             var(--rose-600);
+  --md-primary-fg-color--light:      var(--rose-300);
+  --md-primary-fg-color--dark:       var(--rose-900);
+  --md-accent-fg-color:              var(--rose-500);
+  --md-accent-fg-color--transparent: rgba(216, 27, 96, 0.1);
+
+  --rose-radius:       0.6rem;
+  --rose-radius-lg:    1rem;
+  --rose-shadow:       0 2px 10px rgba(194, 24, 91, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --rose-shadow-hover: 0 6px 20px rgba(194, 24, 91, 0.16), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --rose-transition:   180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        var(--rose-700);
+  --md-primary-fg-color--dark:  #4a0a26;
+  --md-accent-fg-color:         var(--rose-300);
+  --rose-shadow:       0 2px 12px rgba(0, 0, 0, 0.35);
+  --rose-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- 2. Fluid typography & layout ----------------------------- */
+html {
+  font-size: clamp(18px, 0.6vw + 16px, 22px);
+  scroll-behavior: smooth;
+}
+
+.md-typeset h1 { font-size: clamp(1.8rem, 1.2rem + 1.6vw, 2.6rem); }
+.md-typeset h2 { font-size: clamp(1.4rem, 1.1rem + 1vw, 2rem); }
+.md-typeset h3 { font-size: clamp(1.15rem, 1rem + 0.5vw, 1.5rem); }
+
+.md-typeset {
+  line-height: 1.65;
+}
+
+.md-content__inner {
+  padding: clamp(0.8rem, 1vw + 0.5rem, 1.8rem) clamp(0.6rem, 2vw, 2rem);
+}
+
+.md-grid {
+  max-width: clamp(960px, 90vw, 1440px);
+}
+
+/* Typography: forced heading color/weight (RHAPSODY pattern) */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  color: var(--rose-600);
+  font-weight: 700;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1,
+[data-md-color-scheme="slate"] .md-typeset h2,
+[data-md-color-scheme="slate"] .md-typeset h3 {
+  color: var(--rose-300);
+}
+
+/* ---- 3. Header & tabs: flat fill (RHAPSODY pattern) ------------ */
 .md-header {
-  background-color: #c2185b !important; /* Dark rose color */
+  background-color: var(--rose-600);
+  transition: box-shadow var(--rose-transition), transform var(--rose-transition);
 }
 
-/* Ensure the active navigation link is distinct */
+.md-tabs {
+  background-color: var(--rose-700);
+}
+
+.md-tabs__link {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.md-tabs__link:hover {
+  color: #fff !important;
+}
+
+.md-tabs__link--active {
+  color: #fff !important;
+  border-bottom: 2px solid white;
+}
+
+/* ---- 4. Motion: links, nav, tabs ------------------------------ */
+a,
+.md-nav__link,
+.md-tabs__link,
+.md-typeset a {
+  transition: color var(--rose-transition), background-color var(--rose-transition),
+    opacity var(--rose-transition);
+}
+
+.md-nav__link {
+  border-radius: 4px;
+}
+
 .md-nav__link--active {
-  color: #c2185b !important; /* Slightly darker black for active link */
-  font-weight: bold;
+  color: var(--rose-600) !important;
+  font-weight: 700;
 }
 
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  color: var(--rose-300) !important;
+}
 
+.md-nav__link:hover {
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--rose-600);
+}
+
+.md-typeset a:hover {
+  text-decoration: underline;
+}
+
+/* ---- 5. Softened, elevated surfaces ---------------------------- */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--rose-radius-lg);
+  box-shadow: var(--rose-shadow);
+  border-width: 0;
+  border-left: 6px solid var(--md-accent-fg-color);
+  overflow: hidden;
+  transition: box-shadow var(--rose-transition);
+}
+
+.md-typeset .admonition:hover,
+.md-typeset details:hover {
+  box-shadow: var(--rose-shadow-hover);
+}
+
+/* Code blocks: accent border + explicit light/dark background (RHAPSODY pattern) */
+.md-typeset pre,
+.md-typeset .highlight {
+  border-radius: var(--rose-radius);
+  box-shadow: var(--rose-shadow);
+}
+
+.highlight pre {
+  border-left: 4px solid var(--rose-500);
+  background-color: #f8f9fa !important;
+}
+
+[data-md-color-scheme="slate"] .highlight pre {
+  background-color: #1e262b !important;
+}
+
+.md-typeset code {
+  border-radius: 0.3rem;
+}
+
+.md-typeset table:not([class]) {
+  border-radius: var(--rose-radius);
+  overflow: hidden;
+  box-shadow: var(--rose-shadow);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+.md-typeset table:not([class]) tr {
+  transition: background-color var(--rose-transition);
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+.md-typeset img,
+.md-typeset figure {
+  border-radius: var(--rose-radius-lg);
+}
+
+/* ---- 6. Search box: rounded, smooth focus ---------------------- */
+.md-search__form {
+  border-radius: 2rem;
+  transition: background-color var(--rose-transition), box-shadow var(--rose-transition);
+}
+
+.md-search__input:focus ~ .md-search__form,
+.md-search__form:hover {
+  box-shadow: 0 0 0 3px var(--md-accent-fg-color--transparent);
+}
+
+/* ---- 7. Buttons / copy button (RHAPSODY pill pattern) ----------- */
+.md-typeset .md-button {
+  border-radius: 20px;
+  padding: 0.5rem 1.5rem;
+  font-weight: 500;
+  text-transform: none;
+  transition: transform var(--rose-transition), box-shadow var(--rose-transition);
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--rose-500);
+  border-color: var(--rose-500);
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: var(--rose-700);
+  border-color: var(--rose-700);
+  box-shadow: var(--rose-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.md-typeset .md-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--rose-shadow);
+}
+
+.md-clipboard {
+  border-radius: var(--rose-radius);
+  transition: transform var(--rose-transition), box-shadow var(--rose-transition);
+}
+
+/* ---- 8. Grid cards (RHAPSODY pattern, available for future pages) ---- */
+.grid.cards > * {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 2rem;
+  background: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  transition: transform var(--rose-transition), box-shadow var(--rose-transition),
+    border-color var(--rose-transition);
+}
+
+[data-md-color-scheme="slate"] .grid.cards > * {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.grid.cards > *:hover {
+  border-color: var(--rose-500);
+  box-shadow: var(--rose-shadow-hover);
+  transform: translateY(-4px);
+}
+
+/* ---- 9. Footer ---------------------------------------------------- */
+.md-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.md-footer-meta {
+  background-color: var(--rose-900);
+}
+
+/* ---- 10. Config-reference table (existing component, unchanged) --- */
 table#config {
   font-family: monospace;
   font-size: 13px;
@@ -22,20 +271,26 @@ table#config span.value {
   font-size: 0.9em;
   filter: opacity(70%);
   display: inline-block;
-  padding: 0px 4px;
-  border-radius: 5px;
+  padding: 1px 6px;
+  border-radius: 999px;
 }
 table#config span.example {
-  background-color: lightBlue;
+  background-color: var(--rose-100);
+  color: var(--rose-700);
 }
 table#config span.value {
-  background-color: lightGray;
+  background-color: rgba(0, 0, 0, 0.06);
 }
 table#config td.comment:nth-child(3) {
-  border-left: 2px solid whiteSmoke;
+  border-left: 2px solid rgba(0, 0, 0, 0.08);
 }
 table#config td.type {
   font-size: 0.8em;
+  filter: opacity(70%);
+  color: #999999;
+}
+table#config tr {
+  transition: background-color var(--rose-transition);
 }
 table#config tr:hover code {
   background-color: hsla(0, 0%, 100%, 1);
@@ -53,10 +308,17 @@ table#config td .anchor:target::before {
   content: "";
   display: block;
 }
-table#config td.type {
-  filter: opacity(70%);
-  color: #999999;
-}
 .md-typeset__scrollwrap {
   overflow-x: inherit;
+}
+
+/* ---- 11. Respect reduced-motion preference ------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

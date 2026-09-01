@@ -9,6 +9,9 @@ Refer to the [Installation Guide](installation.md) for detailed instructions bas
 A dry run allows you to simulate the execution of your tasks locally without making any changes to the behavior of your ML workflow.
 It's a way to verify your setup is working on HPC before applying it to prevent time and resource waste.
 
+!!! tip
+    See the [Dry Run](dry-run.md) guide for a full step-by-step walkthrough.
+
 ## Q3: What if I have an issue?
 If you have any additional questions or an issue, feel free to reach out to our support team by opening a Github [ticket](https://github.com/radical-cybertools/ROSE/issues).
 

@@ -1,3 +1,5 @@
+# UQ-Based Active Learning Workflow
+
 To accelerate the development of UQ-driven active learning methods, ROSE provides a flexible approach for composing and executing complex AL workflows.
 
 In this example, we illustrate how to define a UQ–AL workflow that supports multiple levels of parallelism.
@@ -10,25 +12,23 @@ This introduces **two levels of parallelism**:
 * **Workflow-level parallelism** for executing multiple UQ–AL loops side by side.
 
 Both levels can be naturally expressed and efficiently executed using ROSE’s **custom AL policy**, enabling scalable and adaptive uncertainty-aware learning.
-```sh
-                             (N AL WFs in Parallel)
-          +-------------------+               +-------------------+
-          |      UQ WF 1      |               |      UQ WF 2      |
-          +-------------------+               +-------------------+
-                   │                                    │
-  +----------------+-----------------+  +----------------+-----------------+
-  |       (N tasks Parallel)         |  |       (N AL tasks Parallel)      |
-  +---------------+  +---------------+  +---------------+  +---------------+
-  | Simulation 1,2,..............n   |  | Simulation 1,2,..............n   |
-  +---------------+  +---------------+  +---------------+  +---------------+
-          |                |                    |                 |
-  +---------------+  +---------------+  +---------------+  +---------------+
-  |  Train Model  1,2,...........m   |  |  Train Model  1,2,...........m   |
-  +---------------+  +---------------+  +---------------+  +---------------+
-          |                |                    |                 |
-    +-----------------------------+        +-----------------------------+
-    |      AL based on UQ WF 1    |        |    AL based on UQ WF 1      |
-    +-----------------------------+        +-----------------------------+
+```mermaid
+graph TD
+    N["N AL WFs in Parallel"]
+    N --> WF1["UQ WF 1"]
+    N --> WF2["UQ WF 2"]
+
+    subgraph G1[" "]
+        WF1 --> S1["Simulation 1, 2, ..., n (parallel)"]
+        S1 --> T1["Train Model 1, 2, ..., m (parallel)"]
+        T1 --> A1["AL based on UQ WF 1"]
+    end
+
+    subgraph G2[" "]
+        WF2 --> S2["Simulation 1, 2, ..., n (parallel)"]
+        S2 --> T2["Train Model 1, 2, ..., m (parallel)"]
+        T2 --> A2["AL based on UQ WF 2"]
+    end
 ```
 
 
@@ -56,7 +56,7 @@ To support this approach, two new task types have been introduced:
 code_path = f'{sys.executable} {os.getcwd()}'
 
 # Define and register the prediction task
-@learner.prediction_task()
+@uql.prediction_task()
 async def prediction(*args):
     return f'{code_path}/predict.py'
 
@@ -71,11 +71,11 @@ async def prediction(*args):
 ```python
 
 # Defining the uncertainty quantification with a metric (PREDICTIVE_ENTROPY in this case)
-@learner.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY,
+@uql.uncertainty_quantification(uq_metric_name=PREDICTIVE_ENTROPY,
                                     threshold=1.0,
                                     query_size=10)
 async def check_uq(*args):
-    return f'{code_path}/check_uq.py'xs
+    return f'{code_path}/check_uq.py'
 
 ```
 
@@ -94,8 +94,8 @@ This design allows **parallel training and uncertainty-aware sampling** within A
 Import and Initialize the UQ Learner
 
 ```python
-from rose.uq.uq_active_learner import ParallelUQLearner
-learner = ParallelUQLearner(asyncflow)
+from rose.uq import ParallelUQLearner
+uql = ParallelUQLearner(asyncflow)
 ```
 
 Run the learning (Active Learning Loop)
@@ -103,7 +103,7 @@ Run the learning (Active Learning Loop)
 ```python
 PIPELINES = ['UQ_learner1', 'UQ_learner2']
 
-results = await learner.start(
+results = await uql.start(
     learner_names=PIPELINES,
     model_names=MODELS,
     learner_configs=learner_configs,
@@ -122,7 +122,7 @@ print(results)
 with open(Path(os.getcwd(), 'UQ_training_results.json'), 'w') as f:
     json.dump(results, f, indent=4)
 
-await learner.shutdown()
+await uql.shutdown()
 ```
 
 #### Defining costom UQ metric

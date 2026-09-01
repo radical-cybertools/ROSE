@@ -1,0 +1,3 @@
+[default.extend-words]
+# "aas" appears in rose-aas.md / "ROSE as a Service" links — not a typo of "as"/"ass".
+aas = "aas"
