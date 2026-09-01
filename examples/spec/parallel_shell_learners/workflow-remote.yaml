@@ -43,7 +43,7 @@ stop_criterion:
 remote:
   embedded: true
   target:
-    kind: sfapi           # NERSC's SFAPI /compute/* 
+    kind: sfapi           # NERSC's SFAPI /compute/*
     endpoint: nersc
     resource_id: perlmutter
     account: amsc007

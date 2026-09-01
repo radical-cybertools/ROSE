@@ -7,12 +7,13 @@ On HPC via AMSC (bridge already running):
     export RADICAL_BRIDGE_URL="https://<bridge-host>:8000"
     # Then use service_utils.run(load_spec("workflow.yaml").workflow) instead.
 """
+
 import asyncio
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))   # make tasks.py importable
+sys.path.insert(0, str(Path(__file__).parent))  # make tasks.py importable
 
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend

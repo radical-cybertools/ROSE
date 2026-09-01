@@ -29,7 +29,7 @@ stop_criterion:
 remote:
   embedded: true
   target:
-    kind: iri           # NERSC's IRI /compute/* 
+    kind: iri           # NERSC's IRI /compute/*
     endpoint: nersc
     resource_id: perlmutter
     account: amsc007

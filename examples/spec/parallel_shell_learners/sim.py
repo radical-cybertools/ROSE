@@ -4,6 +4,7 @@
 Usage: python sim.py --label <suffix>
 Writes: sim_<suffix>.pkl
 """
+
 import argparse
 import pickle
 

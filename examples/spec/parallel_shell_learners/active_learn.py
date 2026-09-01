@@ -5,6 +5,7 @@ Usage: python active_learn.py --label <suffix>
 Reads:  model_<suffix>.pkl
 Writes: sim_<suffix>.pkl (updated), model_<suffix>.pkl (updated)
 """
+
 import argparse
 import pickle
 
@@ -18,7 +19,7 @@ with open(f"model_{args.label}.pkl", "rb") as f:
     state = pickle.load(f)
 
 model = state["model"]
-data  = state["data"]
+data = state["data"]
 X, y, X_pool = data["X"], data["y"], data["X_pool"]
 
 uncertainty = np.abs(model.predict(X_pool) - model.predict(X_pool).mean()).flatten()
@@ -26,9 +27,9 @@ top_idx = uncertainty.argsort()[-10:]
 X_new = X_pool[top_idx]
 y_new = 2 * X_new + 1 + np.random.normal(0, 0.1, X_new.shape)
 
-X_updated   = np.vstack([X, X_new])
-y_updated   = np.vstack([y, y_new])
-X_pool_upd  = np.delete(X_pool, top_idx, axis=0)
+X_updated = np.vstack([X, X_new])
+y_updated = np.vstack([y, y_new])
+X_pool_upd = np.delete(X_pool, top_idx, axis=0)
 
 model.fit(X_updated, y_updated)
 

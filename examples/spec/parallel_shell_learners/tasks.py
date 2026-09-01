@@ -1,9 +1,9 @@
 """Shared criterion function for the parallel learners example.
 
-The stop criterion is defined once for all parallel learners. It checks the
-most recently updated model files (whichever suffix is available) and returns
-the mean MSE across both learners.
+The stop criterion is defined once for all parallel learners. It checks the most recently updated
+model files (whichever suffix is available) and returns the mean MSE across both learners.
 """
+
 import glob
 import pickle
 
@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error
 def check_mse(*args, **kwargs):
     model_files = sorted(glob.glob("model_*.pkl"))
     if not model_files:
-        return 1.0   # no models yet — return a high metric so training continues
+        return 1.0  # no models yet — return a high metric so training continues
 
     rng = np.random.default_rng()
     X_val = rng.random((50, 1))
