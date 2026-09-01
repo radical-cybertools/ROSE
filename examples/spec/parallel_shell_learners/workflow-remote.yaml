@@ -1,0 +1,52 @@
+learner:
+  type: parallel_active_learner
+  max_iter: 5
+
+# Each learner defines its own shell commands. The builder creates dispatch
+# closures that route to the right command based on a learner_id injected at
+# runtime into each learner's LearnerConfig kwargs.
+#
+# File naming convention: each learner uses a unique suffix (--label a / b)
+# so parallel runs never collide on disk.
+learners:
+  - label: linear_regression
+    simulation:
+      type: shell
+      command: python sim.py --label a
+    training:
+      type: shell
+      command: python train.py --label a --model linear
+    active_learn:
+      type: shell
+      command: python active_learn.py --label a
+
+  - label: ridge_regression
+    simulation:
+      type: shell
+      command: python sim.py --label b
+    training:
+      type: shell
+      command: python train.py --label b --model ridge
+    active_learn:
+      type: shell
+      command: python active_learn.py --label b
+
+# Criterion is shared; reads from whichever model file already exists.
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse
+
+remote:
+  embedded: true
+  target:
+    kind: sfapi           # NERSC's SFAPI /compute/* 
+    endpoint: nersc
+    resource_id: perlmutter
+    account: amsc007
+    queue_name: regular
+    walltime_min: 30
+    home_dir: /global/u2/a/$USER # replace $USER with real user.

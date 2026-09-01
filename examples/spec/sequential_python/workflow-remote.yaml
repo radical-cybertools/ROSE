@@ -1,0 +1,38 @@
+learner:
+  type: sequential_active_learner
+  max_iter: 5
+
+simulation:
+  type: python
+  function: tasks:simulate
+  task_description:
+    cpu_count: 2
+
+training:
+  type: python
+  function: tasks:train
+  task_description:
+    cpu_count: 4
+
+active_learn:
+  type: python
+  function: tasks:active_learn
+
+stop_criterion:
+  metric: mse
+  threshold: 0.01
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:check_mse
+
+remote:
+  embedded: true
+  target:
+    kind: iri           # NERSC's IRI /compute/* 
+    endpoint: nersc
+    resource_id: perlmutter
+    account: amsc007
+    queue_name: regular
+    walltime_min: 30
+    home_dir: /global/u2/a/$USER # replace $USER with real user.
