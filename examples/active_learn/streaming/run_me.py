@@ -1,17 +1,13 @@
-# This is a *draft* example of the StreamingActiveLearner
-# It cuts some corners in order to deliver a bare-bones test.
-#     Namely: StreamingActiveLearner currently requires a stop criterion.
-#         so, I have a dummy one that always returns true.
-#         (and technically the stop criterion is usually executable, but
-#         did this for brevity)
+# Bare-bones example of a SequentialActiveLearner driven by a Stream.
 #
-#     All tasks are function tasks. Currently, the only way to fetch state in
-#         the model is if they are function tasks returning dictionaries. If these were
-#         executable tasks, the developer would be responsible for their own data transfer
-#         management.
+# Each window of streamed items triggers one simulation -> training ->
+# active-learning iteration; the window is the first argument of the
+# simulation task. Without a stop criterion, every iteration's model is
+# published via on_model_ready.
 #
-# A more "real" example of the StreamingActiveLearner would eventually replace
-# this quick test script.
+# All tasks are function tasks: the callback state is filled from their dict
+# results. With executable tasks, the developer is responsible for passing
+# model references (e.g. a checkpoint path) themselves.
 
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
@@ -19,16 +15,16 @@ from concurrent.futures import ProcessPoolExecutor
 from radical.asyncflow import WorkflowEngine
 from rhapsody.backends import ConcurrentExecutionBackend
 
-from rose.al.streaming_learner import StreamingActiveLearner
+from rose import Stream
+from rose.al.active_learner import SequentialActiveLearner
 from rose.learner import IterationState
-from rose.metrics import MEAN_SQUARED_ERROR_MSE
 
 
 async def rose_al():
     engine = await ConcurrentExecutionBackend(ProcessPoolExecutor())
     asyncflow = await WorkflowEngine.create(engine)
 
-    acl = StreamingActiveLearner(asyncflow, batch_size=2)
+    acl = SequentialActiveLearner(asyncflow)
 
     # Define and register the simulation task
     @acl.simulation_task(as_executable=False)
@@ -38,26 +34,23 @@ async def rose_al():
 
     # Define and register the training task
     @acl.training_task(as_executable=False)
-    async def training(train_window, *args):
+    async def training(sim_result, *args):
+        train_window = sim_result["train_window"]
         print(f"Start training: {train_window}")
         out = []
         for i in train_window:
             out.append(i * 2)
-        return out
+        return {"trained": out}
 
     # Define and register the active learning task
     @acl.active_learn_task(as_executable=False)
-    async def active_learn(from_train, *args):
+    async def active_learn(sim_result, train_result, *args):
+        from_train = train_result["trained"]
         print(f"Start learning: {from_train}")
         out = []
         for i in from_train:
             out.append(i * 3)
         return {"sum": sum(out)}
-
-    # Defining the stop criterion with a metric (MSE in this case)
-    @acl.as_stop_criterion(as_executable=False, metric_name=MEAN_SQUARED_ERROR_MSE, threshold=0.1)
-    async def check_mse(*args):
-        return 0.01
 
     # dummy data source
     async def data_source():
@@ -65,7 +58,7 @@ async def rose_al():
             yield i
             await asyncio.sleep(1)
 
-    acl.attach_source(data_source())
+    stream = Stream(batch_size=2, sources=data_source())
 
     # model callback
     async def on_model_callback(state: IterationState):
@@ -74,10 +67,8 @@ async def rose_al():
     acl.on_model_ready(on_model_callback)
 
     # start learner
-    async for _ in acl.start():
+    async for _ in acl.start(stream=stream):
         await asyncio.sleep(0)
-
-    acl.stop()
 
     await acl.shutdown()
 

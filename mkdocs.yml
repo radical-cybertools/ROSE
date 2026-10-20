@@ -104,6 +104,7 @@ nav:
           - 3.Parallel Active Learning Example: user-guide/parallel_learners_docs.md
           - 4.Custom Active Learning Example: user-guide/advanced-acl-workflow.md
           - 5.UQ-Based Active Learning Example: user-guide/uq_based-acl-workflow.md
+          - 6.Streaming Active Learning: user-guide/streaming-acl-workflow.md
       - 3.Reinforcement Learners:
           - 1.Sequential Reinforcement Learning Example: user-guide/basic-rl-workflow.md
           - 2.Experience Banks: user-guide/experience.md

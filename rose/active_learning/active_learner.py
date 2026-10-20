@@ -8,6 +8,7 @@ from typing import Any
 from radical.asyncflow import WorkflowEngine
 
 from ..learner import IterationState, Learner, LearnerConfig, _stream_parallel
+from ..stream import Stream, _Subscription
 
 
 class SequentialActiveLearner(Learner):
@@ -63,6 +64,7 @@ class SequentialActiveLearner(Learner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         initial_config: LearnerConfig | None = None,
+        stream: Stream | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -79,14 +81,25 @@ class SequentialActiveLearner(Learner):
                 managed externally.
             initial_config: Initial configuration object. Can be modified
                 between iterations via set_next_config().
+            stream: Optional :class:`~rose.stream.Stream`. Each iteration then
+                waits for a window of streamed items, which is passed as first
+                argument to the simulation task (to the training task with
+                ``skip_simulation_step``), i.e. ``simulation(window, *args)``
+                and, from the second window on, ``simulation(window, *args,
+                acl_result)``. A met criterion does not end the loop: it marks
+                the state ``model_ready`` (always set without a criterion) and
+                fires :meth:`on_model_ready` callbacks. The loop ends on
+                ``stop()``, stream exhaustion, or ``max_iter``. Executable tasks
+                (incl. YAML spec shell tasks) do not receive the window.
 
         Yields:
             IterationState containing current iteration info, metrics, and
             all registered state from tasks.
 
         Raises:
-            ValueError: If required functions are not set or if neither
-                max_iter nor criterion_function is provided.
+            ValueError: If required functions are not set, if neither
+                max_iter nor criterion_function nor stream is provided, or if
+                stream is combined with skip_pre_loop.
 
         Example:
             Basic usage::
@@ -112,12 +125,21 @@ class SequentialActiveLearner(Learner):
             raise ValueError("Simulation function must be set when not using simulation pool!")
         if not self.training_function or not self.active_learn_function:
             raise ValueError("Training and Active Learning functions must be set!")
-        if max_iter == 0 and not self.criterion_function:
+        if max_iter == 0 and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
         _stop_reason = "max_iter_reached"
+
+        # a Subscription is passed in by ParallelActiveLearner
+        sub = None
+        if stream is not None:
+            sub = stream if isinstance(stream, _Subscription) else stream._subscribe()
+            self._subscriptions.append(sub)
+        window_size: int | None = None
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
@@ -131,35 +153,43 @@ class SequentialActiveLearner(Learner):
         sim_result: Any = None
         train_result: Any = None
 
-        if not skip_pre_loop:
-            train_config = self._get_iteration_task_config(
-                self.training_function, learner_config, "training", 0
-            )
-
-            if skip_simulation_step:
-                train_task = self._register_task(train_config)
-            else:
-                sim_config = self._get_iteration_task_config(
-                    self.simulation_function, learner_config, "simulation", 0
-                )
-                sim_task = self._register_task(sim_config)
-                train_task = self._register_task(train_config, deps=sim_task)
-
-                # Await simulation result (extract state later, inside loop)
-                sim_result = await sim_task
-
-            # Await training result (extract state later, inside loop)
-            train_result = await train_task
-
-        # Determine iteration range
-        iteration_range: Iterator[int] | range
-        if max_iter == 0:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
-
-        # Main iteration loop
         try:
+            if not skip_pre_loop:
+                train_config = self._get_iteration_task_config(
+                    self.training_function, learner_config, "training", 0
+                )
+                sim_config = None
+                if not skip_simulation_step:
+                    sim_config = self._get_iteration_task_config(
+                        self.simulation_function, learner_config, "simulation", 0
+                    )
+
+                if sub is not None:
+                    window_size = await self._inject_window(sub, sim_config or train_config)
+                    if not window_size:
+                        _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                        return
+
+                if skip_simulation_step:
+                    train_task = self._register_task(train_config)
+                else:
+                    sim_task = self._register_task(sim_config)
+                    train_task = self._register_task(train_config, deps=sim_task)
+
+                    # Await simulation result (extract state later, inside loop)
+                    sim_result = await sim_task
+
+                # Await training result (extract state later, inside loop)
+                train_result = await train_task
+
+            # Determine iteration range
+            iteration_range: Iterator[int] | range
+            if max_iter == 0:
+                iteration_range = itertools.count()
+            else:
+                iteration_range = range(max_iter)
+
+            # Main iteration loop
             for i in iteration_range:
                 learner_prefix = (
                     f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
@@ -183,6 +213,8 @@ class SequentialActiveLearner(Learner):
                     self._extract_state_from_result(sim_result)
                 if train_result is not None:
                     self._extract_state_from_result(train_result)
+                if window_size is not None:
+                    self.register_state("window_size", window_size)
 
                 print(f"{learner_prefix}Starting Iteration-{i}")
 
@@ -225,15 +257,21 @@ class SequentialActiveLearner(Learner):
                     metric_value=metric_value,
                     should_stop=should_stop,
                     current_config=learner_config,
+                    model_ready=sub is not None and (should_stop or not self.criterion_function),
                 )
 
-                # Notify trackers then yield control to caller
+                # Notify trackers and model callbacks, then yield control to caller
                 self._notify_trackers_iteration(self._iteration_state)
+                if self._iteration_state.model_ready:
+                    await self._notify_model_ready(self._iteration_state)
                 yield self._iteration_state
 
                 # Check if user loop broke or criterion met
-                if should_stop:
+                # (in stream mode the criterion only gates publishing)
+                if should_stop and sub is None:
                     _stop_reason = "criterion_met"
+                    break
+                if sub is not None and self._max_iter is not None and i + 1 == self._max_iter:
                     break
 
                 # Prepare next iteration using potentially updated config
@@ -241,15 +279,25 @@ class SequentialActiveLearner(Learner):
                 next_train_config = self._get_iteration_task_config(
                     self.training_function, next_config, "training", i + 1
                 )
+                next_sim_config = None
+                if not skip_simulation_step:
+                    next_sim_config = self._get_iteration_task_config(
+                        self.simulation_function, next_config, "simulation", i + 1
+                    )
+
+                if sub is not None:
+                    window_size = await self._inject_window(
+                        sub, next_sim_config or next_train_config
+                    )
+                    if not window_size:
+                        _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                        break
 
                 if skip_simulation_step:
                     sim_task = ()
                     sim_result = None
                     train_task = self._register_task(next_train_config, deps=acl_task)
                 else:
-                    next_sim_config = self._get_iteration_task_config(
-                        self.simulation_function, next_config, "simulation", i + 1
-                    )
                     sim_task = self._register_task(next_sim_config, deps=acl_task)
                     train_task = self._register_task(next_train_config, deps=sim_task)
 
@@ -268,7 +316,17 @@ class SequentialActiveLearner(Learner):
             _stop_reason = "error"
             raise
         finally:
+            if sub is not None:
+                sub.unsubscribe()
+                self._subscriptions.remove(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
+
+    async def _inject_window(self, sub: _Subscription, task_config: dict[str, Any]) -> int:
+        """Pull the next window and prepend it to the task's args; return its size."""
+        window = await sub.next_window()
+        if window:
+            task_config["args"] = (window, *task_config["args"])
+        return len(window)
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -313,6 +371,7 @@ class SequentialActiveLearner(Learner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         learner_config: LearnerConfig | None = None,
+        stream: Stream | None = None,
     ) -> IterationState | None:
         """Run active learning loop to completion.
 
@@ -326,6 +385,8 @@ class SequentialActiveLearner(Learner):
             skip_pre_loop: If True, skips the initial simulation and training.
             skip_simulation_step: If True, skips simulation tasks.
             learner_config: Configuration for the learner.
+            stream: Optional Stream, see :meth:`start`. With an unbounded
+                stream, teach() returns only after stop() or Stream.close().
 
         Returns:
             Final IterationState after completion, or None if no iterations ran.
@@ -342,6 +403,7 @@ class SequentialActiveLearner(Learner):
             skip_pre_loop=skip_pre_loop,
             skip_simulation_step=skip_simulation_step,
             initial_config=learner_config,
+            stream=stream,
         ):
             final_state = state
         return final_state
@@ -437,6 +499,7 @@ class ParallelActiveLearner(Learner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         learner_configs: list[LearnerConfig | None] | None = None,
+        stream: Stream | None = None,
     ) -> AsyncIterator[IterationState]:
         """Run parallel active learning by launching multiple SequentialActiveLearners.
 
@@ -459,6 +522,10 @@ class ParallelActiveLearner(Learner):
                 match parallel_learners if provided.
             skip_simulation_step: if True, all learners will skip the simulation
                 step and the learner will consider a simulation pool already exist.
+            stream: Optional Stream; every learner receives every streamed item
+                (see SequentialActiveLearner.start). on_model_ready callbacks
+                registered on this learner fire with ``learner_id`` set. A
+                failing learner stops all others.
 
         Yields:
             IterationState for each iteration of each learner, in arrival order.
@@ -481,6 +548,12 @@ class ParallelActiveLearner(Learner):
         learner_configs = learner_configs or [None] * parallel_learners
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
+
+        # subscribe all learners before any pulls a window, so all see the backlog
+        subs = [stream._subscribe() if stream is not None else None for _ in learner_configs]
+        self._subscriptions.extend(sub for sub in subs if sub is not None)
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
@@ -491,23 +564,30 @@ class ParallelActiveLearner(Learner):
                     sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
                         learner_id, learner_configs[learner_id]
                     )
+                    if stream is not None:
+                        # parent stop() wakes the subscription and stops the learner
+                        sequential_learner._stop_event = self._stop_event
                     async for state in sequential_learner.start(
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
                         skip_simulation_step=skip_simulation_step,
                         initial_config=learner_configs[learner_id],
+                        stream=subs[learner_id],
                     ):
                         if self.is_stopped:
                             sequential_learner.stop()
-                        await queue.put(
-                            ("state", dataclasses.replace(state, learner_id=learner_id))
-                        )
+                        state = dataclasses.replace(state, learner_id=learner_id)
+                        if state.model_ready:
+                            await self._notify_model_ready(state)
+                        await queue.put(("state", state))
                     self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                         sequential_learner.metric_values_per_iteration
                     )
                 except Exception as e:
                     print(f"[ActiveLearner-{learner_id}] failed with error: {e}")
                     await queue.put(("error", e))
+                    if stream is not None:
+                        self.stop()  # others would wait for windows forever
                 finally:
                     await queue.put(("done", None))
 
@@ -522,6 +602,10 @@ class ParallelActiveLearner(Learner):
             _stop_reason = "error"
             raise
         finally:
+            for sub in subs:
+                if sub is not None:
+                    sub.unsubscribe()
+                    self._subscriptions.remove(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
@@ -531,6 +615,7 @@ class ParallelActiveLearner(Learner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         learner_configs: list[LearnerConfig | None] | None = None,
+        stream: Stream | None = None,
     ) -> list[Any]:
         """Run parallel active learning loop to completion.
 
@@ -544,6 +629,7 @@ class ParallelActiveLearner(Learner):
             skip_pre_loop: If True, skips the initial simulation and training.
             skip_simulation_step: If True, skips simulation tasks.
             learner_configs: Configuration for each learner.
+            stream: Optional Stream, see :meth:`start`.
 
         Returns:
             List of final IterationState from each learner.
@@ -560,6 +646,7 @@ class ParallelActiveLearner(Learner):
             skip_pre_loop=skip_pre_loop,
             skip_simulation_step=skip_simulation_step,
             learner_configs=learner_configs,
+            stream=stream,
         ):
             final_states[state.learner_id] = state
         return [final_states.get(i) for i in range(parallel_learners)]

@@ -171,5 +171,6 @@ class TrackerBase:
                 - ``"max_iter_reached"`` — all iterations completed normally
                 - ``"stopped"`` — ``learner.stop()`` was called or user broke
                   out of the ``async for`` loop
+                - ``"stream_exhausted"`` — the input stream ended (stream mode)
                 - ``"error"`` — an unhandled exception occurred
         """
