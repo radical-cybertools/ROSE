@@ -220,6 +220,30 @@ async def test_source_error_is_raised():
 
 
 @pytest.mark.asyncio
+async def test_items_before_source_error_are_delivered():
+    learner, calls = make_learner()
+    stream = Stream(batch_size=2, sources=(numbers(5, fail=True),))  # tuple of sources
+
+    with pytest.raises(RuntimeError, match="sensor failed"):
+        await collect(learner.start(stream=stream))
+    assert windows(calls) == [[0, 1], [2, 3], [4]]
+
+
+@pytest.mark.asyncio
+async def test_consumer_break_reports_stopped():
+    learner, _ = make_learner()
+    tracker = MagicMock()
+    learner.add_tracker(tracker)
+    gen = learner.start(stream=Stream(batch_size=1, sources=numbers(5)))
+
+    async for _ in gen:
+        break
+    await gen.aclose()
+
+    assert tracker.on_stop.call_args.args[1] == "stopped"
+
+
+@pytest.mark.asyncio
 async def test_source_error_is_raised_while_other_sources_run():
     async def endless():
         while True:

@@ -157,6 +157,11 @@ class SequentialActiveLearner(Learner):
 
         try:
             if not skip_pre_loop:
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    return
+
                 train_config = self._get_iteration_task_config(
                     self.training_function, learner_config, "training", 0
                 )
@@ -165,12 +170,7 @@ class SequentialActiveLearner(Learner):
                     sim_config = self._get_iteration_task_config(
                         self.simulation_function, learner_config, "simulation", 0
                     )
-
-                if sub is not None:
-                    window_size = await self._inject_window(sub, sim_config or train_config)
-                    if not window_size:
-                        _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
-                        return
+                window_size = self._inject_window(window, sim_config or train_config)
 
                 if skip_simulation_step:
                     train_task = self._register_task(train_config)
@@ -276,6 +276,12 @@ class SequentialActiveLearner(Learner):
                 if sub is not None and self._max_iter is not None and i + 1 == self._max_iter:
                     break
 
+                # Wait for data first, so a config set meanwhile applies to the whole iteration
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    break
+
                 # Prepare next iteration using potentially updated config
                 next_config = self._pending_config or learner_config
                 next_train_config = self._get_iteration_task_config(
@@ -287,13 +293,7 @@ class SequentialActiveLearner(Learner):
                         self.simulation_function, next_config, "simulation", i + 1
                     )
 
-                if sub is not None:
-                    window_size = await self._inject_window(
-                        sub, next_sim_config or next_train_config
-                    )
-                    if not window_size:
-                        _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
-                        break
+                window_size = self._inject_window(window, next_sim_config or next_train_config)
 
                 if skip_simulation_step:
                     sim_task = ()
@@ -314,6 +314,9 @@ class SequentialActiveLearner(Learner):
                 if self.is_stopped:
                     _stop_reason = "stopped"
                     break
+        except GeneratorExit:
+            _stop_reason = "stopped"  # consumer left the async for loop
+            raise
         except Exception:
             _stop_reason = "error"
             raise
@@ -323,11 +326,17 @@ class SequentialActiveLearner(Learner):
                 self._subscriptions.remove(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
-    async def _inject_window(self, sub: _Subscription, task_config: dict[str, Any]) -> int:
-        """Pull the next window and prepend it to the task's args; return its size."""
-        window = await sub.next_window()
-        if window:
-            task_config["args"] = (window, *task_config["args"])
+    @staticmethod
+    async def _pull_window(sub: _Subscription | None) -> list[Any] | None:
+        """Next window, None without stream; empty means stopped or exhausted."""
+        return await sub.next_window() if sub is not None else None
+
+    @staticmethod
+    def _inject_window(window: list[Any] | None, task_config: dict[str, Any]) -> int | None:
+        """Prepend the window to the task's args; return its size (None without stream)."""
+        if window is None:
+            return None
+        task_config["args"] = (window, *task_config["args"])
         return len(window)
 
     def set_next_config(self, config: LearnerConfig) -> None:

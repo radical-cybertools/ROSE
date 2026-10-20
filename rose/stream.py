@@ -5,6 +5,7 @@ from typing import Any
 
 _WAKE = object()  # sentinel: unblocks a waiting window collector
 _TIMEOUT = object()  # sentinel: max_wait expired
+_ERROR = object()  # sentinel: a source failed; queued after its last item
 
 
 class Stream:
@@ -72,7 +73,7 @@ class Stream:
         self._error: BaseException | None = None
 
         if sources is not None:
-            for source in sources if isinstance(sources, list) else [sources]:
+            for source in sources if isinstance(sources, (list, tuple)) else [sources]:
                 self.attach_source(source)
 
     async def feed(self, item: Any) -> None:
@@ -149,6 +150,8 @@ class Stream:
             except Exception as e:
                 if self._error is None:
                     self._error = e
+                    for sub in self._subs:
+                        sub._put(_ERROR)
             finally:
                 self._open_sources -= 1
                 if self._open_sources <= 0:
@@ -177,13 +180,16 @@ class _Subscription:
         self._queue: asyncio.Queue[Any] = asyncio.Queue()
         self._eos = False
         self._woken = False
+        self._failed = False
 
     def _put(self, item: Any) -> None:
         """Enqueue an item; when conflating, drop the oldest backlog first so the queue stays
         bounded to roughly ``batch_size`` items even while an iteration is running."""
         if self._stream.conflate:
             while self._queue.qsize() >= self._stream.batch_size:
-                self._queue.get_nowait()
+                # control flags are sticky, so evicting a sentinel loses no signal
+                if self._queue.get_nowait() is _ERROR:
+                    self._failed = True
         self._queue.put_nowait(item)
 
     def wake(self) -> None:
@@ -203,11 +209,9 @@ class _Subscription:
             Exception: The error of a failed source, once its items are consumed.
         """
         self._stream._start()
-        if self._stream._error is not None:
-            raise self._stream._error
         batch_size = self._stream.batch_size
         window: list[Any] = []
-        while len(window) < batch_size and not self._woken:
+        while len(window) < batch_size and not self._woken and not self._failed:
             if self._eos and self._queue.empty():
                 break
             if window and self._stream.max_wait is not None:
@@ -216,20 +220,24 @@ class _Subscription:
                     break  # flush partial window
             else:
                 item = await self._queue.get()
-            if item is not _WAKE:
+            if item is _ERROR:
+                self._failed = True
+            elif item is not _WAKE:
                 window.append(item)
 
         if self._woken:
             return []
 
         if self._stream.conflate:
-            while not self._queue.empty():
+            while not self._failed and not self._queue.empty():
                 item = self._queue.get_nowait()
-                if item is not _WAKE:
+                if item is _ERROR:
+                    self._failed = True
+                elif item is not _WAKE:
                     window.append(item)
             window = window[-batch_size:]
 
-        if not window and self._stream._error is not None:
+        if self._failed and not window:
             raise self._stream._error
         return window
 
@@ -243,10 +251,6 @@ class _Subscription:
             raise
         if getter.done():
             return getter.result()
-        getter.cancel()  # an item fetched before the cancel takes effect stays in the queue
-        try:
-            return await getter
-        except asyncio.CancelledError:
-            if getter.cancelled():
-                return _TIMEOUT
-            raise
+        # Queue.get pops only after its wakeup, so a cancelled getter leaves the item queued
+        getter.cancel()
+        return _TIMEOUT
