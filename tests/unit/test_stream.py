@@ -220,6 +220,39 @@ async def test_source_error_is_raised():
 
 
 @pytest.mark.asyncio
+async def test_source_error_is_raised_while_other_sources_run():
+    async def endless():
+        while True:
+            yield "x"
+            await asyncio.sleep(0.01)
+
+    learner, _ = make_learner()
+    stream = Stream(batch_size=1, sources=[numbers(1, fail=True), endless()])
+
+    with pytest.raises(RuntimeError, match="sensor failed"):
+        await collect(learner.start(stream=stream))
+
+
+@pytest.mark.asyncio
+async def test_max_wait_keeps_items_arriving_at_timeout():
+    stream = Stream(batch_size=100, max_wait=0.001)
+    sub = stream._subscribe()
+    received = []
+
+    async def produce():
+        for i in range(200):
+            await stream.feed(i)
+            await asyncio.sleep(0.0005)
+        stream.close()
+
+    producer = asyncio.ensure_future(produce())
+    while window := await sub.next_window():
+        received.extend(window)
+    await producer
+    assert received == list(range(200))
+
+
+@pytest.mark.asyncio
 async def test_invalid_use_raises():
     with pytest.raises(ValueError):
         Stream(batch_size=0)

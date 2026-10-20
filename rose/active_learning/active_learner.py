@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import dataclasses
 import itertools
 import warnings
@@ -90,7 +91,8 @@ class SequentialActiveLearner(Learner):
                 the state ``model_ready`` (always set without a criterion) and
                 fires :meth:`on_model_ready` callbacks. The loop ends on
                 ``stop()``, stream exhaustion, or ``max_iter``. Executable tasks
-                (incl. YAML spec shell tasks) do not receive the window.
+                get the window as first argument of their command builder; YAML
+                spec shell tasks ignore it.
 
         Yields:
             IterationState containing current iteration info, metrics, and
@@ -595,9 +597,13 @@ class ParallelActiveLearner(Learner):
 
         _stop_reason = "max_iter_reached"
         try:
-            async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
-                self._notify_trackers_iteration(state)
-                yield state
+            # aclosing: a consumer break must reap the learner tasks before unsubscribing
+            async with contextlib.aclosing(
+                _stream_parallel([make_run_fn(i) for i in range(parallel_learners)])
+            ) as states:
+                async for state in states:
+                    self._notify_trackers_iteration(state)
+                    yield state
         except Exception:
             _stop_reason = "error"
             raise

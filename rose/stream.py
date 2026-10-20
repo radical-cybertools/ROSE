@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 _WAKE = object()  # sentinel: unblocks a waiting window collector
+_TIMEOUT = object()  # sentinel: max_wait expired
 
 
 class Stream:
@@ -132,11 +133,12 @@ class Stream:
             for sub in self._subs:
                 sub._put(item)
         self._backlog.clear()
-        for source in self._pending_sources:
-            self._start_pump(source)
-        self._pending_sources.clear()
         if self._closed:
-            self._end()
+            self._end()  # closed before the first pull: sources are never started
+        else:
+            for source in self._pending_sources:
+                self._start_pump(source)
+        self._pending_sources.clear()
 
     def _start_pump(self, source: AsyncIterator[Any]) -> None:
         async def pump() -> None:
@@ -162,8 +164,9 @@ class Stream:
         """Mark the stream exhausted for all subscribers."""
         self._cancel_pumps()
         for sub in self._subs:
-            sub._eos = True
-            sub._queue.put_nowait(_WAKE)
+            if not sub._eos:  # idempotent: one _WAKE per subscriber
+                sub._eos = True
+                sub._queue.put_nowait(_WAKE)
 
 
 class _Subscription:
@@ -185,8 +188,9 @@ class _Subscription:
 
     def wake(self) -> None:
         """Unblock a waiting collector; subsequent windows are empty."""
-        self._woken = True
-        self._queue.put_nowait(_WAKE)
+        if not self._woken:
+            self._woken = True
+            self._queue.put_nowait(_WAKE)
 
     def unsubscribe(self) -> None:
         """Detach from the stream (idempotent)."""
@@ -199,16 +203,19 @@ class _Subscription:
             Exception: The error of a failed source, once its items are consumed.
         """
         self._stream._start()
+        if self._stream._error is not None:
+            raise self._stream._error
         batch_size = self._stream.batch_size
         window: list[Any] = []
         while len(window) < batch_size and not self._woken:
             if self._eos and self._queue.empty():
                 break
-            try:
-                timeout = self._stream.max_wait if window else None
-                item = await asyncio.wait_for(self._queue.get(), timeout)
-            except asyncio.TimeoutError:
-                break  # flush partial window
+            if window and self._stream.max_wait is not None:
+                item = await self._get_or_timeout(self._stream.max_wait)
+                if item is _TIMEOUT:
+                    break  # flush partial window
+            else:
+                item = await self._queue.get()
             if item is not _WAKE:
                 window.append(item)
 
@@ -225,3 +232,21 @@ class _Subscription:
         if not window and self._stream._error is not None:
             raise self._stream._error
         return window
+
+    async def _get_or_timeout(self, timeout: float) -> Any:
+        """Queue get with timeout; unlike wait_for on Python < 3.12, never drops a fetched item."""
+        getter = asyncio.ensure_future(self._queue.get())
+        try:
+            await asyncio.wait({getter}, timeout=timeout)
+        except asyncio.CancelledError:
+            getter.cancel()
+            raise
+        if getter.done():
+            return getter.result()
+        getter.cancel()  # an item fetched before the cancel takes effect stays in the queue
+        try:
+            return await getter
+        except asyncio.CancelledError:
+            if getter.cancelled():
+                return _TIMEOUT
+            raise

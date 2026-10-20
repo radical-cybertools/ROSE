@@ -45,7 +45,8 @@ appended as dependencies, as in batch mode:
 With `skip_simulation_step=True` the window goes to training instead:
 `training(window, *args)`, later `training(window, *args, acl_result)`.
 
-Executable tasks, including YAML spec shell tasks, do not receive the window.
+Executable tasks receive the window as first argument of their command-builder
+function; YAML spec shell tasks ignore it.
 
 ## Publishing models
 
