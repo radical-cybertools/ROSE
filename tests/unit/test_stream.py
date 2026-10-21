@@ -174,6 +174,42 @@ async def test_feed_after_exhaustion_raises():
 
 
 @pytest.mark.asyncio
+async def test_source_generator_is_closed_and_stream_ends_with_consumer():
+    closed = []
+
+    async def endless():
+        try:
+            while True:
+                yield 1
+                await asyncio.sleep(0.01)
+        finally:
+            closed.append(True)
+
+    learner, _ = make_learner()
+    stream = Stream(batch_size=1, sources=endless())
+    await collect(learner.start(stream=stream, max_iter=2))
+    await stream.aclose()
+
+    assert closed == [True]
+    with pytest.raises(RuntimeError):
+        await stream.feed(1)  # last consumer left: stream ended
+
+
+@pytest.mark.asyncio
+async def test_parallel_reports_stream_exhausted_with_max_iter(monkeypatch):
+    monkeypatch.setattr(SequentialActiveLearner, "_register_task", AsyncMock(return_value={}))
+    learner = ParallelActiveLearner(MagicMock(spec=WorkflowEngine))
+    configure(learner)
+    tracker = MagicMock()
+    learner.add_tracker(tracker)
+
+    stream = Stream(batch_size=1, sources=numbers(2))
+    await collect(learner.start(parallel_learners=2, max_iter=100, stream=stream))
+
+    assert tracker.on_stop.call_args.args[1] == "stream_exhausted"
+
+
+@pytest.mark.asyncio
 async def test_max_iter_caps_without_extra_window():
     learner, calls = make_learner()
     stream = Stream(batch_size=1)

@@ -321,6 +321,9 @@ class SequentialActiveLearner(Learner):
             last = self._iteration_state
             _stop_reason = "criterion_met" if last is not None and last.should_stop else "stopped"
             raise
+        except asyncio.CancelledError:
+            _stop_reason = "stopped"
+            raise
         except Exception:
             _stop_reason = "error"
             raise
@@ -619,10 +622,10 @@ class ParallelActiveLearner(Learner):
                     yield state
             if self.is_stopped:
                 _stop_reason = "stopped"
-            elif stream is not None and max_iter == 0:
+            elif stream is not None and stream._ended:
                 _stop_reason = "stream_exhausted"
-        except GeneratorExit:
-            _stop_reason = "stopped"  # consumer left the async for loop
+        except (GeneratorExit, asyncio.CancelledError):
+            _stop_reason = "stopped"  # consumer left the async for loop, or cancelled
             raise
         except Exception:
             _stop_reason = "error"

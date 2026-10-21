@@ -29,6 +29,8 @@ A runnable example lives in `examples/active_learn/streaming/run_me.py`.
 - `conflate=True` drops the oldest backlog and keeps the newest items when
   iterations are slower than the stream (latest wins).
 - Items fed before the learner starts are kept and delivered to it.
+- Without `conflate`, queues are unbounded: a stream much faster than the
+  learner grows memory. Use `conflate=True` to bound it.
 
 ## Task call shapes
 
@@ -71,7 +73,8 @@ The loop ends when
 
 `teach(stream=...)` on an unbounded stream returns only after `stop()` or
 `stream.close()`. `stream` cannot be combined with `skip_pre_loop=True`.
-Feeding a closed or exhausted stream raises. Call `await stream.aclose()` when done,
+Feeding a closed or exhausted stream raises; a stream also ends once all its
+learners have finished. Call `await stream.aclose()` when done,
 so source generators can run their cleanup.
 
 ## Parallel learners

@@ -127,7 +127,7 @@ class Stream:
         if sub in self._subs:
             self._subs.remove(sub)
             if self._started and not self._subs:
-                self._cancel_pumps()
+                self._end()  # one-shot: nobody left to consume, later feed() raises
 
     def _start(self) -> None:
         """Deliver the backlog to all subscribers and start the source pumps."""
@@ -162,6 +162,12 @@ class Stream:
                 self._open_sources -= 1
                 if self._open_sources <= 0:
                     self._end()
+                aclose = getattr(source, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()  # run the source generator's own cleanup
+                    except Exception as e:
+                        print(f"stream source cleanup failed: {e!r}")
 
         self._pumps.append(asyncio.ensure_future(pump()))
 
