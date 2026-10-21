@@ -70,6 +70,7 @@ class Stream:
         self._open_sources = 0
         self._started = False
         self._closed = False
+        self._ended = False
         self._error: BaseException | None = None
 
         if sources is not None:
@@ -78,8 +79,8 @@ class Stream:
 
     async def feed(self, item: Any) -> None:
         """Feed a single data item into the stream."""
-        if self._closed:
-            raise RuntimeError("feed() on a closed stream")
+        if self._closed or self._ended:
+            raise RuntimeError("feed() on a closed or exhausted stream")
         self._put(item)
 
     def attach_source(self, source: AsyncIterator[Any]) -> None:
@@ -87,8 +88,8 @@ class Stream:
 
         Sources are consumed once the first window is pulled.
         """
-        if self._closed:
-            raise RuntimeError("attach_source() on a closed stream")
+        if self._closed or self._ended:
+            raise RuntimeError("attach_source() on a closed or exhausted stream")
         self._open_sources += 1
         if self._started:
             self._start_pump(source)
@@ -101,7 +102,10 @@ class Stream:
         self._end()
 
     async def aclose(self) -> None:
-        """Close the stream and wait for the source pumps to finish."""
+        """Close the stream and wait for the source pumps to finish.
+
+        Learners only cancel the pumps; await this to let source generators run their cleanup.
+        """
         self.close()
         await asyncio.gather(*self._pumps, return_exceptions=True)
 
@@ -152,6 +156,8 @@ class Stream:
                     self._error = e
                     for sub in self._subs:
                         sub._put(_ERROR)
+                else:
+                    print(f"stream source failed after an earlier source error: {e!r}")
             finally:
                 self._open_sources -= 1
                 if self._open_sources <= 0:
@@ -165,6 +171,7 @@ class Stream:
 
     def _end(self) -> None:
         """Mark the stream exhausted for all subscribers."""
+        self._ended = True
         self._cancel_pumps()
         for sub in self._subs:
             if not sub._eos:  # idempotent: one _WAKE per subscriber

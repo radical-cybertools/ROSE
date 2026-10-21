@@ -141,6 +141,8 @@ class SequentialActiveLearner(Learner):
         if stream is not None:
             sub = stream if isinstance(stream, _Subscription) else stream._subscribe()
             self._subscriptions.append(sub)
+            if self.is_stopped:
+                sub.wake()  # stop() came before the subscription existed
         window_size: int | None = None
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
@@ -211,12 +213,12 @@ class SequentialActiveLearner(Learner):
 
                 # Extract state from sim/train results
                 # (prepared in previous iteration or pre-loop)
+                if window_size is not None:
+                    self.register_state("window_size", window_size)  # task results may override
                 if not skip_simulation_step and sim_result is not None:
                     self._extract_state_from_result(sim_result)
                 if train_result is not None:
                     self._extract_state_from_result(train_result)
-                if window_size is not None:
-                    self.register_state("window_size", window_size)
 
                 print(f"{learner_prefix}Starting Iteration-{i}")
 
@@ -315,7 +317,9 @@ class SequentialActiveLearner(Learner):
                     _stop_reason = "stopped"
                     break
         except GeneratorExit:
-            _stop_reason = "stopped"  # consumer left the async for loop
+            # consumer left the async for loop, e.g. on should_stop as documented for streams
+            last = self._iteration_state
+            _stop_reason = "criterion_met" if last is not None and last.should_stop else "stopped"
             raise
         except Exception:
             _stop_reason = "error"
@@ -613,6 +617,13 @@ class ParallelActiveLearner(Learner):
                 async for state in states:
                     self._notify_trackers_iteration(state)
                     yield state
+            if self.is_stopped:
+                _stop_reason = "stopped"
+            elif stream is not None and max_iter == 0:
+                _stop_reason = "stream_exhausted"
+        except GeneratorExit:
+            _stop_reason = "stopped"  # consumer left the async for loop
+            raise
         except Exception:
             _stop_reason = "error"
             raise

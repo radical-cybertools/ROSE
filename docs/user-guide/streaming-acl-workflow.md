@@ -71,6 +71,8 @@ The loop ends when
 
 `teach(stream=...)` on an unbounded stream returns only after `stop()` or
 `stream.close()`. `stream` cannot be combined with `skip_pre_loop=True`.
+Feeding a closed or exhausted stream raises. Call `await stream.aclose()` when done,
+so source generators can run their cleanup.
 
 ## Parallel learners
 

@@ -158,6 +158,22 @@ async def test_stop_unblocks_empty_stream():
 
 
 @pytest.mark.asyncio
+async def test_stop_before_start_does_not_block():
+    learner, _ = make_learner()
+    learner.stop()
+    assert await collect(learner.start(stream=Stream())) == []
+
+
+@pytest.mark.asyncio
+async def test_feed_after_exhaustion_raises():
+    stream = Stream(batch_size=1, sources=numbers(1))
+    learner, _ = make_learner()
+    await collect(learner.start(stream=stream))
+    with pytest.raises(RuntimeError):
+        await stream.feed(1)
+
+
+@pytest.mark.asyncio
 async def test_max_iter_caps_without_extra_window():
     learner, calls = make_learner()
     stream = Stream(batch_size=1)
