@@ -70,7 +70,8 @@ class Stream:
         self._open_sources = 0
         self._started = False
         self._closed = False
-        self._ended = False
+        self._ended = False  # no more items will be delivered
+        self._exhausted = False  # ended because sources finished or close() was called
         self._error: BaseException | None = None
 
         if sources is not None:
@@ -127,7 +128,8 @@ class Stream:
         if sub in self._subs:
             self._subs.remove(sub)
             if self._started and not self._subs:
-                self._end()  # one-shot: nobody left to consume, later feed() raises
+                self._ended = True  # one-shot: nobody left to consume, later feed() raises
+                self._cancel_pumps()
 
     def _start(self) -> None:
         """Deliver the backlog to all subscribers and start the source pumps."""
@@ -155,7 +157,7 @@ class Stream:
                 if self._error is None:
                     self._error = e
                     for sub in self._subs:
-                        sub._put(_ERROR)
+                        sub._queue.put_nowait(_ERROR)  # bypass conflation: evicts no item
                 else:
                     print(f"stream source failed after an earlier source error: {e!r}")
             finally:
@@ -177,6 +179,8 @@ class Stream:
 
     def _end(self) -> None:
         """Mark the stream exhausted for all subscribers."""
+        if not self._ended:
+            self._exhausted = True
         self._ended = True
         self._cancel_pumps()
         for sub in self._subs:

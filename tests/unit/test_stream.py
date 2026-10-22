@@ -210,6 +210,35 @@ async def test_parallel_reports_stream_exhausted_with_max_iter(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_parallel_reports_max_iter_with_running_source(monkeypatch):
+    async def endless():
+        while True:
+            yield 1
+            await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(SequentialActiveLearner, "_register_task", AsyncMock(return_value={}))
+    learner = ParallelActiveLearner(MagicMock(spec=WorkflowEngine))
+    configure(learner)
+    tracker = MagicMock()
+    learner.add_tracker(tracker)
+
+    stream = Stream(batch_size=1, sources=endless())
+    await collect(learner.start(parallel_learners=2, max_iter=2, stream=stream))
+
+    assert tracker.on_stop.call_args.args[1] == "max_iter_reached"
+
+
+@pytest.mark.asyncio
+async def test_conflated_source_error_keeps_last_item():
+    learner, calls = make_learner()
+    stream = Stream(batch_size=1, conflate=True, sources=numbers(1, fail=True))
+
+    with pytest.raises(RuntimeError, match="sensor failed"):
+        await collect(learner.start(stream=stream))
+    assert windows(calls) == [[0]]
+
+
+@pytest.mark.asyncio
 async def test_max_iter_caps_without_extra_window():
     learner, calls = make_learner()
     stream = Stream(batch_size=1)

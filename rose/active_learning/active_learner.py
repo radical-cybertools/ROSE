@@ -144,6 +144,7 @@ class SequentialActiveLearner(Learner):
             if self.is_stopped:
                 sub.wake()  # stop() came before the subscription existed
         window_size: int | None = None
+        last_should_stop = False  # of this run; self._iteration_state may be stale
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
@@ -264,6 +265,8 @@ class SequentialActiveLearner(Learner):
                     model_ready=sub is not None and (should_stop or not self.criterion_function),
                 )
 
+                last_should_stop = should_stop
+
                 # Notify trackers and model callbacks, then yield control to caller
                 self._notify_trackers_iteration(self._iteration_state)
                 if self._iteration_state.model_ready:
@@ -318,8 +321,7 @@ class SequentialActiveLearner(Learner):
                     break
         except GeneratorExit:
             # consumer left the async for loop, e.g. on should_stop as documented for streams
-            last = self._iteration_state
-            _stop_reason = "criterion_met" if last is not None and last.should_stop else "stopped"
+            _stop_reason = "criterion_met" if last_should_stop else "stopped"
             raise
         except asyncio.CancelledError:
             _stop_reason = "stopped"
@@ -622,7 +624,7 @@ class ParallelActiveLearner(Learner):
                     yield state
             if self.is_stopped:
                 _stop_reason = "stopped"
-            elif stream is not None and stream._ended:
+            elif stream is not None and stream._exhausted:
                 _stop_reason = "stream_exhausted"
         except (GeneratorExit, asyncio.CancelledError):
             _stop_reason = "stopped"  # consumer left the async for loop, or cancelled
