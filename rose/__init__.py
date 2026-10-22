@@ -3,6 +3,7 @@ import sys as _sys
 from rose.learner import IterationState, Learner, LearnerConfig, TaskConfig
 from rose.metrics import *  # noqa: F403
 from rose.spec import WorkflowSpec, load_spec
+from rose.stream import Stream
 from rose.tracking import PipelineManifest, TrackerBase
 
 from . import active_learning as al
@@ -45,6 +46,7 @@ __all__ = [
     "LearnerConfig",
     "TaskConfig",
     "IterationState",
+    "Stream",
     # Tracking
     "TrackerBase",
     "PipelineManifest",

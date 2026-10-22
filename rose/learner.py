@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from functools import wraps
@@ -32,6 +33,8 @@ class IterationState:
         metric_history: List of all metric values from previous iterations.
         should_stop: Whether the stopping criterion suggests stopping.
         current_config: Current LearnerConfig being used.
+        model_ready: In stream mode, whether the model is publishable
+            (criterion met, or always without a criterion).
         state: Dictionary containing all registered state from tasks.
             Supports attribute-style access (e.g., state.labeled_count).
 
@@ -53,6 +56,7 @@ class IterationState:
     should_stop: bool = False
     current_config: Optional["LearnerConfig"] = None
     learner_id: int | str | None = None
+    model_ready: bool = False
 
     # All domain-specific state goes here
     state: dict[str, Any] = field(default_factory=dict)
@@ -100,6 +104,7 @@ class IterationState:
             "metric_history": self.metric_history,
             "should_stop": self.should_stop,
             "learner_id": self.learner_id,
+            "model_ready": self.model_ready,
         }
         # Merge in all state values
         result.update(self.state)
@@ -138,17 +143,21 @@ async def _stream_parallel(
 
     completed = 0
     first_error: Exception | None = None
-    while completed < len(run_fns):
-        kind, value = await queue.get()
-        if kind == "done":
-            completed += 1
-        elif kind == "state":
-            yield value
-        elif kind == "error":
-            if first_error is None:
-                first_error = value
-
-    await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        while completed < len(run_fns):
+            kind, value = await queue.get()
+            if kind == "done":
+                completed += 1
+            elif kind == "state":
+                yield value
+            elif kind == "error":
+                if first_error is None:
+                    first_error = value
+    finally:
+        # no-op for finished tasks; reaps learners left running by a consumer break
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     if first_error is not None:
         raise first_error
 
@@ -306,6 +315,9 @@ class Learner:
         self._trackers: list[TrackerBase] = []
         self._iteration_state: IterationState | None = None
 
+        self._model_callbacks: list[Callable[[IterationState], Any]] = []
+        self._subscriptions: list[Any] = []  # stream subscriptions woken by stop()
+
     @property
     def is_stopped(self) -> bool:
         """Check if the learner has been requested to stop."""
@@ -314,6 +326,28 @@ class Learner:
     def stop(self) -> None:
         """Signal the learner to stop execution as soon as possible."""
         self._stop_event.set()
+        for sub in self._subscriptions:
+            sub.wake()
+
+    def on_model_ready(self, callback: Callable[[IterationState], Any]) -> None:
+        """Register a callback fired for each publishable model in stream mode.
+
+        A model is publishable when the stop criterion is met on a window, or on every window if no
+        criterion is set. Callbacks receive the IterationState and may be sync or async; exceptions
+        are logged and ignored. The state carries what tasks registered (dict results of function
+        tasks); executable tasks must pass model references themselves (e.g. a path in a known
+        location).
+        """
+        self._model_callbacks.append(callback)
+
+    async def _notify_model_ready(self, state: IterationState) -> None:
+        for callback in self._model_callbacks:
+            try:
+                result = callback(state)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as e:
+                print(f"on_model_ready callback failed: {e}")
 
     def _get_iteration_task_config(
         self,
@@ -825,6 +859,7 @@ class Learner:
         metric_value: float | None = None,
         should_stop: bool = False,
         current_config: Optional["LearnerConfig"] = None,
+        model_ready: bool = False,
     ) -> IterationState:
         """Build an IterationState from current learner state.
 
@@ -836,6 +871,7 @@ class Learner:
             metric_value: Current metric value (if available).
             should_stop: Whether stopping criterion is met.
             current_config: Current configuration being used.
+            model_ready: Whether the model is publishable (stream mode).
 
         Returns:
             IterationState populated with all available information.
@@ -861,6 +897,7 @@ class Learner:
             metric_history=metric_history,
             should_stop=should_stop,
             current_config=current_config,
+            model_ready=model_ready,
             state=state,
         )
 
@@ -963,7 +1000,7 @@ class Learner:
             final_state: Last yielded ``IterationState``, or ``None`` if no
                 iterations ran.
             reason: Exit reason — ``"criterion_met"``, ``"max_iter_reached"``,
-                ``"stopped"``, or ``"error"``.
+                ``"stopped"``, ``"stream_exhausted"``, or ``"error"``.
         """
         for tracker in self._trackers:
             try:
