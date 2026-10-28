@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`LearnerConfig` task fields accept a callable** `(iteration) -> TaskConfig`, evaluated per
+  iteration, besides a `TaskConfig` or a per-iteration dict.
+- **`create_adaptive_schedule` returns a callable** instead of a dict precomputed for 100
+  iterations; it now has no iteration limit. Code that indexes its result as a dict must call
+  it instead.
+
+### Fixed
+- **YAML spec `iteration` kwarg**: with `max_iter: 0` (unbounded runs) every iteration from 1
+  on received `iteration == 0`; the spec builder now computes it per iteration.
+- **`create_adaptive_schedule`**: iterations from 100 on silently lost their adaptive config.
+
 ---
 
 ## [0.3.0] - 2026-09-01

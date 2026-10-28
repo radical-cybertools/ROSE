@@ -160,6 +160,26 @@ class TestLearnerConfigGetTaskConfig:
             config = LearnerConfig(**{field: tc})
             assert config.get_task_config(field, 0) is tc
 
+    def test_callable_is_called_with_iteration(self):
+        config = LearnerConfig(training=lambda i: TaskConfig(kwargs={"--it": str(i)}))
+        assert config.get_task_config("training", 0).kwargs == {"--it": "0"}
+        assert config.get_task_config("training", 1234).kwargs == {"--it": "1234"}
+
+    def test_callable_accepted_for_uq_uncertainty(self):
+        from rose.uq.uq_learner import UQLearnerConfig
+
+        config = UQLearnerConfig(uncertainty=lambda i: TaskConfig(kwargs={"i": i}))
+        assert config.get_task_config("uncertainty", 3).kwargs == {"i": 3}
+
+    def test_adaptive_schedule_has_no_iteration_limit(self):
+        learner = Learner(MagicMock(spec=WorkflowEngine))
+        schedule = learner.create_adaptive_schedule(
+            "training", lambda i: {"kwargs": {"--lr": str(0.01 * 0.9**i)}}
+        )
+        config = LearnerConfig(training=schedule)
+        assert config.get_task_config("training", 150).kwargs == {"--lr": str(0.01 * 0.9**150)}
+        assert config.get_task_config("training", 0).args == ()
+
 
 # ---------------------------------------------------------------------------
 # Learner base class: state registry, callbacks, build_iteration_state

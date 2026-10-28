@@ -118,12 +118,12 @@ def test_build_learner_config_per_iteration_kwargs(tmp_path):
     builder = _make_builder(SEQ_WITH_PARAMS, tmp_path)
     lc = builder.build_learner_config()
     # iteration 0: parameters + iteration=0
-    kw0 = lc.simulation[0].kwargs
+    kw0 = lc.get_task_config("simulation", 0).kwargs
     assert kw0["dataset"] == "test_ds"
     assert kw0["scale"] == 2.5
     assert kw0["iteration"] == 0
     # iteration 3 (max_iter): parameters + iteration=3
-    kw3 = lc.simulation[3].kwargs
+    kw3 = lc.get_task_config("simulation", 3).kwargs
     assert kw3["dataset"] == "test_ds"
     assert kw3["iteration"] == 3
 
@@ -132,7 +132,7 @@ def test_build_learner_config_criterion_schedule_included(tmp_path):
     builder = _make_builder(SEQ_WITH_PARAMS, tmp_path)
     lc = builder.build_learner_config()
     assert lc.criterion is not None
-    assert lc.criterion[0].kwargs["dataset"] == "test_ds"
+    assert lc.get_task_config("criterion", 0).kwargs["dataset"] == "test_ds"
 
 
 # ── build_learner_configs (parallel path) ────────────────────────────────────
@@ -156,7 +156,7 @@ def test_build_learner_configs_with_parameters(tmp_path):
 def test_build_learner_configs_learner_0_kwargs(tmp_path):
     builder = _make_builder(PAR_WITH_PARAMS, tmp_path)
     lcs = builder.build_learner_configs()
-    kw = lcs[0].simulation[0].kwargs
+    kw = lcs[0].get_task_config("simulation", 0).kwargs
     assert kw["learner_id"] == 0
     assert kw["learner_label"] == "rf"
     assert kw["dataset"] == "prod_ds"
@@ -167,7 +167,7 @@ def test_build_learner_configs_learner_0_kwargs(tmp_path):
 def test_build_learner_configs_learner_1_kwargs(tmp_path):
     builder = _make_builder(PAR_WITH_PARAMS, tmp_path)
     lcs = builder.build_learner_configs()
-    kw = lcs[1].simulation[1].kwargs
+    kw = lcs[1].get_task_config("simulation", 1).kwargs
     assert kw["learner_id"] == 1
     assert kw["learner_label"] == "mlp"
     assert kw["dataset"] == "prod_ds"
@@ -211,11 +211,11 @@ def test_build_learner_configs_shared_tasks_with_parameters_falls_back_to_parall
     assert lcs is not None
     assert len(lcs) == 3  # learner.parallel_learners, since learners: is absent
     assert all(isinstance(lc, LearnerConfig) for lc in lcs)
-    kw0 = lcs[0].simulation[0].kwargs
+    kw0 = lcs[0].get_task_config("simulation", 0).kwargs
     assert kw0["learner_id"] == 0
     assert kw0["dataset"] == "prod_ds"
     assert "learner_label" not in kw0  # no per-learner label when learners: is absent
-    kw2 = lcs[2].simulation[1].kwargs
+    kw2 = lcs[2].get_task_config("simulation", 1).kwargs
     assert kw2["learner_id"] == 2
     assert kw2["iteration"] == 1
 
@@ -289,22 +289,38 @@ def test_build_learner_config_injects_pythonpath(tmp_path):
     builder = _make_builder(SEQ_WITH_PYTHONPATH, tmp_path)
     lc = builder.build_learner_config()
     assert lc is not None
-    assert lc.simulation[0].kwargs["pythonpath"] == ["/remote/path/a", "/remote/path/b"]
+    kwargs = lc.get_task_config("simulation", 0).kwargs
+    assert kwargs["pythonpath"] == ["/remote/path/a", "/remote/path/b"]
 
 
 def test_build_learner_config_pythonpath_empty_when_no_remote(tmp_path):
     builder = _make_builder(SEQ_WITH_PARAMS, tmp_path)
     lc = builder.build_learner_config()
-    assert lc.simulation[0].kwargs["pythonpath"] == []
+    assert lc.get_task_config("simulation", 0).kwargs["pythonpath"] == []
 
 
 def test_build_learner_configs_injects_pythonpath(tmp_path):
     builder = _make_builder(PAR_WITH_PYTHONPATH, tmp_path)
     lcs = builder.build_learner_configs()
-    assert lcs[0].simulation[0].kwargs["pythonpath"] == ["/remote/path/a"]
-    assert lcs[1].simulation[0].kwargs["pythonpath"] == ["/remote/path/a"]
+    assert lcs[0].get_task_config("simulation", 0).kwargs["pythonpath"] == ["/remote/path/a"]
+    assert lcs[1].get_task_config("simulation", 0).kwargs["pythonpath"] == ["/remote/path/a"]
 
 
 def test_build_learner_config_no_params_no_pythonpath_returns_none(tmp_path):
     builder = _make_builder(SEQ_NO_PARAMS, tmp_path)
     assert builder.build_learner_config() is None
+
+
+def test_build_learner_config_iteration_unbounded(tmp_path):
+    # max_iter: 0 (unbounded) must still report the real iteration number
+    builder = _make_builder(SEQ_WITH_PARAMS.replace("max_iter: 3", "max_iter: 0"), tmp_path)
+    lc = builder.build_learner_config()
+    assert lc.get_task_config("simulation", 5).kwargs["iteration"] == 5
+    assert lc.get_task_config("criterion", 250).kwargs["iteration"] == 250
+
+
+def test_build_learner_configs_distinct_learner_ids(tmp_path):
+    builder = _make_builder(PAR_SHARED_WITH_PARAMS, tmp_path)
+    lcs = builder.build_learner_configs()
+    ids = [lc.get_task_config("simulation", 7).kwargs["learner_id"] for lc in lcs]
+    assert ids == [0, 1, 2]
