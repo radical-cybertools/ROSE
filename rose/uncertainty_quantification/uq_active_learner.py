@@ -192,7 +192,7 @@ class SeqUQLearner(UQLearner):
         stop_training = {name: False for name in model_names}
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
-        sub = self._subscribe_stream(stream)
+        sub = None
         window_size: int | None = None
         last_should_stop = False
 
@@ -200,6 +200,7 @@ class SeqUQLearner(UQLearner):
         training_tasks: tuple = ()
 
         try:
+            sub = self._subscribe_stream(stream)  # inside try: on_stop on failure
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
@@ -620,6 +621,8 @@ class ParallelUQLearner(SeqUQLearner):
             raise ValueError("learner_configs length must match learner_names")
         if len(set(learner_names)) != len(learner_names):
             raise ValueError("learner_names must be unique")
+        if set(learner_configs) != set(learner_names):
+            raise ValueError("learner_configs keys must match learner_names")
         if stream is not None and skip_pre_loop:
             raise ValueError("stream cannot be combined with skip_pre_loop")
         if publish_on not in ("all", "any"):
@@ -638,21 +641,25 @@ class ParallelUQLearner(SeqUQLearner):
                     sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
                     self._adopt_child(sequential_learner, stream)
                     print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
-                    async for state in sequential_learner.start(
-                        model_names=model_names,
-                        num_predictions=num_predictions,
-                        max_iter=max_iter,
-                        skip_pre_loop=skip_pre_loop,
-                        learning_config=learner_configs[learner_name],
-                        stream=subs[learner_name],
-                        publish_on=publish_on,
-                    ):
-                        if self.is_stopped:
-                            sequential_learner.stop()
-                        state = dataclasses.replace(state, learner_id=learner_name)
-                        if state.model_ready:
-                            await self._notify_model_ready(state)
-                        await queue.put(("state", state))
+                    # aclosing: a cancelled task still closes the child (its finally runs)
+                    async with contextlib.aclosing(
+                        sequential_learner.start(
+                            model_names=model_names,
+                            num_predictions=num_predictions,
+                            max_iter=max_iter,
+                            skip_pre_loop=skip_pre_loop,
+                            learning_config=learner_configs[learner_name],
+                            stream=subs[learner_name],
+                            publish_on=publish_on,
+                        )
+                    ) as child_states:
+                        async for state in child_states:
+                            if self.is_stopped:
+                                sequential_learner.stop()
+                            state = dataclasses.replace(state, learner_id=learner_name)
+                            if state.model_ready:
+                                await self._notify_model_ready(state)
+                            await queue.put(("state", state))
                     self.metric_values_per_iteration[f"learner-{learner_name}"] = (
                         sequential_learner.metric_values_per_iteration
                     )

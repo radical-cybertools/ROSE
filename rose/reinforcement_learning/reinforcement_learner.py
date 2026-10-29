@@ -184,7 +184,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         learner_config = initial_config
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
-        sub = self._subscribe_stream(stream)
+        sub = None
         window_size: int | None = None
         last_should_stop = False
 
@@ -201,6 +201,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         update_result: Any = None
 
         try:
+            sub = self._subscribe_stream(stream)  # inside try: on_stop on failure
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
@@ -652,7 +653,7 @@ class ParallelExperience(ReinforcementLearner):
         learner_config = initial_config
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
-        sub = self._subscribe_stream(stream)
+        sub = None
         window_size: int | None = None
         last_should_stop = False
 
@@ -667,6 +668,7 @@ class ParallelExperience(ReinforcementLearner):
         update_result: Any = None
 
         try:
+            sub = self._subscribe_stream(stream)  # inside try: on_stop on failure
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
@@ -1069,19 +1071,23 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                         self._create_sequential_learner(learner_id, learner_configs[learner_id])
                     )
                     self._adopt_child(sequential_learner, stream)
-                    async for state in sequential_learner.start(
-                        max_iter=max_iter,
-                        skip_pre_loop=skip_pre_loop,
-                        skip_environment_step=skip_environment_step,
-                        initial_config=learner_configs[learner_id],
-                        stream=subs[learner_id],
-                    ):
-                        if self.is_stopped:
-                            sequential_learner.stop()
-                        state = dataclasses.replace(state, learner_id=learner_id)
-                        if state.model_ready:
-                            await self._notify_model_ready(state)
-                        await queue.put(("state", state))
+                    # aclosing: a cancelled task still closes the child (its finally runs)
+                    async with contextlib.aclosing(
+                        sequential_learner.start(
+                            max_iter=max_iter,
+                            skip_pre_loop=skip_pre_loop,
+                            skip_environment_step=skip_environment_step,
+                            initial_config=learner_configs[learner_id],
+                            stream=subs[learner_id],
+                        )
+                    ) as child_states:
+                        async for state in child_states:
+                            if self.is_stopped:
+                                sequential_learner.stop()
+                            state = dataclasses.replace(state, learner_id=learner_id)
+                            if state.model_ready:
+                                await self._notify_model_ready(state)
+                            await queue.put(("state", state))
                     self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                         sequential_learner.metric_values_per_iteration
                     )
