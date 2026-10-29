@@ -36,7 +36,7 @@ def _client_path(cfg: WorkflowConfig) -> None:
     """
     source_dir = cfg._source_dir
     if cfg.stream is not None and source_dir is not None and str(source_dir) not in sys.path:
-        sys.path.insert(0, str(source_dir))
+        sys.path.append(str(source_dir))  # appended: must not shadow installed modules
 
 
 def resolve_client_callables(cfg: WorkflowConfig, keep_path: bool = True) -> None:
