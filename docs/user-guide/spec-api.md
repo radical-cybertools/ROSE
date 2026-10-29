@@ -517,6 +517,50 @@ The evaluator function follows the same `*args, **kwargs` convention as task fun
 
 ---
 
+## UQ Active Learner
+
+`uq_active_learner` trains an ensemble (`learner.model_names`, each with
+`learner.num_predictions` predictions, default 1) and adds an uncertainty task with
+its own threshold:
+
+```yaml
+learner:
+  type: uq_active_learner
+  max_iter: 5
+  model_names: [ridge, poly]
+  num_predictions: 2
+simulation:   {type: python, function: tasks:simulate}
+training:     {type: python, function: tasks:train}
+prediction:   {type: python, function: tasks:predict}
+active_learn: {type: python, function: tasks:active_learn}
+uncertainty_criterion:          # the uncertainty task; the run ends once it is met
+  metric: predictive_variance
+  threshold: 0.001
+  operator: "<"
+  evaluator: {type: python, function: tasks:ensemble_variance}
+stop_criterion:                 # evaluated per model; the run ends once all models meet it
+  metric: mse
+  threshold: 0.01
+  evaluator: {type: python, function: tasks:check_mse}
+```
+
+What each task receives (besides `parameters`, `iteration` and `pythonpath`):
+
+| Task | Positional | Extra kwargs |
+|---|---|---|
+| `simulation` | the window, with a `stream:` block | — |
+| `training` | simulation result | `--model_name` |
+| `prediction` | training result | `--model_name`, `--iteration` (prediction index, not the loop iteration) |
+| uncertainty evaluator | one list: per model, its prediction results | — |
+| `active_learn` | uncertainty value | — |
+| stop criterion evaluator | active-learning result | `--model_name` |
+
+The `--` keys are not valid Python identifiers: Python tasks must accept `**kwargs`
+and read `kwargs["--model_name"]`; shell commands use `{--model_name}`. A full
+example is in `examples/spec/uq/`.
+
+---
+
 ## Stream
 
 A `stream:` block drives the learner with streamed data instead of an internal
@@ -536,7 +580,9 @@ stream:
 ```
 
 - **Supported learners**: `sequential_active_learner`, `parallel_active_learner`
-  (every learner gets every item), `sequential_reinforcement_learner`.
+  (every learner gets every item), `sequential_reinforcement_learner`,
+  `uq_active_learner` (every model gets the window; `learner.publish_on: all|any`
+  decides whether all or any model must meet the criterion to publish).
 - **Window**: each window is the first argument of the `simulation` task (AL) or
   the `environment` task (RL): `simulation(window, **kwargs)`, from the second
   window on `simulation(window, acl_result, **kwargs)`. That task must be
@@ -770,7 +816,11 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `learner.parallel_learners` | int | no | `2` | Parallel learner count when `learners:` is absent |
 | `simulation` / `training` / `active_learn` | TaskDef | AL yes | — | Task slots for Active Learning |
 | `environment` / `update` | TaskDef | RL yes | — | Task slots for Reinforcement Learning |
-| `prediction` / `active_learn` / `uncertainty` | TaskDef | UQ yes | — | Task slots for UQ-based AL |
+| `prediction` / `active_learn` | TaskDef | UQ yes | — | Task slots for UQ-based AL |
+| `learner.model_names` | list[str] | UQ yes | — | Ensemble model names (unique) |
+| `learner.num_predictions` | int | no | `1` | Predictions per model (UQ) |
+| `learner.publish_on` | `all` \| `any` | no | `all` | UQ with `stream` only |
+| `uncertainty_criterion` | object | UQ yes | — | Uncertainty task and threshold (same shape as `stop_criterion`) |
 | `learners` | list | no | — | Per-learner task definitions for heterogeneous parallel |
 | `stop_criterion` | object | unless `stream` | — | Stopping condition (with `stream`: publish gate) |
 | `stream` | object | no | `null` | Streamed input — see [Stream](#stream) |

@@ -7,8 +7,7 @@ from rose.learner import Learner
 from .adapters import TaskAdapterFactory
 from .schema import _REQUIRED_SLOTS, TrackingConfig, WorkflowConfig
 
-# Slots that exist as fields on LearnerConfig; uncertainty is required by uq_active_learner
-# but is not a LearnerConfig field — filter it out when constructing LearnerConfig.
+# Task slots that are LearnerConfig fields (the UQ uncertainty task is added separately)
 _LEARNER_CONFIG_SLOTS: frozenset[str] = frozenset(
     {"simulation", "training", "prediction", "active_learn", "environment", "update"}
 )
@@ -76,6 +75,16 @@ class LearnerBuilder:
                 as_executable=c_as_exec,
             )(c_closure)
 
+        uq_crit = cfg.uncertainty_criterion
+        if uq_crit is not None:  # uq_active_learner
+            learner.uncertainty_quantification(
+                uq_metric_name=uq_crit.metric,
+                query_size=None,  # unused by the learner; pass via parameters if a task needs it
+                threshold=uq_crit.threshold,
+                operator=uq_crit.operator,
+                as_executable=TaskAdapterFactory.as_executable(uq_crit.evaluator),
+            )(TaskAdapterFactory.make_closure(uq_crit.evaluator, cfg.remote))
+
         _attach_tracker(learner, cfg.tracking)
         return learner
 
@@ -110,6 +119,12 @@ class LearnerBuilder:
         params["pythonpath"] = list(cfg.remote.pythonpath)
         schedule = _iteration_schedule(params)
         lc_slots = required & _LEARNER_CONFIG_SLOTS
+        if cfg.learner.type == "uq_active_learner":
+            from rose.uncertainty_quantification.uq_learner import UQLearnerConfig
+
+            return UQLearnerConfig(
+                **{slot: schedule for slot in lc_slots}, criterion=schedule, uncertainty=schedule
+            )
         return LearnerConfig(**{slot: schedule for slot in lc_slots}, criterion=schedule)
 
     def build_learner_configs(self):

@@ -43,7 +43,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: dict[str, UQLearnerConfig] | None = None,
+        learning_config: UQLearnerConfig | None = None,
         stream: Stream | _Subscription | None = None,
         publish_on: str = "all",
     ) -> AsyncIterator[IterationState]:
@@ -303,7 +303,10 @@ class SeqUQLearner(UQLearner):
                     for model_name in model_names:
                         if stop_training[model_name]:
                             continue
-                        criterion_function = copy.deepcopy(self.criterion_function)
+                        # per-iteration config, like the active learners (a private kwargs copy)
+                        criterion_function = self._get_iteration_task_config(
+                            self.criterion_function, learning_config, "criterion", i
+                        )
                         criterion_function["kwargs"]["--model_name"] = model_name
                         stop_task = self._register_task(criterion_function, deps=acl_task)
                         stop_tasks[model_name] = stop_task
@@ -415,7 +418,7 @@ class SeqUQLearner(UQLearner):
         num_predictions: int = 1,
         max_iter: int = 0,
         skip_pre_loop: bool = False,
-        learning_config: dict[str, UQLearnerConfig] | None = None,
+        learning_config: UQLearnerConfig | None = None,
         stream: Stream | None = None,
         publish_on: str = "all",
     ) -> list[dict[str, Any]]:

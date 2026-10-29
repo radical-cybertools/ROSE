@@ -107,6 +107,12 @@ def _start_kwargs(cfg: WorkflowConfig, builder: LearnerBuilder) -> dict[str, Any
             start_kwargs["learner_configs"] = lcs
         else:
             start_kwargs["parallel_learners"] = cfg.learner.parallel_learners
+    elif cfg.learner.type == "uq_active_learner":
+        start_kwargs["model_names"] = cfg.learner.model_names
+        start_kwargs["num_predictions"] = cfg.learner.num_predictions or 1
+        start_kwargs["learning_config"] = builder.build_learner_config()
+        if cfg.learner.publish_on is not None:
+            start_kwargs["publish_on"] = cfg.learner.publish_on
     else:
         # Sequential learners accept initial_config — the same ROSE-native mechanism used by the
         # parallel path, giving tasks access to parameters and iteration via kwargs.
