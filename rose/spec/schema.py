@@ -37,6 +37,59 @@ class StopCriterionDef(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+# ── Stream (YAML key: "stream") ──────────────────────────────────────────────
+class CallableDef(BaseModel):
+    """A client-side callable: ``function`` is "module:callable", called with args/kwargs."""
+
+    function: str
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _check_function(self) -> CallableDef:
+        if ":" not in self.function:
+            raise ValueError("'function' must use 'module:callable' syntax")
+        return self
+
+
+class CallbackDef(BaseModel):
+    function: str  # "module:callable", called with the IterationState
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _check_function(self) -> CallbackDef:
+        if ":" not in self.function:
+            raise ValueError("'function' must use 'module:callable' syntax")
+        return self
+
+
+class StreamDef(BaseModel):
+    """Drives the learner with streamed data, see rose.stream.Stream.
+
+    Sources are factories returning async iterators; they and ``on_model_ready`` run on the client
+    (also with ``--remote``), not on the workers.
+    """
+
+    batch_size: int = Field(1, ge=1)
+    max_wait: float | None = Field(None, gt=0)
+    conflate: bool = False
+    sources: list[CallableDef] = Field(min_length=1)
+    on_model_ready: CallbackDef | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+# Learner types that accept a stream, and the slot that receives the window
+_STREAM_WINDOW_SLOT: dict[str, str] = {
+    "sequential_active_learner": "simulation",
+    "parallel_active_learner": "simulation",
+    "sequential_reinforcement_learner": "environment",
+}
+
+
 # ── Learner spec (YAML key: "learner") ───────────────────────────────────────
 _REQUIRED_SLOTS: dict[str, frozenset[str]] = {
     "sequential_active_learner": frozenset({"simulation", "training", "active_learn"}),
@@ -198,7 +251,8 @@ class WorkflowConfig(BaseModel):
     prediction: TaskDef | None = None
     uncertainty: TaskDef | None = None
     learners: list[LearnerDef] | None = None
-    stop_criterion: StopCriterionDef
+    stop_criterion: StopCriterionDef | None = None  # required unless stream is set
+    stream: StreamDef | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
@@ -218,6 +272,10 @@ class WorkflowConfig(BaseModel):
                 f"Unknown learner type '{ltype}'. Supported: {sorted(_REQUIRED_SLOTS.keys())}"
             )
         is_parallel = ltype == "parallel_active_learner"
+        if self.learners is not None and not is_parallel:
+            raise ValueError(
+                f"'learners' is only supported for parallel_active_learner, not '{ltype}'"
+            )
 
         if is_parallel and self.learners is not None:
             for ld in self.learners:
@@ -250,6 +308,30 @@ class WorkflowConfig(BaseModel):
             extra = present - required
             if extra:
                 raise ValueError(f"Unexpected task fields for '{ltype}': {sorted(extra)}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_stream(self) -> WorkflowConfig:
+        if self.stream is None:
+            if self.stop_criterion is None:
+                raise ValueError("'stop_criterion' is required unless 'stream' is set")
+            return self
+        ltype = self.learner.type
+        slot = _STREAM_WINDOW_SLOT.get(ltype)
+        if slot is None:
+            raise ValueError(
+                f"'stream' is not supported for learner type '{ltype}'. "
+                f"Supported: {sorted(_STREAM_WINDOW_SLOT)}"
+            )
+        # shell tasks build their command from kwargs only and would silently drop the window
+        window_tasks = [getattr(self, slot)]
+        if self.learners is not None:
+            window_tasks = [ld.tasks.get(slot) for ld in self.learners]
+        if any(td is not None and td.type == "shell" for td in window_tasks):
+            raise ValueError(
+                f"with 'stream', the '{slot}' task receives the window and must be a python task "
+                "(shell tasks cannot receive it)"
+            )
         return self
 
     @model_validator(mode="after")

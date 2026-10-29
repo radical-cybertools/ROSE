@@ -48,7 +48,8 @@ With `skip_simulation_step=True` the window goes to training instead:
 `training(window, *args)`, later `training(window, *args, acl_result)`.
 
 Executable tasks receive the window as first argument of their command-builder
-function; YAML spec shell tasks ignore it.
+function. In the YAML spec, a shell task cannot receive it and is rejected in that
+slot; see the spec's `stream:` block in the [YAML Spec API](spec-api.md#stream).
 
 ## Publishing models
 

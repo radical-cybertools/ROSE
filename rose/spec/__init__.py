@@ -4,7 +4,7 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
-from .builder import LearnerBuilder
+from .runner import resolve_client_callables, run_learner
 from .schema import WorkflowConfig
 
 __all__ = ["load_spec", "WorkflowSpec"]
@@ -19,11 +19,14 @@ def load_spec(path: str | Path, validate_imports: bool = False) -> WorkflowSpec:
             is importable from the current environment (sys.path extended with
             ``remote.pythonpath``). Use during development when task files are
             locally accessible. Leave False (default) when ``remote.pythonpath``
-            points to paths that only exist on the remote worker.
+            points to paths that only exist on the remote worker. Stream sources
+            and ``on_model_ready`` run on the client: they are checked with the
+            YAML file's directory on ``sys.path`` and without ``remote.pythonpath``.
     """
     spec = WorkflowSpec(WorkflowConfig.from_yaml(path))
     if validate_imports:
         _validate_task_imports(spec.config)
+        resolve_client_callables(spec.config, Path(path).resolve().parent)
     return spec
 
 
@@ -39,7 +42,7 @@ def _collect_python_specs(cfg: WorkflowConfig) -> list[str]:
         for td in cfg.tasks.values():
             if td.type == "python":
                 specs.append(td.function)
-    if cfg.stop_criterion.evaluator.type == "python":
+    if cfg.stop_criterion is not None and cfg.stop_criterion.evaluator.type == "python":
         specs.append(cfg.stop_criterion.evaluator.function)
     return list(dict.fromkeys(specs))  # deduplicate, preserve order
 
@@ -123,33 +126,6 @@ class WorkflowSpec:
                 backends=cfg.remote.backends,
             )
             asyncflow = await WorkflowEngine.create(engine)
-
-            builder = LearnerBuilder(cfg, asyncflow)
-            learner = builder.build()
-
-            start_kwargs: dict[str, Any] = {"max_iter": cfg.learner.max_iter}
-            if cfg.learner.type == "parallel_active_learner":
-                lcs = builder.build_learner_configs()
-                if lcs is not None:
-                    start_kwargs["parallel_learners"] = len(lcs)
-                    start_kwargs["learner_configs"] = lcs
-                else:
-                    start_kwargs["parallel_learners"] = cfg.learner.parallel_learners
-            else:
-                # Sequential learners accept initial_config — the same ROSE-native
-                # mechanism used by the parallel path, giving tasks access to
-                # parameters and iteration via kwargs at every iteration.
-                ic = builder.build_learner_config()
-                if ic is not None:
-                    start_kwargs["initial_config"] = ic
-
-            try:
-                async for state in learner.start(**start_kwargs):
-                    print(
-                        f"[iter {state.iteration}]  metric={state.metric_value}",
-                        flush=True,
-                    )
-            finally:
-                await asyncflow.shutdown()
+            await run_learner(cfg, asyncflow)
 
         return _workflow

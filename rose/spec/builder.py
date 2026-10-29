@@ -66,14 +66,15 @@ class LearnerBuilder:
             self._register_flat_tasks(learner, cfg)
 
         crit = cfg.stop_criterion
-        c_closure = TaskAdapterFactory.make_closure(crit.evaluator, cfg.remote)
-        c_as_exec = TaskAdapterFactory.as_executable(crit.evaluator)
-        learner.as_stop_criterion(
-            metric_name=crit.metric,
-            threshold=crit.threshold,
-            operator=crit.operator,
-            as_executable=c_as_exec,
-        )(c_closure)
+        if crit is not None:  # optional with a stream
+            c_closure = TaskAdapterFactory.make_closure(crit.evaluator, cfg.remote)
+            c_as_exec = TaskAdapterFactory.as_executable(crit.evaluator)
+            learner.as_stop_criterion(
+                metric_name=crit.metric,
+                threshold=crit.threshold,
+                operator=crit.operator,
+                as_executable=c_as_exec,
+            )(c_closure)
 
         _attach_tracker(learner, cfg.tracking)
         return learner

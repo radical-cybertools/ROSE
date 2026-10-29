@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SequentialReinforcementLearner`, `ParallelReinforcementLearner` and `ParallelExperience`
   accept `start(stream=...)` with the same semantics as the active learners. UQ adds
   `publish_on="all"|"any"`.
+- **YAML spec `stream:` block**: `batch_size`, `max_wait`, `conflate`, `sources` (factories
+  returning async iterators) and `on_model_ready`, for the sequential/parallel active learners and
+  the sequential RL learner. `stop_criterion` is optional with a stream. Sources and the callback
+  run on the client and are import-checked before any backend or HPC job starts.
 - **`skip_environment_step`** for `ParallelExperience` (update runs alone) and
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
@@ -29,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it instead.
 
 ### Fixed
+- **YAML spec**: a `learners:` block on a non-parallel learner type was accepted and silently used;
+  it is now rejected.
 - **Parallel learners report their final state to trackers**: `ParallelActiveLearner`,
   `ParallelUQLearner` and `ParallelReinforcementLearner` passed `final_state=None` to
   `on_stop`; they now pass the last state of the most advanced learner (`learner_id` set).

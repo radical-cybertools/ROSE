@@ -11,34 +11,15 @@ def _run_local(yaml_path: Path, backend: str) -> None:
     from radical.asyncflow import WorkflowEngine
 
     from rose.spec import load_spec
-    from rose.spec.builder import LearnerBuilder
+    from rose.spec.runner import resolve_client_callables, run_learner
 
     async def _main():
         spec = load_spec(yaml_path)
         cfg = spec.config
+        resolve_client_callables(cfg)  # fail on a bad source/callback before the backend starts
         engine = await rhapsody.get_backend(backend)
         asyncflow = await WorkflowEngine.create(engine)
-        builder = LearnerBuilder(cfg, asyncflow)
-        learner = builder.build()
-
-        start_kwargs: dict = {"max_iter": cfg.learner.max_iter}
-        if cfg.learner.type == "parallel_active_learner":
-            lcs = builder.build_learner_configs()
-            if lcs is not None:
-                start_kwargs["parallel_learners"] = len(lcs)
-                start_kwargs["learner_configs"] = lcs
-            else:
-                start_kwargs["parallel_learners"] = cfg.learner.parallel_learners
-        else:
-            ic = builder.build_learner_config()
-            if ic is not None:
-                start_kwargs["initial_config"] = ic
-
-        try:
-            async for state in learner.start(**start_kwargs):
-                print(f"[iter {state.iteration}]  metric={state.metric_value}", flush=True)
-        finally:
-            await asyncflow.shutdown()
+        await run_learner(cfg, asyncflow)
 
     asyncio.run(_main())
 
@@ -46,8 +27,12 @@ def _run_local(yaml_path: Path, backend: str) -> None:
 def _run_remote(yaml_path: Path) -> None:
     from rose.remote import run_remote
     from rose.spec import load_spec
+    from rose.spec.runner import resolve_client_callables
 
+    # stream sources and on_model_ready run here, on the client, next to the YAML file
+    sys.path.insert(0, str(yaml_path.resolve().parent))
     spec = load_spec(yaml_path)
+    resolve_client_callables(spec.config)  # fail before bootstrapping the HPC endpoint
     if spec.config.remote.target is None:
         sys.exit(
             "--remote requires a 'remote.target' block in the spec "

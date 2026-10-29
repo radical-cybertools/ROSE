@@ -1,0 +1,29 @@
+# Streaming active learning from YAML: run with
+#   rose run examples/spec/streaming/workflow.yaml --local --backend concurrent
+learner:
+  type: sequential_active_learner
+  max_iter: 0              # unbounded: runs until the sensor stream ends
+
+simulation:                # receives each window as first argument
+  type: python
+  function: tasks:simulate
+
+training:
+  type: python
+  function: tasks:train
+
+active_learn:
+  type: python
+  function: tasks:active_learn
+
+# No stop_criterion: with a stream it is optional, and every window's model is published.
+# With one, the criterion marks a model ready instead of stopping the loop.
+
+stream:
+  batch_size: 4
+  max_wait: 2.0
+  sources:
+    - function: "stream_io:sensor"
+      kwargs: {n: 12, delay: 0.1}
+  on_model_ready:
+    function: "stream_io:publish"

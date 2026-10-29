@@ -38,3 +38,32 @@ async def active_learn_capture(sim_result, model, **kwargs):
 
 async def criterion_capture(*args, **kwargs):
     return 0.05
+
+
+# ── Stream helpers ────────────────────────────────────────────────────────────
+
+received_windows: list = []
+published: list = []
+
+
+async def numbers(n=4):
+    for i in range(n):
+        yield i
+
+
+async def sim_window(window, *args, **kwargs):
+    received_windows.append(list(window))
+    return [1.0, 2.0, 3.0]
+
+
+def publish(state):
+    published.append(state.iteration)
+
+
+async def env_window(window, *args, **kwargs):
+    received_windows.append(list(window))
+    return {"reward": 1.0}
+
+
+async def update(*args, **kwargs):
+    return {"loss": 0.1}
