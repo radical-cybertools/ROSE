@@ -196,6 +196,14 @@ class TestLearnerConfigGetTaskConfig:
         assert config.get_task_config("prediction", 0).kwargs == {"a": 1}
         assert base["kwargs"] == {}
 
+    def test_iteration_schedule_rejects_misspelled_key(self):
+        learner = Learner(MagicMock(spec=WorkflowEngine))
+        assert learner.create_iteration_schedule("training", {0: {"kwargs": {"a": 1}}})[0] == (
+            TaskConfig(kwargs={"a": 1})
+        )
+        with pytest.raises(ValueError):
+            learner.create_iteration_schedule("training", {0: {"kwarg": {"a": 1}}})
+
     def test_adaptive_schedule_has_no_iteration_limit(self):
         learner = Learner(MagicMock(spec=WorkflowEngine))
         schedule = learner.create_adaptive_schedule(

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-iteration dict. It must be a deterministic function of the iteration. A `LearnerConfig`
   holding a callable (as built by the YAML spec and by `create_adaptive_schedule`) is not
   JSON/pickle-serializable.
+- **`create_iteration_schedule` validates its entries**: a misspelled or unknown key (anything
+  but `args`/`kwargs`) now raises instead of being silently ignored.
 - **`create_adaptive_schedule` returns a callable** instead of a dict precomputed for 100
   iterations; it now has no iteration limit. Code that indexes its result as a dict must call
   it instead.

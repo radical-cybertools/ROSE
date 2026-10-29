@@ -440,9 +440,9 @@ class Learner:
                 -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
             }
         """
+        # validated like adaptive schedules: a misspelled key raises instead of being ignored
         return {
-            iteration: TaskConfig(args=config.get("args", ()), kwargs=config.get("kwargs", {}))
-            for iteration, config in schedule.items()
+            iteration: TaskConfig.model_validate(config) for iteration, config in schedule.items()
         }
 
     def create_adaptive_schedule(
