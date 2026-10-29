@@ -273,6 +273,10 @@ def lr_decay(i):
 adaptive_config = acl.create_adaptive_schedule('training', lr_decay)
 ```
 
+The result is evaluated lazily for every iteration, with no iteration limit. Any
+`LearnerConfig` field also accepts such a callable directly:
+`LearnerConfig(training=lambda i: TaskConfig(kwargs={'--epoch': str(i)}))`.
+
 
 ## Next Steps
 

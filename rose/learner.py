@@ -185,6 +185,37 @@ class TaskConfig(BaseModel):
         }
 
 
+# A task's configuration: one TaskConfig for all iterations, a dict keyed by iteration (-1 as
+# fallback), or a callable mapping the iteration to a TaskConfig, an equivalent args/kwargs dict,
+# or None. A callable is evaluated on every lookup (the learner and trackers look up the same
+# iteration separately), so it must be a deterministic function of the iteration: seed any
+# sampling by the iteration. The callable form is not JSON/pickle-serializable.
+TaskSchedule = (
+    TaskConfig | dict[int, TaskConfig] | Callable[[int], TaskConfig | dict[str, Any] | None] | None
+)
+
+
+def _as_task_config(result: Any) -> TaskConfig | None:
+    """Normalize a schedule callable's result; raises on a bad shape."""
+    if result is None or isinstance(result, TaskConfig):
+        return result
+    return TaskConfig.model_validate(result)
+
+
+def adaptive_schedule(
+    param_schedule: Callable[[int], dict[str, Any]],
+) -> Callable[[int], TaskConfig]:
+    """Lazy schedule: ``param_schedule(iteration)`` returns an args/kwargs dict.
+
+    The result is validated, so a misspelled key raises instead of being ignored.
+    """
+
+    def schedule(iteration: int) -> TaskConfig:
+        return TaskConfig.model_validate(param_schedule(iteration))
+
+    return schedule
+
+
 class LearnerConfig(BaseModel):
     """Base configuration class for learners with per-iteration support.
 
@@ -203,15 +234,15 @@ class LearnerConfig(BaseModel):
     """
 
     # Active Learning fields
-    simulation: TaskConfig | dict[int, TaskConfig] | None = None
-    training: TaskConfig | dict[int, TaskConfig] | None = None
-    prediction: TaskConfig | dict[int, TaskConfig] | None = None
-    active_learn: TaskConfig | dict[int, TaskConfig] | None = None
+    simulation: TaskSchedule = None
+    training: TaskSchedule = None
+    prediction: TaskSchedule = None
+    active_learn: TaskSchedule = None
     # Reinforcement Learning fields
-    environment: TaskConfig | dict[int, TaskConfig] | None = None
-    update: TaskConfig | dict[int, TaskConfig] | None = None
+    environment: TaskSchedule = None
+    update: TaskSchedule = None
     # Common fields
-    criterion: TaskConfig | dict[int, TaskConfig] | None = None
+    criterion: TaskSchedule = None
 
     class Config:
         """Pydantic configuration for LearnerConfig."""
@@ -235,9 +266,9 @@ class LearnerConfig(BaseModel):
         Note:
             If a dictionary of configurations is provided, the method will first
             look for an exact iteration match, then fall back to default configs
-            (key -1 or 'default').
+            (key -1 or 'default'). A callable is called with the iteration.
         """
-        task_config: TaskConfig | dict[int, TaskConfig] | None = getattr(self, task_name, None)
+        task_config: TaskSchedule = getattr(self, task_name, None)
         if task_config is None:
             return None
 
@@ -252,6 +283,10 @@ class LearnerConfig(BaseModel):
                 return task_config[iteration]
             # Fall back to default config (key -1 or 'default')
             return task_config.get(-1) or task_config.get("default")
+
+        # A callable computes the config for this iteration
+        if callable(task_config):
+            return _as_task_config(task_config(iteration))
 
         return None
 
@@ -381,6 +416,9 @@ class Learner:
                 if iter_config.kwargs is not None:
                     task_config["kwargs"] = iter_config.kwargs
 
+        # Callers add per-task kwargs (e.g. UQ's --model_name): never mutate a shared config
+        task_config["kwargs"] = dict(task_config["kwargs"])
+
         return task_config
 
     def create_iteration_schedule(
@@ -402,14 +440,14 @@ class Learner:
                 -1: {'args': (default_param,), 'kwargs': {'lr': 0.001}}  # default
             }
         """
+        # validated like adaptive schedules: a misspelled key raises instead of being ignored
         return {
-            iteration: TaskConfig(args=config.get("args", ()), kwargs=config.get("kwargs", {}))
-            for iteration, config in schedule.items()
+            iteration: TaskConfig.model_validate(config) for iteration, config in schedule.items()
         }
 
     def create_adaptive_schedule(
         self, task_name: str, param_schedule: Callable[[int], dict[str, Any]]
-    ) -> dict[int, TaskConfig]:
+    ) -> Callable[[int], TaskConfig]:
         """Helper method to create adaptive iteration schedules using a function.
 
         Args:
@@ -418,7 +456,8 @@ class Learner:
             and returns config dict.
 
         Returns:
-            Dictionary with computed TaskConfig for each iteration.
+            Callable computing the TaskConfig for any iteration, evaluated lazily
+            (no iteration limit).
 
         Example:
             def adaptive_lr(iteration):
@@ -427,16 +466,7 @@ class Learner:
 
             adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
         """
-        # For now, we'll pre-compute a reasonable range. In practice, you might
-        # want to compute this dynamically or use a lazy evaluation approach.
-        max_precompute: int = 100
-        return {
-            i: TaskConfig(
-                args=param_schedule(i).get("args", ()),
-                kwargs=param_schedule(i).get("kwargs", {}),
-            )
-            for i in range(max_precompute)
-        }
+        return adaptive_schedule(param_schedule)
 
     def register_decorator(self, task_attr_name: str) -> Callable:
         """Decorator factory that registers a task function under a given name."""

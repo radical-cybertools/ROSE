@@ -14,6 +14,19 @@ _LEARNER_CONFIG_SLOTS: frozenset[str] = frozenset(
 )
 
 
+def _iteration_schedule(base: dict):
+    """Schedule giving every iteration ``base`` kwargs plus its ``iteration`` number.
+
+    A factory, so each learner's schedule binds its own ``base`` (no late binding in loops).
+    """
+    import copy
+
+    from rose.learner import adaptive_schedule
+
+    # deepcopy: tasks must not share mutable values such as the pythonpath list
+    return adaptive_schedule(lambda n: {"kwargs": {**copy.deepcopy(base), "iteration": n}})
+
+
 def _get_learner_class(learner_type: str):
     if learner_type == "sequential_active_learner":
         from rose.active_learning.active_learner import SequentialActiveLearner
@@ -89,14 +102,12 @@ class LearnerBuilder:
         cfg = self.config
         if not cfg.parameters and not cfg.remote.pythonpath:
             return None
-        from rose.learner import LearnerConfig, TaskConfig
+        from rose.learner import LearnerConfig
 
         required = _REQUIRED_SLOTS[cfg.learner.type]
-        max_iter = cfg.learner.max_iter
         params = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
-        schedule = {n: TaskConfig(kwargs={**params, "iteration": n}) for n in range(max_iter + 1)}
-        schedule[-1] = TaskConfig(kwargs={**params, "iteration": max_iter})
+        schedule = _iteration_schedule(params)
         lc_slots = required & _LEARNER_CONFIG_SLOTS
         return LearnerConfig(**{slot: schedule for slot in lc_slots}, criterion=schedule)
 
@@ -116,25 +127,23 @@ class LearnerBuilder:
             return None
         if cfg.learners is None and not cfg.parameters and not cfg.remote.pythonpath:
             return None
-        from rose.learner import LearnerConfig, TaskConfig
+        from rose.learner import LearnerConfig
 
         required = _REQUIRED_SLOTS[cfg.learner.type]
         configs = []
-        max_iter = cfg.learner.max_iter
         params = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
         lc_slots = required & _LEARNER_CONFIG_SLOTS
         learner_defs = cfg.learners or [None] * cfg.learner.parallel_learners
         for i, learner_def in enumerate(learner_defs):
             # learner_id    → dispatch routing key (popped by closure, never reaches user fn)
-            # iteration     → per-entry so get_task_config(slot, n) returns the right value
+            # iteration     → set per lookup by the schedule: get_task_config(slot, n)
             # learner_label → human-readable learner name; only injected when non-empty
             # parameters    → user-defined values from the YAML parameters: block
             base = {"learner_id": i, **params}
             if learner_def is not None and learner_def.label:
                 base["learner_label"] = learner_def.label
-            schedule = {n: TaskConfig(kwargs={**base, "iteration": n}) for n in range(max_iter + 1)}
-            schedule[-1] = TaskConfig(kwargs={**base, "iteration": max_iter})
+            schedule = _iteration_schedule(base)
             configs.append(
                 LearnerConfig(**{slot: schedule for slot in lc_slots}, criterion=schedule)
             )

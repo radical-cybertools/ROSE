@@ -5,18 +5,18 @@ from typing import Any
 import typeguard
 from radical.asyncflow import WorkflowEngine
 
-from ..learner import Learner, LearnerConfig, TaskConfig
+from ..learner import Learner, LearnerConfig, TaskSchedule
 
 
 class UQLearnerConfig(LearnerConfig):
     """
     Attributes:
         uncertainty: Configuration for uncertainty quantification tasks.
-            Can be a single TaskConfig
-            or a dictionary mapping iteration numbers to TaskConfig objects.
+            Can be a single TaskConfig, a dictionary mapping iteration numbers
+            to TaskConfig objects, or a callable mapping the iteration to a TaskConfig.
     """
 
-    uncertainty: TaskConfig | dict[int, TaskConfig] | None = None
+    uncertainty: TaskSchedule = None
 
 
 class UQLearner(Learner):
