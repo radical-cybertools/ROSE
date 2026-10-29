@@ -26,7 +26,7 @@ def load_spec(path: str | Path, validate_imports: bool = False) -> WorkflowSpec:
     spec = WorkflowSpec(WorkflowConfig.from_yaml(path))
     if validate_imports:
         _validate_task_imports(spec.config)
-        resolve_client_callables(spec.config, Path(path).resolve().parent)
+        resolve_client_callables(spec.config)
     return spec
 
 
@@ -109,7 +109,9 @@ class WorkflowSpec:
                 data[key] = value
             else:
                 raise ValueError(f"workflow_with: unknown spec field '{key}'")
-        return WorkflowSpec(WorkflowConfig.model_validate(data))
+        config = WorkflowConfig.model_validate(data)
+        config._source_dir = self.config._source_dir
+        return WorkflowSpec(config)
 
     @property
     def workflow(self) -> Callable[..., Coroutine[Any, Any, None]]:

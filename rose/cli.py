@@ -29,15 +29,14 @@ def _run_remote(yaml_path: Path) -> None:
     from rose.spec import load_spec
     from rose.spec.runner import resolve_client_callables
 
-    # stream sources and on_model_ready run here, on the client, next to the YAML file
-    sys.path.insert(0, str(yaml_path.resolve().parent))
     spec = load_spec(yaml_path)
-    resolve_client_callables(spec.config)  # fail before bootstrapping the HPC endpoint
     if spec.config.remote.target is None:
         sys.exit(
             "--remote requires a 'remote.target' block in the spec "
             f"({yaml_path}) — see docs/user-guide/spec-api.md#remote-config"
         )
+    # stream sources and on_model_ready run here, on the client, next to the YAML file
+    resolve_client_callables(spec.config)  # fail before bootstrapping the HPC endpoint
     asyncio.run(run_remote(spec))
 
 

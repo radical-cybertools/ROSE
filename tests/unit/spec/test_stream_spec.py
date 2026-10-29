@@ -145,19 +145,36 @@ def streammod(tmp_path, monkeypatch):
     sys.modules.pop("streammod", None)
 
 
-def test_resolve_client_callables_uses_base_dir(tmp_path, streammod):
-    cfg = WorkflowConfig.from_yaml(spec(tmp_path))
+def test_resolve_client_callables_uses_yaml_dir(tmp_path, streammod, monkeypatch):
+    monkeypatch.setattr(sys, "path", list(sys.path))  # restored after the test
+    cfg = WorkflowConfig.from_yaml(spec(tmp_path))  # yaml next to streammod.py
+    resolve_client_callables(cfg)
+    assert str(streammod) in sys.path  # kept for lazy imports during the run
+
+
+def test_resolve_client_callables_reports_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    cfg = WorkflowConfig.from_yaml(spec(tmp_path))  # no streammod.py next to the yaml
     with pytest.raises(ValueError, match="streammod:source"):
-        resolve_client_callables(cfg)  # yaml dir not on sys.path
-    resolve_client_callables(cfg, base_dir=streammod)
-    assert str(streammod) not in sys.path  # restored
+        resolve_client_callables(cfg)
+
+
+def test_empty_module_or_callable_rejected(tmp_path):
+    p = spec(tmp_path)
+    p.write_text(p.read_text().replace("streammod:publish", ":publish"))
+    with pytest.raises(ValueError, match="module:callable"):
+        WorkflowConfig.from_yaml(p)
 
 
 def test_validate_imports_checks_stream_callables(tmp_path, streammod, monkeypatch):
     (tmp_path / "mymod.py").write_text("def sim(): pass\ndef train(): pass\ndef select(): pass\n")
     monkeypatch.syspath_prepend(str(tmp_path))  # tasks importable as for a local run
-    load_spec(spec(tmp_path), validate_imports=True)
-    sys.modules.pop("mymod", None)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.delitem(sys.modules, "mymod", raising=False)
+    try:
+        load_spec(spec(tmp_path), validate_imports=True)
+    finally:
+        sys.modules.pop("mymod", None)
 
 
 @pytest.mark.asyncio

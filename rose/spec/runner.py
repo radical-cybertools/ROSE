@@ -8,7 +8,6 @@ from __future__ import annotations
 import importlib
 import inspect
 import sys
-from pathlib import Path
 from typing import Any
 
 from .builder import LearnerBuilder
@@ -30,46 +29,53 @@ def client_specs(cfg: WorkflowConfig) -> list[str]:
     return list(dict.fromkeys(specs))
 
 
-def resolve_client_callables(cfg: WorkflowConfig, base_dir: str | Path | None = None) -> None:
+def _client_path(cfg: WorkflowConfig) -> None:
+    """Put the YAML file's directory on sys.path for the rest of the process.
+
+    Client-side callables are imported from there, also lazily while the run is going.
+    """
+    source_dir = cfg._source_dir
+    if source_dir is not None and str(source_dir) not in sys.path:
+        sys.path.insert(0, str(source_dir))
+
+
+def resolve_client_callables(cfg: WorkflowConfig) -> None:
     """Import the client-side callables now, so a typo fails before any backend or HPC job starts.
 
-    Args:
-        base_dir: Directory temporarily put on ``sys.path`` (the YAML file's directory).
-
     Raises:
-        ValueError: Listing every callable that cannot be imported.
+        ValueError: Listing every callable that cannot be imported or is not callable.
     """
-    added = None
-    if base_dir is not None and str(base_dir) not in sys.path:
-        added = str(base_dir)
-        sys.path.insert(0, added)
-    try:
-        failures = []
-        for spec in client_specs(cfg):
-            try:
-                _resolve(spec)
-            except (ImportError, AttributeError) as exc:
-                failures.append(f"  {spec!r}: {exc}")
-        if failures:
-            raise ValueError(
-                "stream callables are not importable on the client:\n" + "\n".join(failures)
-            )
-    finally:
-        if added is not None and added in sys.path:
-            sys.path.remove(added)
+    _client_path(cfg)
+    failures = []
+    for spec in client_specs(cfg):
+        try:
+            if not callable(_resolve(spec)):
+                failures.append(f"  {spec!r}: not callable")
+        except (ImportError, AttributeError, ValueError) as exc:
+            failures.append(f"  {spec!r}: {exc}")
+    if failures:
+        raise ValueError(
+            "stream callables are not importable on the client:\n" + "\n".join(failures)
+        )
 
 
 async def _build_stream(stream_def: StreamDef):
     from rose.stream import Stream
 
     sources = []
-    for src in stream_def.sources:
-        source = _resolve(src.function)(*src.args, **src.kwargs)
-        if inspect.isawaitable(source):
-            source = await source
-        if not hasattr(source, "__aiter__"):
-            raise TypeError(f"stream source {src.function!r} did not return an async iterator")
-        sources.append(source)
+    try:
+        for src in stream_def.sources:
+            source = _resolve(src.function)(*src.args, **src.kwargs)
+            if inspect.isawaitable(source):
+                source = await source
+            if not hasattr(source, "__aiter__"):
+                raise TypeError(f"stream source {src.function!r} did not return an async iterator")
+            sources.append(source)
+    except BaseException:
+        for source in sources:  # close the sources built so far (sockets, files)
+            if hasattr(source, "aclose"):
+                await source.aclose()
+        raise
     return Stream(
         batch_size=stream_def.batch_size,
         max_wait=stream_def.max_wait,
@@ -102,6 +108,7 @@ async def run_learner(cfg: WorkflowConfig, asyncflow) -> None:
     Shuts down ``asyncflow`` when done; the stream is closed first.
     """
     stream = None
+    _client_path(cfg)
     try:
         builder = LearnerBuilder(cfg, asyncflow)
         learner = builder.build()

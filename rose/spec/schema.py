@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
+
+
+def _check_callable_spec(spec: str) -> None:
+    """Validate "module:callable" syntax: both parts present."""
+    mod, _, fn = spec.rpartition(":")
+    if not mod or not fn:
+        raise ValueError(f"'function' must use 'module:callable' syntax, got {spec!r}")
 
 
 # ── Task definition ───────────────────────────────────────────────────────────
@@ -22,8 +29,7 @@ class TaskDef(BaseModel):
         if self.type == "python":
             if not self.function:
                 raise ValueError("python task requires 'function'")
-            if ":" not in self.function:
-                raise ValueError("'function' must use 'module:callable' syntax")
+            _check_callable_spec(self.function)
         return self
 
 
@@ -38,22 +44,6 @@ class StopCriterionDef(BaseModel):
 
 
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
-class CallableDef(BaseModel):
-    """A client-side callable: ``function`` is "module:callable", called with args/kwargs."""
-
-    function: str
-    args: list[Any] = Field(default_factory=list)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
-
-    model_config = {"extra": "forbid"}
-
-    @model_validator(mode="after")
-    def _check_function(self) -> CallableDef:
-        if ":" not in self.function:
-            raise ValueError("'function' must use 'module:callable' syntax")
-        return self
-
-
 class CallbackDef(BaseModel):
     function: str  # "module:callable", called with the IterationState
 
@@ -61,9 +51,15 @@ class CallbackDef(BaseModel):
 
     @model_validator(mode="after")
     def _check_function(self) -> CallbackDef:
-        if ":" not in self.function:
-            raise ValueError("'function' must use 'module:callable' syntax")
+        _check_callable_spec(self.function)
         return self
+
+
+class CallableDef(CallbackDef):
+    """A client-side factory: ``function`` is "module:callable", called with args/kwargs."""
+
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class StreamDef(BaseModel):
@@ -259,6 +255,9 @@ class WorkflowConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    # directory of the YAML file: client-side callables (stream sources) are imported from there
+    _source_dir: Path | None = PrivateAttr(default=None)
+
     @property
     def tasks(self) -> dict[str, TaskDef]:
         return {s: getattr(self, s) for s in _ALL_SLOTS if getattr(self, s) is not None}
@@ -349,4 +348,6 @@ class WorkflowConfig(BaseModel):
         import yaml
 
         raw = yaml.safe_load(Path(path).read_text())
-        return cls.model_validate(raw)
+        cfg = cls.model_validate(raw)
+        cfg._source_dir = Path(path).resolve().parent
+        return cfg
