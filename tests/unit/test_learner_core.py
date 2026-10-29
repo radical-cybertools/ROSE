@@ -180,38 +180,6 @@ class TestLearnerConfigGetTaskConfig:
         with pytest.raises(ValueError):
             config.get_task_config("training", 0)
 
-    def test_adaptive_schedule_is_memoized(self):
-        calls = []
-        schedule = Learner(MagicMock(spec=WorkflowEngine)).create_adaptive_schedule(
-            "training", lambda i: calls.append(i) or {"kwargs": {"n": len(calls)}}
-        )
-        config = LearnerConfig(training=schedule)
-        first = config.get_task_config("training", 4)
-        assert config.get_task_config("training", 4) is first
-        assert calls == [4]
-
-    def test_assigned_callable_is_memoized(self):
-        calls = []
-        config = LearnerConfig()
-        config.training = lambda i: calls.append(i) or TaskConfig()
-        config.get_task_config("training", 1)
-        config.get_task_config("training", 1)
-        assert calls == [1]
-        with pytest.raises(ValueError):
-            config.training = TaskConfig
-
-    def test_config_copies_do_not_share_a_cache(self):
-        calls = []
-        first = LearnerConfig(training=lambda i: calls.append(i) or TaskConfig())
-        second = LearnerConfig(training=first.training)
-        first.get_task_config("training", 0)
-        second.get_task_config("training", 0)
-        assert calls == [0, 0]
-
-    def test_schedule_class_is_rejected(self):
-        with pytest.raises(ValueError):
-            LearnerConfig(training=TaskConfig)
-
     def test_adaptive_schedule_rejects_misspelled_key(self):
         schedule = Learner(MagicMock(spec=WorkflowEngine)).create_adaptive_schedule(
             "training", lambda i: {"kwarg": {"--lr": "0.1"}}

@@ -19,9 +19,12 @@ def _iteration_schedule(base: dict):
 
     A factory, so each learner's schedule binds its own ``base`` (no late binding in loops).
     """
+    import copy
+
     from rose.learner import adaptive_schedule
 
-    return adaptive_schedule(lambda n: {"kwargs": {**base, "iteration": n}})
+    # deepcopy: tasks must not share mutable values such as the pythonpath list
+    return adaptive_schedule(lambda n: {"kwargs": {**copy.deepcopy(base), "iteration": n}})
 
 
 def _get_learner_class(learner_type: str):

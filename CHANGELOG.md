@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`LearnerConfig` task fields accept a callable** `(iteration) -> TaskConfig` (or an
-  args/kwargs dict), evaluated lazily and memoized per iteration, besides a `TaskConfig` or a
-  per-iteration dict. A `LearnerConfig` holding a callable (as built by the YAML spec and by
-  `create_adaptive_schedule`) is not JSON/pickle-serializable.
+  args/kwargs dict), evaluated lazily on every lookup, besides a `TaskConfig` or a
+  per-iteration dict. It must be a deterministic function of the iteration. A `LearnerConfig`
+  holding a callable (as built by the YAML spec and by `create_adaptive_schedule`) is not
+  JSON/pickle-serializable.
 - **`create_adaptive_schedule` returns a callable** instead of a dict precomputed for 100
   iterations; it now has no iteration limit. Code that indexes its result as a dict must call
   it instead.

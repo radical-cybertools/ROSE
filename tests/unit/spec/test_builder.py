@@ -324,3 +324,14 @@ def test_build_learner_configs_distinct_learner_ids(tmp_path):
     lcs = builder.build_learner_configs()
     ids = [lc.get_task_config("simulation", 7).kwargs["learner_id"] for lc in lcs]
     assert ids == [0, 1, 2]
+
+
+def test_build_learner_config_lookups_do_not_share_mutable_kwargs(tmp_path):
+    builder = _make_builder(SEQ_WITH_PYTHONPATH, tmp_path)
+    lc = builder.build_learner_config()
+    first = lc.get_task_config("simulation", 0).kwargs["pythonpath"]
+    first.append("/tampered")
+    assert lc.get_task_config("simulation", 0).kwargs["pythonpath"] == [
+        "/remote/path/a",
+        "/remote/path/b",
+    ]

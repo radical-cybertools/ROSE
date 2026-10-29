@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import inspect
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -7,7 +6,7 @@ from functools import wraps
 from typing import Any, Optional
 
 import typeguard
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from radical.asyncflow import (
     WorkflowEngine,
 )
@@ -188,8 +187,9 @@ class TaskConfig(BaseModel):
 
 # A task's configuration: one TaskConfig for all iterations, a dict keyed by iteration (-1 as
 # fallback), or a callable mapping the iteration to a TaskConfig, an equivalent args/kwargs dict,
-# or None. LearnerConfig memoizes callables per iteration (recent iterations), so the learner
-# and trackers see the same config. The callable form is not JSON/pickle-serializable.
+# or None. A callable is evaluated on every lookup (the learner and trackers look up the same
+# iteration separately), so it must be a deterministic function of the iteration: seed any
+# sampling by the iteration. The callable form is not JSON/pickle-serializable.
 TaskSchedule = (
     TaskConfig | dict[int, TaskConfig] | Callable[[int], TaskConfig | dict[str, Any] | None] | None
 )
@@ -200,18 +200,6 @@ def _as_task_config(result: Any) -> TaskConfig | None:
     if result is None or isinstance(result, TaskConfig):
         return result
     return TaskConfig.model_validate(result)
-
-
-def _memoized_schedule(schedule: Callable[[int], Any]) -> Callable[[int], TaskConfig | None]:
-    """Wrap a schedule with its own cache; re-wrapping (config copies) starts a fresh cache."""
-    schedule = getattr(schedule, "_rose_schedule", schedule)
-
-    @functools.lru_cache(maxsize=8)  # the learner looks up i and i + 1; trackers look up i
-    def memoized(iteration: int) -> TaskConfig | None:
-        return _as_task_config(schedule(iteration))
-
-    memoized._rose_schedule = schedule
-    return memoized
 
 
 def adaptive_schedule(
@@ -260,20 +248,9 @@ class LearnerConfig(BaseModel):
         """Pydantic configuration for LearnerConfig."""
 
         extra = "forbid"
-        validate_assignment = True  # assigned schedules are memoized and checked too
         json_encoders = {
             tuple: list,
         }
-
-    @field_validator("*", mode="after")
-    @classmethod
-    def _memoize_callables(cls, value: Any) -> Any:
-        """Memoize callable schedules; reject classes (e.g. ``TaskConfig`` itself)."""
-        if isinstance(value, type):
-            raise ValueError(f"expected a TaskConfig, dict or schedule callable, got {value!r}")
-        if callable(value):
-            return _memoized_schedule(value)
-        return value
 
     def get_task_config(self, task_name: str, iteration: int) -> TaskConfig | None:
         """Get the task configuration for a specific iteration.
