@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import dataclasses
 import itertools
 import warnings
@@ -603,6 +604,8 @@ class ParallelExperience(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         initial_config: LearnerConfig | None = None,
+        skip_environment_step: bool = False,
+        stream: Stream | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -617,6 +620,14 @@ class ParallelExperience(ReinforcementLearner):
                 and update phases before the main learning loop.
             initial_config: Initial configuration object. Can be modified
                 between iterations via set_next_config().
+            skip_environment_step: If True, no environment tasks run and no
+                experience banks are merged; the update task runs alone.
+            stream: Optional :class:`~rose.stream.Stream`. Each iteration waits
+                for a window, passed as first argument to every environment task
+                (each gets its own copy), or to the update task with
+                ``skip_environment_step``. A met criterion marks the state
+                ``model_ready`` (always set without a criterion) and fires
+                :meth:`on_model_ready` instead of ending the loop.
 
         Yields:
             IterationState containing current iteration info, metrics, and
@@ -627,16 +638,23 @@ class ParallelExperience(ReinforcementLearner):
             ValueError: If neither max_iter nor criterion_function is provided.
         """
         # Validation
-        if not self.environment_functions or not self.update_function:
+        if (not skip_environment_step and not self.environment_functions) or (
+            not self.update_function
+        ):
             raise ValueError("Environment and Update functions must be set!")
 
-        if not max_iter and not self.criterion_function:
+        if not max_iter and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
+        sub = self._subscribe_stream(stream)
+        window_size: int | None = None
+        last_should_stop = False
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
@@ -650,23 +668,33 @@ class ParallelExperience(ReinforcementLearner):
 
         try:
             if not skip_pre_loop:
-                # Pre-loop: collect experiences and update
-                env_tasks = []
-                for env_name, env_func in self.environment_functions.items():
-                    env_config = self._get_iteration_task_config(
-                        env_func, learner_config, f"environment_{env_name}", 0
-                    )
-                    env_task = self._register_task(env_config)
-                    env_tasks.append(env_task)
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    return
+                window_size = None if window is None else len(window)
 
-                # Wait for all environment tasks (extract state later, inside loop)
-                env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+                if not skip_environment_step:
+                    # Pre-loop: collect experiences and update
+                    env_tasks = []
+                    for env_name, env_func in self.environment_functions.items():
+                        env_config = self._get_iteration_task_config(
+                            env_func, learner_config, f"environment_{env_name}", 0
+                        )
+                        self._inject_window(None if window is None else list(window), env_config)
+                        env_task = self._register_task(env_config)
+                        env_tasks.append(env_task)
 
-                self.merge_banks()
+                    # Wait for all environment tasks (extract state later, inside loop)
+                    env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+
+                    self.merge_banks()
 
                 update_config = self._get_iteration_task_config(
                     self.update_function, learner_config, "update", 0
                 )
+                if skip_environment_step:
+                    self._inject_window(window, update_config)
                 update_task = self._register_task(update_config)
 
                 # Await update result (extract state later, inside loop)
@@ -692,6 +720,8 @@ class ParallelExperience(ReinforcementLearner):
 
                 # Clear transient state from previous iteration
                 self.clear_state()
+                if window_size is not None:
+                    self.register_state("window_size", window_size)  # task results may override
 
                 # Extract state from env/update results
                 # (prepared in previous iteration or pre-loop)
@@ -734,40 +764,61 @@ class ParallelExperience(ReinforcementLearner):
                     metric_value=metric_value,
                     should_stop=should_stop,
                     current_config=learner_config,
+                    model_ready=sub is not None and (should_stop or not self.criterion_function),
                 )
+                last_should_stop = should_stop
 
-                # Notify trackers then yield control to caller
+                # Notify trackers and model callbacks, then yield control to caller
                 self._notify_trackers_iteration(self._iteration_state)
+                if self._iteration_state.model_ready:
+                    await self._notify_model_ready(self._iteration_state)
                 yield self._iteration_state
 
                 # Check if caller broke out or criterion met
-                if should_stop:
+                # (in stream mode the criterion only gates publishing)
+                if should_stop and sub is None:
                     _stop_reason = "criterion_met"
                     break
-
-                # Collect experiences from parallel environments for next iteration
-                next_config = self._pending_config or learner_config
-                env_tasks = []
-                for env_name, env_func in self.environment_functions.items():
-                    next_env_config = self._get_iteration_task_config(
-                        env_func, next_config, f"environment_{env_name}", i + 1
-                    )
-                    env_task = self._register_task(next_env_config, deps=stop_task)
-                    env_tasks.append(env_task)
-
-                # Wait for all environment tasks (extract state in next iteration)
-                env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
-                if self.is_stopped:
-                    _stop_reason = "stopped"
+                if sub is not None and self._max_iter is not None and i + 1 == self._max_iter:
                     break
 
-                # Merge all collected experiences
-                self.merge_banks()
+                # Wait for data first, so a config set meanwhile applies to the whole iteration
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    break
+                window_size = None if window is None else len(window)
+
+                next_config = self._pending_config or learner_config
+                env_results = []
+                if not skip_environment_step:
+                    # Collect experiences from parallel environments for next iteration
+                    env_tasks = []
+                    for env_name, env_func in self.environment_functions.items():
+                        next_env_config = self._get_iteration_task_config(
+                            env_func, next_config, f"environment_{env_name}", i + 1
+                        )
+                        self._inject_window(
+                            None if window is None else list(window), next_env_config
+                        )
+                        env_task = self._register_task(next_env_config, deps=stop_task)
+                        env_tasks.append(env_task)
+
+                    # Wait for all environment tasks (extract state in next iteration)
+                    env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+
+                    # Merge all collected experiences
+                    self.merge_banks()
 
                 # Prepare next iteration update with configuration
                 next_update_config = self._get_iteration_task_config(
                     self.update_function, next_config, "update", i + 1
                 )
+                if skip_environment_step:
+                    self._inject_window(window, next_update_config)
                 update_task = self._register_task(next_update_config)
 
                 # Await update result (extract state in next iteration)
@@ -775,7 +826,8 @@ class ParallelExperience(ReinforcementLearner):
 
                 print(f"{learner_prefix}Finished Iteration-{i}")
         except GeneratorExit:
-            _stop_reason = "stopped"  # consumer left the async for loop
+            # consumer left the async for loop, e.g. on should_stop as documented for streams
+            _stop_reason = "criterion_met" if last_should_stop else "stopped"
             raise
         except asyncio.CancelledError:
             _stop_reason = "stopped"
@@ -784,6 +836,7 @@ class ParallelExperience(ReinforcementLearner):
             _stop_reason = "error"
             raise
         finally:
+            self._release_stream(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     def set_next_config(self, config: LearnerConfig) -> None:
@@ -807,6 +860,8 @@ class ParallelExperience(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_config: LearnerConfig | None = None,
+        skip_environment_step: bool = False,
+        stream: Stream | None = None,
     ) -> IterationState | None:
         """Run parallel experience RL loop to completion.
 
@@ -820,6 +875,8 @@ class ParallelExperience(ReinforcementLearner):
             skip_pre_loop: If True, skips the initial environment collection
                 and update phases.
             learner_config: Configuration for the learner.
+            skip_environment_step: See :meth:`start`.
+            stream: Optional Stream, see :meth:`start`.
 
         Returns:
             Final IterationState after completion, or None if no iterations ran.
@@ -835,6 +892,8 @@ class ParallelExperience(ReinforcementLearner):
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             initial_config=learner_config,
+            skip_environment_step=skip_environment_step,
+            stream=stream,
         ):
             final_state = state
         return final_state
@@ -931,6 +990,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: list[LearnerConfig | None] | None = None,
+        skip_environment_step: bool = False,
+        stream: Stream | None = None,
     ) -> AsyncIterator[IterationState]:
         """Run parallel reinforcement learning by launching multiple
         SequentialReinforcementLearners.
@@ -954,6 +1015,12 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             learner_configs: list of configuration objects, one for each learner.
                 If None, all learners use default configuration. Length must
                 match parallel_learners if provided.
+            skip_environment_step: If True, all learners skip the environment
+                task (see SequentialReinforcementLearner.start).
+            stream: Optional Stream; every learner receives every streamed item
+                (see SequentialReinforcementLearner.start). on_model_ready
+                callbacks registered on this learner fire with ``learner_id``
+                set. A failing learner stops all others.
 
         Yields:
             IterationState for each iteration of each learner, in arrival order.
@@ -975,16 +1042,22 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             raise ValueError("For single learner, use SequentialReinforcementLearner")
 
         # Validate base functions are set
-        if not self.environment_function or not self.update_function:
+        if (not skip_environment_step and not self.environment_function) or (
+            not self.update_function
+        ):
             raise ValueError("Environment and Update functions must be set!")
 
-        if not max_iter and not self.criterion_function:
+        if not max_iter and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or [None] * parallel_learners
         if len(learner_configs) != parallel_learners:
             raise ValueError("learner_configs length must match parallel_learners")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
+
+        subs = self._subscribe_children(stream, parallel_learners)
 
         print(f"Starting Parallel Reinforcement Learning with {parallel_learners} learners")
 
@@ -995,22 +1068,28 @@ class ParallelReinforcementLearner(ReinforcementLearner):
                     sequential_learner: SequentialReinforcementLearner = (
                         self._create_sequential_learner(learner_id, learner_configs[learner_id])
                     )
+                    self._adopt_child(sequential_learner, stream)
                     async for state in sequential_learner.start(
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
+                        skip_environment_step=skip_environment_step,
                         initial_config=learner_configs[learner_id],
+                        stream=subs[learner_id],
                     ):
                         if self.is_stopped:
                             sequential_learner.stop()
-                        await queue.put(
-                            ("state", dataclasses.replace(state, learner_id=learner_id))
-                        )
+                        state = dataclasses.replace(state, learner_id=learner_id)
+                        if state.model_ready:
+                            await self._notify_model_ready(state)
+                        await queue.put(("state", state))
                     self.metric_values_per_iteration[f"learner-{learner_id}"] = (
                         sequential_learner.metric_values_per_iteration
                     )
                 except Exception as e:
                     print(f"[RLLearner-{learner_id}] failed with error: {e}")
                     await queue.put(("error", e))
+                    if stream is not None:
+                        self.stop()  # others would wait for windows forever
                 finally:
                     await queue.put(("done", None))
 
@@ -1019,14 +1098,23 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
-            async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
-                self._track_parallel_state(state)
-                self._notify_trackers_iteration(state)
-                yield state
+            # aclosing: a consumer break must reap the learner tasks before unsubscribing
+            async with contextlib.aclosing(
+                _stream_parallel([make_run_fn(i) for i in range(parallel_learners)])
+            ) as states:
+                async for state in states:
+                    self._track_parallel_state(state)
+                    self._notify_trackers_iteration(state)
+                    yield state
+            _stop_reason = self._parallel_stop_reason(stream, _stop_reason)
+        except (GeneratorExit, asyncio.CancelledError):
+            _stop_reason = "stopped"  # consumer left the async for loop, or cancelled
+            raise
         except Exception:
             _stop_reason = "error"
             raise
         finally:
+            self._release_children(subs)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def learn(
@@ -1035,6 +1123,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: list[LearnerConfig | None] | None = None,
+        skip_environment_step: bool = False,
+        stream: Stream | None = None,
     ) -> list[Any]:
         """Run parallel reinforcement learning to completion.
 
@@ -1047,6 +1137,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             max_iter: Maximum number of iterations for each learner.
             skip_pre_loop: If True, skips initial environment and update phases.
             learner_configs: Configuration objects for each learner.
+            skip_environment_step: See :meth:`start`.
+            stream: Optional Stream, see :meth:`start`.
 
         Returns:
             list containing the final IterationState from each learner.
@@ -1062,6 +1154,8 @@ class ParallelReinforcementLearner(ReinforcementLearner):
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learner_configs=learner_configs,
+            skip_environment_step=skip_environment_step,
+            stream=stream,
         ):
             final_states[state.learner_id] = state
         return [final_states.get(i) for i in range(parallel_learners)]
