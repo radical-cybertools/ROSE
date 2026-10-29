@@ -621,9 +621,7 @@ class ParallelActiveLearner(Learner):
                 _stream_parallel([make_run_fn(i) for i in range(parallel_learners)])
             ) as states:
                 async for state in states:
-                    self._iteration_state = (
-                        state  # final_state for trackers: last state of any learner
-                    )
+                    self._iteration_state = state  # trackers: final state = last of any learner
                     self._notify_trackers_iteration(state)
                     yield state
             if self.is_stopped:
