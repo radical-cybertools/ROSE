@@ -635,6 +635,8 @@ class ParallelExperience(ReinforcementLearner):
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
+        self._iteration_state = None  # no stale state from an earlier run
+        _stop_reason = "max_iter_reached"
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Parallel Experience RL Learner{learner_suffix}")
@@ -646,119 +648,143 @@ class ParallelExperience(ReinforcementLearner):
         env_results: list[Any] = []
         update_result: Any = None
 
-        if not skip_pre_loop:
-            # Pre-loop: collect experiences and update
-            env_tasks = []
-            for env_name, env_func in self.environment_functions.items():
-                env_config = self._get_iteration_task_config(
-                    env_func, learner_config, f"environment_{env_name}", 0
+        try:
+            if not skip_pre_loop:
+                # Pre-loop: collect experiences and update
+                env_tasks = []
+                for env_name, env_func in self.environment_functions.items():
+                    env_config = self._get_iteration_task_config(
+                        env_func, learner_config, f"environment_{env_name}", 0
+                    )
+                    env_task = self._register_task(env_config)
+                    env_tasks.append(env_task)
+
+                # Wait for all environment tasks (extract state later, inside loop)
+                env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+
+                self.merge_banks()
+
+                update_config = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
                 )
-                env_task = self._register_task(env_config)
-                env_tasks.append(env_task)
+                update_task = self._register_task(update_config)
 
-            # Wait for all environment tasks (extract state later, inside loop)
-            env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+                # Await update result (extract state later, inside loop)
+                update_result = await update_task
 
-            self.merge_banks()
+            # Determine iteration range
+            iteration_range: Iterator[int] | range
+            if max_iter == 0:
+                iteration_range = itertools.count()
+            else:
+                iteration_range = range(max_iter)
 
-            update_config = self._get_iteration_task_config(
-                self.update_function, learner_config, "update", 0
-            )
-            update_task = self._register_task(update_config)
+            # Main iteration loop
+            for i in iteration_range:
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
 
-            # Await update result (extract state later, inside loop)
-            update_result = await update_task
+                # Check for pending config update
+                if self._pending_config is not None:
+                    learner_config = self._pending_config
+                    self._pending_config = None
 
-        # Determine iteration range
-        iteration_range: Iterator[int] | range
-        if max_iter == 0:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
+                # Clear transient state from previous iteration
+                self.clear_state()
 
-        # Main iteration loop
-        for i in iteration_range:
-            # Check for pending config update
-            if self._pending_config is not None:
-                learner_config = self._pending_config
-                self._pending_config = None
+                # Extract state from env/update results
+                # (prepared in previous iteration or pre-loop)
+                for env_result in env_results:
+                    if not isinstance(env_result, BaseException):
+                        self._extract_state_from_result(env_result)
+                if update_result is not None:
+                    self._extract_state_from_result(update_result)
 
-            # Clear transient state from previous iteration
-            self.clear_state()
-
-            # Extract state from env/update results
-            # (prepared in previous iteration or pre-loop)
-            for env_result in env_results:
-                if not isinstance(env_result, BaseException):
-                    self._extract_state_from_result(env_result)
-            if update_result is not None:
-                self._extract_state_from_result(update_result)
-
-            learner_prefix = f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
-            print(f"{learner_prefix}Starting Iteration-{i}")
-
-            # Check stop criterion if configured
-            metric_value: float | None = None
-            should_stop = False
-            stop_task = None
-
-            if self.criterion_function:
-                criterion_config = self._get_iteration_task_config(
-                    self.criterion_function, learner_config, "criterion", i
+                learner_prefix = (
+                    f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
                 )
-                stop_task = self._register_task(criterion_config, deps=update_task)
-                stop_result = await stop_task
+                print(f"{learner_prefix}Starting Iteration-{i}")
 
-                # Extract state from criterion result, excluding handled keys
-                self._extract_state_from_result(
-                    stop_result, exclude_keys={"metric_value", "should_stop"}
+                # Check stop criterion if configured
+                metric_value: float | None = None
+                should_stop = False
+                stop_task = None
+
+                if self.criterion_function:
+                    criterion_config = self._get_iteration_task_config(
+                        self.criterion_function, learner_config, "criterion", i
+                    )
+                    stop_task = self._register_task(criterion_config, deps=update_task)
+                    stop_result = await stop_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
+
+                    # Extract state from criterion result, excluding handled keys
+                    self._extract_state_from_result(
+                        stop_result, exclude_keys={"metric_value", "should_stop"}
+                    )
+
+                    should_stop, metric_value = self._check_stop_criterion(stop_result)
+
+                # Build iteration state
+                self._iteration_state = self.build_iteration_state(
+                    iteration=i,
+                    metric_value=metric_value,
+                    should_stop=should_stop,
+                    current_config=learner_config,
                 )
 
-                should_stop, metric_value = self._check_stop_criterion(stop_result)
+                # Notify trackers then yield control to caller
+                self._notify_trackers_iteration(self._iteration_state)
+                yield self._iteration_state
 
-            # Build iteration state
-            self._iteration_state = self.build_iteration_state(
-                iteration=i,
-                metric_value=metric_value,
-                should_stop=should_stop,
-                current_config=learner_config,
-            )
+                # Check if caller broke out or criterion met
+                if should_stop:
+                    _stop_reason = "criterion_met"
+                    break
 
-            # YIELD CONTROL TO CALLER
-            yield self._iteration_state
+                # Collect experiences from parallel environments for next iteration
+                next_config = self._pending_config or learner_config
+                env_tasks = []
+                for env_name, env_func in self.environment_functions.items():
+                    next_env_config = self._get_iteration_task_config(
+                        env_func, next_config, f"environment_{env_name}", i + 1
+                    )
+                    env_task = self._register_task(next_env_config, deps=stop_task)
+                    env_tasks.append(env_task)
 
-            # Check if caller broke out or criterion met
-            if should_stop:
-                break
+                # Wait for all environment tasks (extract state in next iteration)
+                env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
+                if self.is_stopped:
+                    _stop_reason = "stopped"
+                    break
 
-            # Collect experiences from parallel environments for next iteration
-            next_config = self._pending_config or learner_config
-            env_tasks = []
-            for env_name, env_func in self.environment_functions.items():
-                next_env_config = self._get_iteration_task_config(
-                    env_func, next_config, f"environment_{env_name}", i + 1
+                # Merge all collected experiences
+                self.merge_banks()
+
+                # Prepare next iteration update with configuration
+                next_update_config = self._get_iteration_task_config(
+                    self.update_function, next_config, "update", i + 1
                 )
-                env_task = self._register_task(next_env_config, deps=stop_task)
-                env_tasks.append(env_task)
+                update_task = self._register_task(next_update_config)
 
-            # Wait for all environment tasks (extract state in next iteration)
-            env_results = await asyncio.gather(*env_tasks, return_exceptions=True)
-            if self.is_stopped:
-                break
+                # Await update result (extract state in next iteration)
+                update_result = await update_task
 
-            # Merge all collected experiences
-            self.merge_banks()
-
-            # Prepare next iteration update with configuration
-            next_update_config = self._get_iteration_task_config(
-                self.update_function, next_config, "update", i + 1
-            )
-            update_task = self._register_task(next_update_config)
-
-            # Await update result (extract state in next iteration)
-            update_result = await update_task
-
-            print(f"{learner_prefix}Finished Iteration-{i}")
+                print(f"{learner_prefix}Finished Iteration-{i}")
+        except GeneratorExit:
+            _stop_reason = "stopped"  # consumer left the async for loop
+            raise
+        except asyncio.CancelledError:
+            _stop_reason = "stopped"
+            raise
+        except Exception:
+            _stop_reason = "error"
+            raise
+        finally:
+            self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
