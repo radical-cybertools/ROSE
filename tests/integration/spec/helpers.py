@@ -88,7 +88,9 @@ async def uq_predict(model, **kwargs):
     return [0.1, 0.2]
 
 
-async def uq_uncertainty(*per_model_preds, **kwargs):
+async def uq_uncertainty(per_model_preds, **kwargs):
+    # one argument: per model (2), its prediction results (num_predictions = 2)
+    assert len(per_model_preds) == 2 and all(len(p) == 2 for p in per_model_preds)
     return 0.3
 
 

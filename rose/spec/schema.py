@@ -232,7 +232,7 @@ class TrackingConfig(BaseModel):
 
 # Keys the builder always injects — users must not put these in parameters:
 _RESERVED_PARAMETER_KEYS: frozenset[str] = frozenset(
-    {"learner_id", "learner_label", "iteration", "pythonpath"}
+    {"learner_id", "learner_label", "iteration", "pythonpath", "--model_name", "--iteration"}
 )
 
 

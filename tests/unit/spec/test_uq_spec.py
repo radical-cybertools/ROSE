@@ -109,3 +109,8 @@ def test_builder_registers_uncertainty_and_uq_config(tmp_path):
     assert kwargs["num_predictions"] == 2
     assert kwargs["learning_config"] is not None
     assert "initial_config" not in kwargs and "publish_on" not in kwargs
+
+
+def test_uq_injected_kwargs_are_reserved(tmp_path):
+    with pytest.raises(ValueError, match="reserved"):
+        load(tmp_path, UQ_YAML.replace("  dataset: ds", '  "--model_name": x'))

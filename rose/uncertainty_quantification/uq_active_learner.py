@@ -111,7 +111,6 @@ class SeqUQLearner(UQLearner):
             raise ValueError(f"publish_on must be 'all' or 'any', got {publish_on!r}")
 
         # Initialize learner configs if not provided
-        learning_config = learning_config or {}
 
         print(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
