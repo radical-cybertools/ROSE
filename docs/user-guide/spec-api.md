@@ -513,7 +513,44 @@ stop_criterion:
 </div>
 </div>
 
-The evaluator function follows the same `*args, **kwargs` convention as task functions. ROSE stops the loop when `metric_value <operator> threshold` is satisfied, or when `max_iter` is reached — whichever comes first.
+The evaluator function follows the same `*args, **kwargs` convention as task functions. ROSE stops the loop when `metric_value <operator> threshold` is satisfied, or when `max_iter` is reached — whichever comes first. With a [`stream:`](#stream) block the criterion does not stop the loop; it marks a model ready for publishing, and `stop_criterion` is optional.
+
+---
+
+## Stream
+
+A `stream:` block drives the learner with streamed data instead of an internal
+iteration count (see [Streaming Active Learning](streaming-acl-workflow.md)):
+
+```yaml
+stream:
+  batch_size: 10          # items per learning window
+  max_wait: 2.0           # optional: flush a partial window after 2s without new items
+  conflate: false         # optional: keep only the newest items when the learner lags
+  sources:                # at least one; factories returning an async iterator
+    - function: "sensors:read_stream"
+      args: []
+      kwargs: {port: 5555}
+  on_model_ready:         # optional: called with the IterationState of each ready model
+    function: "publish:push_model"
+```
+
+- **Supported learners**: `sequential_active_learner`, `parallel_active_learner`
+  (every learner gets every item), `sequential_reinforcement_learner`.
+- **Window**: each window is the first argument of the `simulation` task (AL) or
+  the `environment` task (RL): `simulation(window, **kwargs)`, from the second
+  window on `simulation(window, acl_result, **kwargs)`. That task must be
+  `type: python`; a shell task cannot receive the window and is rejected.
+- **Client side**: sources and `on_model_ready` run where `rose run` runs, also
+  with `--remote`. They are imported from the YAML file's directory (not from
+  `remote.pythonpath`), before any backend or HPC job starts.
+- **Window items** travel to the workers as task arguments: use builtins, numpy,
+  or types importable on the workers. `on_model_ready` sees only what tasks
+  returned in the `IterationState`, not files on the workers.
+- **Termination**: the run ends when all sources are exhausted or `max_iter`
+  windows were processed; with `max_iter: 0` and endless sources it runs until
+  interrupted.
+- `workflow_with(stream=...)` replaces the whole block.
 
 ---
 
@@ -735,7 +772,10 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `environment` / `update` | TaskDef | RL yes | — | Task slots for Reinforcement Learning |
 | `prediction` / `active_learn` / `uncertainty` | TaskDef | UQ yes | — | Task slots for UQ-based AL |
 | `learners` | list | no | — | Per-learner task definitions for heterogeneous parallel |
-| `stop_criterion` | object | yes | — | Stopping condition |
+| `stop_criterion` | object | unless `stream` | — | Stopping condition (with `stream`: publish gate) |
+| `stream` | object | no | `null` | Streamed input — see [Stream](#stream) |
+| `stream.sources` | list | with `stream` | — | `{function, args, kwargs}` factories returning async iterators |
+| `stream.on_model_ready` | object | no | `null` | `{function}` called with each ready model's state |
 | `parameters` | dict | no | `{}` | User-defined kwargs injected into all tasks |
 | `remote.pythonpath` | list[str] | no | `[]` | Paths added to `sys.path` on worker; injected as `pythonpath` kwarg |
 | `remote.backends` | list[str] | no | `["dragon"]` | Rhapsody backends requested on the remote orbit session |

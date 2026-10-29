@@ -92,7 +92,7 @@ class SequentialActiveLearner(Learner):
                 fires :meth:`on_model_ready` callbacks. The loop ends on
                 ``stop()``, stream exhaustion, or ``max_iter``. Executable tasks
                 get the window as first argument of their command builder; YAML
-                spec shell tasks ignore it.
+                spec validation rejects a shell task in this slot.
 
         Yields:
             IterationState containing current iteration info, metrics, and

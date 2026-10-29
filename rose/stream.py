@@ -109,6 +109,15 @@ class Stream:
         """
         self.close()
         await asyncio.gather(*self._pumps, return_exceptions=True)
+        # sources never pumped (closed before the first pull) are closed here
+        pending, self._pending_sources = self._pending_sources, []
+        for source in pending:
+            aclose = getattr(source, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception as e:
+                    print(f"stream source cleanup failed: {e!r}")
 
     def _put(self, item: Any) -> None:
         if not self._started:
@@ -141,10 +150,10 @@ class Stream:
                 sub._put(item)
         self._backlog.clear()
         if self._closed:
-            self._end()  # closed before the first pull: sources are never started
-        else:
-            for source in self._pending_sources:
-                self._start_pump(source)
+            self._end()  # closed before the first pull: sources stay pending for aclose()
+            return
+        for source in self._pending_sources:
+            self._start_pump(source)
         self._pending_sources.clear()
 
     def _start_pump(self, source: AsyncIterator[Any]) -> None:
