@@ -205,3 +205,22 @@ def test_workflow_with_replaces_stream_block(tmp_path):
     assert new.config.stream.on_model_ready is None  # whole block replaced
     with pytest.raises(ValueError, match="stop_criterion"):
         ws.workflow_with(stream=None)
+
+
+@pytest.mark.asyncio
+async def test_unstarted_sources_closed_on_aclose():
+    from rose import Stream
+
+    closed = []
+
+    async def source():
+        try:
+            yield 1
+        finally:
+            closed.append(True)
+
+    gen = source()
+    await gen.__anext__()  # started, suspended at its yield
+    stream = Stream(sources=gen)
+    await stream.aclose()  # never pulled: the pump never ran
+    assert closed == [True]

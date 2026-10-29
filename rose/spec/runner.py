@@ -35,7 +35,7 @@ def _client_path(cfg: WorkflowConfig) -> None:
     Client-side callables are imported from there, also lazily while the run is going.
     """
     source_dir = cfg._source_dir
-    if source_dir is not None and str(source_dir) not in sys.path:
+    if cfg.stream is not None and source_dir is not None and str(source_dir) not in sys.path:
         sys.path.insert(0, str(source_dir))
 
 
@@ -51,7 +51,7 @@ def resolve_client_callables(cfg: WorkflowConfig) -> None:
         try:
             if not callable(_resolve(spec)):
                 failures.append(f"  {spec!r}: not callable")
-        except (ImportError, AttributeError, ValueError) as exc:
+        except Exception as exc:  # any import-time error of the user's module
             failures.append(f"  {spec!r}: {exc}")
     if failures:
         raise ValueError(
@@ -73,8 +73,11 @@ async def _build_stream(stream_def: StreamDef):
             sources.append(source)
     except BaseException:
         for source in sources:  # close the sources built so far (sockets, files)
-            if hasattr(source, "aclose"):
-                await source.aclose()
+            try:
+                if hasattr(source, "aclose"):
+                    await source.aclose()
+            except Exception as e:
+                print(f"stream source cleanup failed: {e!r}")
         raise
     return Stream(
         batch_size=stream_def.batch_size,
@@ -123,6 +126,8 @@ async def run_learner(cfg: WorkflowConfig, asyncflow) -> None:
             ready = "  model_ready" if state.model_ready else ""
             print(f"[iter {state.iteration}]  metric={state.metric_value}{ready}", flush=True)
     finally:
-        if stream is not None:
-            await stream.aclose()
-        await asyncflow.shutdown()
+        try:
+            if stream is not None:
+                await stream.aclose()
+        finally:
+            await asyncflow.shutdown()

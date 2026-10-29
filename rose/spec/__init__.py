@@ -55,7 +55,11 @@ def _validate_task_imports(cfg: WorkflowConfig) -> None:
     import importlib
     import sys as _sys
 
-    added = [p for p in cfg.remote.pythonpath if p not in _sys.path]
+    # remote.pythonpath (workers) and the YAML dir (as for `rose run --local`)
+    paths = list(cfg.remote.pythonpath)
+    if cfg._source_dir is not None:
+        paths.append(str(cfg._source_dir))
+    added = [p for p in paths if p not in _sys.path]
     for p in added:
         _sys.path.insert(0, p)
     try:
