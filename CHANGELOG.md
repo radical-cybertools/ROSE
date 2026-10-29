@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parallel learners report their final state to trackers**: `ParallelActiveLearner`,
   `ParallelUQLearner` and `ParallelReinforcementLearner` passed `final_state=None` to
   `on_stop`; they now pass the last state of the most advanced learner (`learner_id` set).
+  All learners reset their current state when a run starts, so `get_current_state()` returns
+  `None` until the new run's first iteration instead of the previous run's last state.
 - **YAML spec `iteration` kwarg**: with `max_iter: 0` (unbounded runs) every iteration from 1
   on received `iteration == 0`; the spec builder now computes it per iteration.
 - **`create_adaptive_schedule`**: iterations from 100 on silently lost their adaptive config.
