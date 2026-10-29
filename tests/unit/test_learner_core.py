@@ -190,6 +190,26 @@ class TestLearnerConfigGetTaskConfig:
         assert config.get_task_config("training", 4) is first
         assert calls == [4]
 
+    def test_schedule_class_is_rejected(self):
+        with pytest.raises(ValueError):
+            LearnerConfig(training=TaskConfig)
+
+    def test_adaptive_schedule_rejects_misspelled_key(self):
+        schedule = Learner(MagicMock(spec=WorkflowEngine)).create_adaptive_schedule(
+            "training", lambda i: {"kwarg": {"--lr": "0.1"}}
+        )
+        with pytest.raises(ValueError):
+            LearnerConfig(training=schedule).get_task_config("training", 0)
+
+    def test_task_kwargs_are_not_shared_with_config(self):
+        learner = Learner(MagicMock(spec=WorkflowEngine))
+        config = LearnerConfig(prediction=lambda i: TaskConfig(kwargs={"a": 1}))
+        base = {"func": None, "args": (), "kwargs": {}, "decor_kwargs": {}}
+        task = learner._get_iteration_task_config(base, config, "prediction", 0)
+        task["kwargs"]["--model_name"] = "m1"  # as the UQ learner does
+        assert config.get_task_config("prediction", 0).kwargs == {"a": 1}
+        assert base["kwargs"] == {}
+
     def test_adaptive_schedule_has_no_iteration_limit(self):
         learner = Learner(MagicMock(spec=WorkflowEngine))
         schedule = learner.create_adaptive_schedule(

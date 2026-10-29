@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import inspect
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -6,7 +7,7 @@ from functools import wraps
 from typing import Any, Optional
 
 import typeguard
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from radical.asyncflow import (
     WorkflowEngine,
 )
@@ -186,10 +187,31 @@ class TaskConfig(BaseModel):
 
 
 # A task's configuration: one TaskConfig for all iterations, a dict keyed by iteration (-1 as
-# fallback), or a callable mapping the iteration to a TaskConfig (or an equivalent args/kwargs
-# dict). A callable is evaluated on every lookup, including by trackers, so it must be
-# deterministic; it is not JSON/pickle-serializable.
-TaskSchedule = TaskConfig | dict[int, TaskConfig] | Callable[[int], TaskConfig] | None
+# fallback), or a callable mapping the iteration to a TaskConfig, an equivalent args/kwargs dict,
+# or None. LearnerConfig memoizes callables per iteration (recent iterations), so the learner
+# and trackers see the same config. The callable form is not JSON/pickle-serializable.
+TaskSchedule = (
+    TaskConfig | dict[int, TaskConfig] | Callable[[int], TaskConfig | dict[str, Any] | None] | None
+)
+
+
+def _as_task_config(result: Any) -> TaskConfig | None:
+    """Normalize a schedule callable's result; raises on a bad shape."""
+    if result is None or isinstance(result, TaskConfig):
+        return result
+    return TaskConfig.model_validate(result)
+
+
+def _memoized_schedule(schedule: Callable[[int], Any]) -> Callable[[int], TaskConfig | None]:
+    if getattr(schedule, "_rose_memoized", False):
+        return schedule
+
+    @functools.lru_cache(maxsize=8)  # the learner looks up i and i + 1; trackers look up i
+    def memoized(iteration: int) -> TaskConfig | None:
+        return _as_task_config(schedule(iteration))
+
+    memoized._rose_memoized = True
+    return memoized
 
 
 def adaptive_schedule(
@@ -197,18 +219,11 @@ def adaptive_schedule(
 ) -> Callable[[int], TaskConfig]:
     """Lazy schedule: ``param_schedule(iteration)`` returns an args/kwargs dict.
 
-    Results are memoized per iteration, so the learner and trackers see the same config even
-    if ``param_schedule`` is not deterministic.
+    The result is validated, so a misspelled key raises instead of being ignored.
     """
-    cache: dict[int, TaskConfig] = {}
 
     def schedule(iteration: int) -> TaskConfig:
-        if iteration not in cache:
-            config = param_schedule(iteration)
-            cache[iteration] = TaskConfig(
-                args=config.get("args", ()), kwargs=config.get("kwargs", {})
-            )
-        return cache[iteration]
+        return TaskConfig.model_validate(param_schedule(iteration))
 
     return schedule
 
@@ -249,6 +264,16 @@ class LearnerConfig(BaseModel):
             tuple: list,
         }
 
+    @field_validator("*", mode="after")
+    @classmethod
+    def _memoize_callables(cls, value: Any) -> Any:
+        """Memoize callable schedules; reject classes (e.g. ``TaskConfig`` itself)."""
+        if isinstance(value, type):
+            raise ValueError(f"expected a TaskConfig, dict or schedule callable, got {value!r}")
+        if callable(value):
+            return _memoized_schedule(value)
+        return value
+
     def get_task_config(self, task_name: str, iteration: int) -> TaskConfig | None:
         """Get the task configuration for a specific iteration.
 
@@ -283,10 +308,7 @@ class LearnerConfig(BaseModel):
 
         # A callable computes the config for this iteration
         if callable(task_config):
-            result = task_config(iteration)
-            if result is None or isinstance(result, TaskConfig):
-                return result
-            return TaskConfig.model_validate(result)  # args/kwargs dict; raises on bad shape
+            return _as_task_config(task_config(iteration))
 
         return None
 
@@ -415,6 +437,9 @@ class Learner:
                     task_config["args"] = iter_config.args
                 if iter_config.kwargs is not None:
                     task_config["kwargs"] = iter_config.kwargs
+
+        # Callers add per-task kwargs (e.g. UQ's --model_name): never mutate a shared config
+        task_config["kwargs"] = dict(task_config["kwargs"])
 
         return task_config
 
