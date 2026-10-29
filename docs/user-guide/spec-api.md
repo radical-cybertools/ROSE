@@ -551,7 +551,7 @@ has `parameters` or `remote.pythonpath`):
 | `simulation` | the window, with a `stream:` block | — |
 | `training` | simulation result | `--model_name` |
 | `prediction` | training result | `--model_name`, `--iteration` (prediction index, not the loop iteration) |
-| uncertainty evaluator | one list: per model, its prediction results | — |
+| uncertainty evaluator | one list: per model still training, its prediction results (without a stream, models that met the stop criterion stop training) | — |
 | `active_learn` | uncertainty value | — |
 | stop criterion evaluator | active-learning result | `--model_name` |
 
@@ -559,7 +559,7 @@ The `--` keys are not valid Python identifiers: Python tasks must accept `**kwar
 and read `kwargs["--model_name"]`; shell commands use `{--model_name}`. Shell tasks
 get no positional arguments: exchange data via files. For built-in UQ metrics
 (e.g. `predictive_variance`) the metric's own direction applies and `operator` is
-ignored; set `operator` for custom metric names. A full example is in
+ignored; custom metric names need an `operator`. A full example is in
 `examples/spec/uq/`.
 
 ---
@@ -584,8 +584,9 @@ stream:
 
 - **Supported learners**: `sequential_active_learner`, `parallel_active_learner`
   (every learner gets every item), `sequential_reinforcement_learner`,
-  `uq_active_learner` (every model gets the window; `learner.publish_on: all|any`
-  decides whether all or any model must meet the criterion to publish).
+  `uq_active_learner` (every model gets the window, no model stops training;
+  `learner.publish_on: all|any` decides whether all or any model must meet the
+  stop criterion to publish; a met uncertainty threshold always publishes).
 - **Window**: each window is the first argument of the `simulation` task (AL) or
   the `environment` task (RL): `simulation(window, **kwargs)`, from the second
   window on `simulation(window, acl_result, **kwargs)`. That task must be

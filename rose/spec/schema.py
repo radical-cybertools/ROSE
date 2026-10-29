@@ -43,6 +43,11 @@ class StopCriterionDef(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class UncertaintyCriterionDef(StopCriterionDef):
+    # built-in UQ metrics bring their own direction; custom metric names need an operator
+    operator: Literal["<", ">", "==", "<=", ">="] | None = None
+
+
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
 class CallbackDef(BaseModel):
     function: str  # "module:callable", called with the IterationState
@@ -250,7 +255,7 @@ class WorkflowConfig(BaseModel):
     learners: list[LearnerDef] | None = None
     stop_criterion: StopCriterionDef | None = None  # required unless stream is set
     # uq_active_learner: the uncertainty task and its threshold (metric = uq metric name)
-    uncertainty_criterion: StopCriterionDef | None = None
+    uncertainty_criterion: UncertaintyCriterionDef | None = None
     stream: StreamDef | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
@@ -322,8 +327,10 @@ class WorkflowConfig(BaseModel):
                 raise ValueError("'learner.model_names' must be unique")
             if self.uncertainty_criterion is None:
                 raise ValueError("uq_active_learner requires 'uncertainty_criterion'")
-            if learner.publish_on is not None and self.stream is None:
-                raise ValueError("'learner.publish_on' requires 'stream'")
+            if learner.publish_on is not None and (
+                self.stream is None or self.stop_criterion is None
+            ):
+                raise ValueError("'learner.publish_on' requires 'stream' and 'stop_criterion'")
         else:
             # `is not None`, not fields-set: workflow_with() re-validates explicit None values
             uq_only = {

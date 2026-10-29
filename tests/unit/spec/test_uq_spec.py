@@ -114,3 +114,16 @@ def test_builder_registers_uncertainty_and_uq_config(tmp_path):
 def test_uq_injected_kwargs_are_reserved(tmp_path):
     with pytest.raises(ValueError, match="reserved"):
         load(tmp_path, UQ_YAML.replace("  dataset: ds", '  "--model_name": x'))
+
+
+def test_uncertainty_operator_defaults_to_metric_direction(tmp_path):
+    cfg = load(
+        tmp_path,
+        UQ_YAML.replace(
+            '  operator: "<"\n  evaluator: {type: python, function: m:u}',
+            "  evaluator: {type: python, function: m:u}",
+        ),
+    )
+    assert cfg.uncertainty_criterion.operator is None
+    learner = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build()
+    assert learner.uncertainty_function["operator"] == ""

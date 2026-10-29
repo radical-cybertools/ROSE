@@ -81,7 +81,7 @@ class LearnerBuilder:
                 uq_metric_name=uq_crit.metric,
                 query_size=None,  # unused by the learner; pass via parameters if a task needs it
                 threshold=uq_crit.threshold,
-                operator=uq_crit.operator,
+                operator=uq_crit.operator or "",  # "": the built-in metric's direction
                 as_executable=TaskAdapterFactory.as_executable(uq_crit.evaluator),
             )(TaskAdapterFactory.make_closure(uq_crit.evaluator, cfg.remote))
 
@@ -118,14 +118,12 @@ class LearnerBuilder:
         params = dict(cfg.parameters)
         params["pythonpath"] = list(cfg.remote.pythonpath)
         schedule = _iteration_schedule(params)
-        lc_slots = required & _LEARNER_CONFIG_SLOTS
+        slots = {slot: schedule for slot in required & _LEARNER_CONFIG_SLOTS}
         if cfg.learner.type == "uq_active_learner":
             from rose.uncertainty_quantification.uq_learner import UQLearnerConfig
 
-            return UQLearnerConfig(
-                **{slot: schedule for slot in lc_slots}, criterion=schedule, uncertainty=schedule
-            )
-        return LearnerConfig(**{slot: schedule for slot in lc_slots}, criterion=schedule)
+            return UQLearnerConfig(**slots, criterion=schedule, uncertainty=schedule)
+        return LearnerConfig(**slots, criterion=schedule)
 
     def build_learner_configs(self):
         """LearnerConfig list for parallel learners.
