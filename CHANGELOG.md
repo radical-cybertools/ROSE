@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Streaming for UQ and RL learners**: `SeqUQLearner`, `ParallelUQLearner`,
+  `SequentialReinforcementLearner`, `ParallelReinforcementLearner` and `ParallelExperience`
+  accept `start(stream=...)` with the same semantics as the active learners. UQ adds
+  `publish_on="all"|"any"`.
+- **`skip_environment_step`** for `ParallelExperience` (update runs alone) and
+  `ParallelReinforcementLearner` (passed through to its learners; was dropped).
+
 ### Changed
 - **`LearnerConfig` task fields accept a callable** `(iteration) -> TaskConfig` (or an
   args/kwargs dict), evaluated lazily on every lookup, besides a `TaskConfig` or a
@@ -29,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **YAML spec `iteration` kwarg**: with `max_iter: 0` (unbounded runs) every iteration from 1
   on received `iteration == 0`; the spec builder now computes it per iteration.
 - **`create_adaptive_schedule`**: iterations from 100 on silently lost their adaptive config.
+- **`SequentialReinforcementLearner` without a criterion** crashed after the first iteration
+  (`UnboundLocalError` on `stop_task`).
+- **`ParallelExperience`** never notified trackers and had no stop handling; it now reports
+  iterations and stop reasons like the other learners.
+- **`ParallelUQLearner` / `ParallelReinforcementLearner`** reported `"max_iter_reached"` on a
+  consumer break or cancellation; they now report `"stopped"` and reap their learner tasks.
 - **Task kwargs aliasing**: per-task kwargs added by a learner (e.g. UQ's `--model_name`) no
   longer leak into the shared `LearnerConfig` or the registered task function's defaults.
 

@@ -84,3 +84,34 @@ Windows are formed per learner, so they are identical across learners only with
 `max_wait=None` and `conflate=False`. `on_model_ready` callbacks registered on the
 parallel learner receive states with `learner_id` set. A failing learner stops
 all others. To share one stream between learners, use `ParallelActiveLearner`.
+
+## UQ learners
+
+`SeqUQLearner.start(stream=..., publish_on="all")` and `ParallelUQLearner.start(...)`
+stream the same way. Every model gets its own copy of the window list (items are shared) as first argument
+of its simulation: `simulation(window, *args)` (UQ simulations take no upstream
+result). In stream mode no model is retired, and neither the UQ threshold nor the
+criterion ends the loop. A state is `model_ready` when
+
+- neither an uncertainty function nor a criterion is set, or
+- the UQ threshold is met, or
+- the criterion is met by all models (`publish_on="all"`, default) or by at least
+  one (`publish_on="any"`; `state.criterion_values` tells which).
+
+`state.should_stop` reports UQ threshold met or all models met.
+
+## Reinforcement learners
+
+`SequentialReinforcementLearner`, `ParallelReinforcementLearner` and
+`ParallelExperience` accept `stream=...`. The window goes to the environment task,
+or to the update task with `skip_environment_step=True`:
+
+| Learner | Call |
+|---|---|
+| sequential, environment | `environment(window, *args[, criterion_result])` |
+| sequential, `skip_environment_step` | `update(window, *args[, criterion_result])` |
+| `ParallelExperience` | every environment task gets its own copy of the window list: `environment(window, *args[, criterion_result])` |
+| `ParallelExperience`, `skip_environment_step` | `update(window, *args)`; no environment tasks, no bank merge |
+
+The criterion gates publishing as for the active learners; without a criterion
+every window's model is ready.
