@@ -110,7 +110,8 @@ class LearnerBuilder:
         parameters are defined.
         """
         cfg = self.config
-        if not cfg.parameters and not cfg.remote.pythonpath:
+        uq = cfg.learner.type == "uq_active_learner"  # UQ tasks always get `iteration`
+        if not cfg.parameters and not cfg.remote.pythonpath and not uq:
             return None
         from rose.learner import LearnerConfig
 

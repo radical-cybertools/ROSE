@@ -543,8 +543,7 @@ stop_criterion:                 # evaluated per model; the run ends once all mod
   evaluator: {type: python, function: tasks:check_mse}
 ```
 
-What each task receives (plus `parameters`, `iteration` and `pythonpath` when the spec
-has `parameters` or `remote.pythonpath`):
+What each task receives (plus `iteration`, and `parameters` / `pythonpath` when set):
 
 | Task | Positional | Extra kwargs |
 |---|---|---|
@@ -558,8 +557,8 @@ has `parameters` or `remote.pythonpath`):
 The `--` keys are not valid Python identifiers: Python tasks must accept `**kwargs`
 and read `kwargs["--model_name"]`; shell commands use `{--model_name}`. Shell tasks
 get no positional arguments: exchange data via files. For built-in UQ metrics
-(e.g. `predictive_variance`) the metric's own direction applies and `operator` is
-ignored; custom metric names need an `operator`. A full example is in
+(e.g. `predictive_variance`) the metric's own direction applies: omit `operator`
+or set it to that direction. Custom metric names need an `operator`. A full example is in
 `examples/spec/uq/`.
 
 ---

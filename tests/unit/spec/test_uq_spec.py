@@ -149,3 +149,9 @@ def test_uncertainty_operator_rules(tmp_path, metric, operator, ok):
     else:
         with pytest.raises(ValueError, match="operator"):
             load(tmp_path, text)
+
+
+def test_uq_tasks_get_iteration_without_parameters(tmp_path):
+    cfg = load(tmp_path, UQ_YAML.replace("parameters:\n  dataset: ds\n", ""))
+    lc = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build_learner_config()
+    assert lc.get_task_config("training", 2).kwargs["iteration"] == 2

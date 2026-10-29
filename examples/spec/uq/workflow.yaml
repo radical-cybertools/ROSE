@@ -7,7 +7,7 @@ learner:
   num_predictions: 2
 
 parameters:
-  noise: 0.05               # also makes kwargs["iteration"] available to the tasks
+  noise: 0.05
 
 simulation:
   type: python
