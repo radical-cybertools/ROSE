@@ -47,6 +47,20 @@ class UncertaintyCriterionDef(StopCriterionDef):
     # built-in UQ metrics bring their own direction; custom metric names need an operator
     operator: Literal["<", ">", "==", "<=", ">="] | None = None
 
+    @model_validator(mode="after")
+    def _check_operator(self) -> UncertaintyCriterionDef:
+        from rose.metrics import LearningMetrics
+
+        if LearningMetrics.is_supported_metric(self.metric):
+            builtin = LearningMetrics.get_operator(self.metric)
+            if self.operator is not None and self.operator != builtin:
+                raise ValueError(
+                    f"'{self.metric}' uses operator '{builtin}'; omit 'operator' or set it so"
+                )
+        elif self.operator is None:
+            raise ValueError(f"custom uncertainty metric '{self.metric}' requires an 'operator'")
+        return self
+
 
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
 class CallbackDef(BaseModel):
@@ -237,7 +251,7 @@ class TrackingConfig(BaseModel):
 
 # Keys the builder always injects — users must not put these in parameters:
 _RESERVED_PARAMETER_KEYS: frozenset[str] = frozenset(
-    {"learner_id", "learner_label", "iteration", "pythonpath", "--model_name", "--iteration"}
+    {"learner_id", "learner_label", "iteration", "pythonpath"}
 )
 
 
@@ -327,6 +341,9 @@ class WorkflowConfig(BaseModel):
                 raise ValueError("'learner.model_names' must be unique")
             if self.uncertainty_criterion is None:
                 raise ValueError("uq_active_learner requires 'uncertainty_criterion'")
+            injected = {"--model_name", "--iteration"} & set(self.parameters)
+            if injected:
+                raise ValueError(f"'parameters' must not use reserved keys: {sorted(injected)}")
             if learner.publish_on is not None and (
                 self.stream is None or self.stop_criterion is None
             ):

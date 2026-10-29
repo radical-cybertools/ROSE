@@ -127,3 +127,25 @@ def test_uncertainty_operator_defaults_to_metric_direction(tmp_path):
     assert cfg.uncertainty_criterion.operator is None
     learner = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build()
     assert learner.uncertainty_function["operator"] == ""
+
+
+@pytest.mark.parametrize(
+    ("metric", "operator", "ok"),
+    [
+        ("my_spread", None, False),
+        ("my_spread", ">", True),
+        ("predictive_entropy", "<", True),
+        ("predictive_entropy", ">", False),
+    ],
+)
+def test_uncertainty_operator_rules(tmp_path, metric, operator, ok):
+    text = UQ_YAML.replace("metric: predictive_entropy", f"metric: {metric}").replace(
+        '  operator: "<"\n  evaluator: {type: python, function: m:u}',
+        (f'  operator: "{operator}"\n' if operator else "")
+        + "  evaluator: {type: python, function: m:u}",
+    )
+    if ok:
+        load(tmp_path, text)
+    else:
+        with pytest.raises(ValueError, match="operator"):
+            load(tmp_path, text)
