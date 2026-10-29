@@ -17,10 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returning async iterators) and `on_model_ready`, for the sequential/parallel active learners and
   the sequential RL learner. `stop_criterion` is optional with a stream. Sources and the callback
   run on the client and are import-checked before any backend or HPC job starts.
+- **Spec-driven UQ runs**: `uq_active_learner` specs now run (`rose run`, `--remote`), via
+  `learner.model_names`, `learner.num_predictions` and an `uncertainty_criterion` block, also
+  with `stream:` (plus `learner.publish_on`).
 - **`skip_environment_step`** for `ParallelExperience` (update runs alone) and
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
 ### Changed
+- **YAML spec**: the `uncertainty:` task slot is replaced by `uncertainty_criterion` (it never
+  worked: the threshold had no place in the spec).
+- **`UQLearner.uncertainty_quantification`**: `query_size` may be `None` (the learner never
+  reads it).
 - **`LearnerConfig` task fields accept a callable** `(iteration) -> TaskConfig` (or an
   args/kwargs dict), evaluated lazily on every lookup, besides a `TaskConfig` or a
   per-iteration dict. It must be a deterministic function of the iteration. A `LearnerConfig`
@@ -33,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it instead.
 
 ### Fixed
+- **UQ criterion config**: `SeqUQLearner` ignored the `criterion` entry of its
+  `learning_config`; it now applies it per iteration like the other learners (e.g. a
+  `criterion=TaskConfig(kwargs=...)` is now passed to the criterion task).
 - **YAML spec**: a `learners:` block on a non-parallel learner type was accepted and silently used;
   it is now rejected.
 - **Parallel learners report their final state to trackers**: `ParallelActiveLearner`,

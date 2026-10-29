@@ -43,6 +43,25 @@ class StopCriterionDef(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class UncertaintyCriterionDef(StopCriterionDef):
+    # built-in UQ metrics bring their own direction; custom metric names need an operator
+    operator: Literal["<", ">", "==", "<=", ">="] | None = None
+
+    @model_validator(mode="after")
+    def _check_operator(self) -> UncertaintyCriterionDef:
+        from rose.metrics import LearningMetrics
+
+        if LearningMetrics.is_supported_metric(self.metric):
+            builtin = LearningMetrics.get_operator(self.metric)
+            if self.operator is not None and self.operator != builtin:
+                raise ValueError(
+                    f"'{self.metric}' uses operator '{builtin}'; omit 'operator' or set it so"
+                )
+        elif self.operator is None:
+            raise ValueError(f"custom uncertainty metric '{self.metric}' requires an 'operator'")
+        return self
+
+
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
 class CallbackDef(BaseModel):
     function: str  # "module:callable", called with the IterationState
@@ -83,6 +102,7 @@ _STREAM_WINDOW_SLOT: dict[str, str] = {
     "sequential_active_learner": "simulation",
     "parallel_active_learner": "simulation",
     "sequential_reinforcement_learner": "environment",
+    "uq_active_learner": "simulation",
 }
 
 
@@ -91,9 +111,7 @@ _REQUIRED_SLOTS: dict[str, frozenset[str]] = {
     "sequential_active_learner": frozenset({"simulation", "training", "active_learn"}),
     "parallel_active_learner": frozenset({"simulation", "training", "active_learn"}),
     "sequential_reinforcement_learner": frozenset({"environment", "update"}),
-    "uq_active_learner": frozenset(
-        {"simulation", "training", "prediction", "active_learn", "uncertainty"}
-    ),
+    "uq_active_learner": frozenset({"simulation", "training", "prediction", "active_learn"}),
 }
 _ALL_SLOTS: frozenset[str] = frozenset().union(*_REQUIRED_SLOTS.values())
 
@@ -102,6 +120,10 @@ class LearnerSpec(BaseModel):
     type: str
     max_iter: int = 0
     parallel_learners: int = 2  # used only when learners: is absent for parallel types
+    # uq_active_learner only
+    model_names: list[str] | None = None
+    num_predictions: int | None = Field(None, ge=1)
+    publish_on: Literal["all", "any"] | None = None  # with stream only
 
     model_config = {"extra": "forbid"}
 
@@ -115,7 +137,6 @@ class LearnerDef(BaseModel):
     environment: TaskDef | None = None
     update: TaskDef | None = None
     prediction: TaskDef | None = None
-    uncertainty: TaskDef | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -245,9 +266,10 @@ class WorkflowConfig(BaseModel):
     environment: TaskDef | None = None
     update: TaskDef | None = None
     prediction: TaskDef | None = None
-    uncertainty: TaskDef | None = None
     learners: list[LearnerDef] | None = None
     stop_criterion: StopCriterionDef | None = None  # required unless stream is set
+    # uq_active_learner: the uncertainty task and its threshold (metric = uq metric name)
+    uncertainty_criterion: UncertaintyCriterionDef | None = None
     stream: StreamDef | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
@@ -307,6 +329,36 @@ class WorkflowConfig(BaseModel):
             extra = present - required
             if extra:
                 raise ValueError(f"Unexpected task fields for '{ltype}': {sorted(extra)}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_uq(self) -> WorkflowConfig:
+        learner = self.learner
+        if learner.type == "uq_active_learner":
+            if not learner.model_names:
+                raise ValueError("uq_active_learner requires 'learner.model_names'")
+            if len(set(learner.model_names)) != len(learner.model_names):
+                raise ValueError("'learner.model_names' must be unique")
+            if self.uncertainty_criterion is None:
+                raise ValueError("uq_active_learner requires 'uncertainty_criterion'")
+            injected = {"--model_name", "--iteration"} & set(self.parameters)
+            if injected:
+                raise ValueError(f"'parameters' must not use reserved keys: {sorted(injected)}")
+            if learner.publish_on is not None and (
+                self.stream is None or self.stop_criterion is None
+            ):
+                raise ValueError("'learner.publish_on' requires 'stream' and 'stop_criterion'")
+        else:
+            # `is not None`, not fields-set: workflow_with() re-validates explicit None values
+            uq_only = {
+                "learner.model_names": learner.model_names,
+                "learner.num_predictions": learner.num_predictions,
+                "learner.publish_on": learner.publish_on,
+                "uncertainty_criterion": self.uncertainty_criterion,
+            }
+            given = sorted(k for k, v in uq_only.items() if v is not None)
+            if given:
+                raise ValueError(f"{given} only apply to uq_active_learner")
         return self
 
     @model_validator(mode="after")

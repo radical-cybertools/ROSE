@@ -10,7 +10,7 @@ ROSE does not own the science. It owns the **orchestration loop**: submit a task
 
 You bring:
 
-- A `simulate` / `train` / `active_learn` (or `environment` / `update`, or `prediction` / `uncertainty`) implementation, as a plain Python function or a shell command.
+- A `simulate` / `train` / `active_learn` (or `environment` / `update`, or `prediction` plus an uncertainty evaluator) implementation, as a plain Python function or a shell command.
 - The environment that implementation needs (packages, data, scripts).
 - The decision of where it should run — a laptop, a login node, or a leadership-class HPC allocation.
 

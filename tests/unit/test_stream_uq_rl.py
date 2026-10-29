@@ -301,3 +301,25 @@ async def test_parallel_rl_stop_unblocks_waiting_learners(monkeypatch):
 
     assert await asyncio.wait_for(pending, timeout=5.0) == []
     assert tracker.on_stop.call_args.args[1] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_uq_criterion_uses_per_iteration_config():
+    from rose.learner import TaskConfig
+    from rose.uncertainty_quantification.uq_learner import UQLearnerConfig
+
+    learner, calls = make_uq(metrics=lambda task_obj, n: 0.5)
+    seen = []
+    reg = learner._register_task
+
+    def spy(task_obj, deps=None):
+        if task_obj["name"] == "crit":
+            seen.append(dict(task_obj["kwargs"]))
+        return reg(task_obj, deps)
+
+    learner._register_task = spy
+    config = UQLearnerConfig(criterion=lambda i: TaskConfig(kwargs={"it": i}))
+
+    await collect(learner.start(model_names=["m1"], max_iter=1, learning_config=config))
+
+    assert seen == [{"it": 0, "--model_name": "m1"}]

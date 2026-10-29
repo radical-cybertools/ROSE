@@ -1,0 +1,41 @@
+# UQ-based active learning from YAML: an ensemble of two models, two predictions each.
+#   python run_me.py            (or: rose run workflow.yaml --local --backend concurrent)
+learner:
+  type: uq_active_learner
+  max_iter: 10
+  model_names: [ridge, poly]
+  num_predictions: 2
+
+parameters:
+  noise: 0.05
+
+simulation:
+  type: python
+  function: tasks:simulate
+
+training:                  # gets kwargs["--model_name"]
+  type: python
+  function: tasks:train
+
+prediction:                # gets kwargs["--model_name"] and kwargs["--iteration"] (prediction index)
+  type: python
+  function: tasks:predict
+
+active_learn:              # gets the uncertainty value
+  type: python
+  function: tasks:active_learn
+
+uncertainty_criterion:     # ends the run once the ensemble agrees (built-in metric: "<")
+  metric: predictive_variance
+  threshold: 0.0005
+  evaluator:
+    type: python
+    function: tasks:ensemble_variance
+
+stop_criterion:            # per model, gets kwargs["--model_name"]; here: never met
+  metric: slope_error
+  threshold: 0.0
+  operator: "<"
+  evaluator:
+    type: python
+    function: tasks:slope_error
