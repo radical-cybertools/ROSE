@@ -169,6 +169,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
@@ -937,9 +938,11 @@ class ParallelReinforcementLearner(ReinforcementLearner):
 
             return run_learner
 
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
             async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
+                self._track_parallel_state(state)
                 self._notify_trackers_iteration(state)
                 yield state
         except Exception:

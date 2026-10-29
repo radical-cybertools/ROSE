@@ -168,6 +168,7 @@ class SeqUQLearner(UQLearner):
         # Track iterations and results for this pipeline
         iteration_count: int = 0
         stop_training = {name: False for name in model_names}
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
 
         # Initialize tasks for pre-loop
@@ -573,9 +574,11 @@ class ParallelUQLearner(SeqUQLearner):
 
             return run_learner
 
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
             async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
+                self._track_parallel_state(state)
                 self._notify_trackers_iteration(state)
                 yield state
         except Exception:

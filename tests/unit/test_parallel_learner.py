@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,6 +165,56 @@ class TestParallelActiveLearner:
             # Verify metric collection
             assert "learner-0" in configured_parallel_learner.metric_values_per_iteration
             assert "learner-1" in configured_parallel_learner.metric_values_per_iteration
+
+    @pytest.mark.asyncio
+    async def test_trackers_get_final_state(self, configured_parallel_learner):
+        async def mock_start(*args, **kwargs):
+            yield IterationState(iteration=0)
+
+        mock_sequential = MagicMock()
+        mock_sequential.start = mock_start
+        mock_sequential.metric_values_per_iteration = {}
+        tracker = MagicMock()
+        configured_parallel_learner._trackers.append(tracker)
+
+        with patch.object(
+            configured_parallel_learner, "_create_sequential_learner", return_value=mock_sequential
+        ):
+            states = [
+                s async for s in configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+            ]
+
+        assert tracker.on_stop.call_args.args[0] is states[-1]
+
+    @pytest.mark.asyncio
+    async def test_trackers_final_state_is_most_advanced(self, configured_parallel_learner):
+        fast_done = asyncio.Event()
+
+        async def fast(*args, **kwargs):
+            for i in range(3):
+                yield IterationState(iteration=i)
+            fast_done.set()
+
+        async def slow(*args, **kwargs):
+            await fast_done.wait()  # arrive last, deterministically
+            yield IterationState(iteration=0)
+
+        children = [MagicMock(start=fast), MagicMock(start=slow)]
+        for child in children:
+            child.metric_values_per_iteration = {}
+        tracker = MagicMock()
+        configured_parallel_learner._trackers.append(tracker)
+
+        with patch.object(
+            configured_parallel_learner, "_create_sequential_learner", side_effect=children
+        ):
+            states = [
+                s async for s in configured_parallel_learner.start(parallel_learners=2, max_iter=3)
+            ]
+
+        assert states[-1].learner_id == 1  # the slow learner arrives last
+        final = tracker.on_stop.call_args.args[0]
+        assert (final.learner_id, final.iteration) == (0, 2)
 
     @pytest.mark.asyncio
     async def test_start_learner_failure_handling(self, configured_parallel_learner):

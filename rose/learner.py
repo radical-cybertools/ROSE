@@ -1006,6 +1006,12 @@ class Learner:
             parallel_count=None,  # overridden by parallel learners
         )
 
+    def _track_parallel_state(self, state: IterationState) -> None:
+        """Parallel parents: keep the most advanced learner's last state as final_state."""
+        current = self._iteration_state
+        if current is None or state.iteration >= current.iteration:
+            self._iteration_state = state
+
     def _notify_trackers_iteration(self, state: IterationState) -> None:
         """Notify all registered trackers of a completed iteration.
 
@@ -1027,8 +1033,8 @@ class Learner:
         Called from the ``finally`` block of every ``start()`` implementation.
 
         Args:
-            final_state: Last yielded ``IterationState``, or ``None`` if no
-                iterations ran.
+            final_state: Last yielded ``IterationState`` (parallel learners: last
+                state of the most advanced learner), or ``None`` if no iterations ran.
             reason: Exit reason — ``"criterion_met"``, ``"max_iter_reached"``,
                 ``"stopped"``, ``"stream_exhausted"``, or ``"error"``.
         """

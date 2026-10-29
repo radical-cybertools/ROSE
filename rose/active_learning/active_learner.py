@@ -134,6 +134,7 @@ class SequentialActiveLearner(Learner):
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
 
         # a Subscription is passed in by ParallelActiveLearner
@@ -144,7 +145,7 @@ class SequentialActiveLearner(Learner):
             if self.is_stopped:
                 sub.wake()  # stop() came before the subscription existed
         window_size: int | None = None
-        last_should_stop = False  # of this run; self._iteration_state may be stale
+        last_should_stop = False  # of this run
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Active Learner{learner_suffix}")
@@ -613,6 +614,7 @@ class ParallelActiveLearner(Learner):
 
             return run_learner
 
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
             # aclosing: a consumer break must reap the learner tasks before unsubscribing
@@ -620,6 +622,7 @@ class ParallelActiveLearner(Learner):
                 _stream_parallel([make_run_fn(i) for i in range(parallel_learners)])
             ) as states:
                 async for state in states:
+                    self._track_parallel_state(state)
                     self._notify_trackers_iteration(state)
                     yield state
             if self.is_stopped:

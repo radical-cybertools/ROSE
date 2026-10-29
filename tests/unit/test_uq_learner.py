@@ -258,6 +258,30 @@ class TestParallelUQLearner:
             assert "learner-l2" in configured_parallel_learner.metric_values_per_iteration
 
     @pytest.mark.asyncio
+    async def test_trackers_get_final_state(self, configured_parallel_learner):
+        mock_sequential = MagicMock(spec=SeqUQLearner)
+        mock_sequential.start = mock_start_iterator
+        mock_sequential.metric_values_per_iteration = {}
+        mock_sequential.uncertainty_values_per_iteration = {}
+        tracker = MagicMock()
+        configured_parallel_learner._trackers.append(tracker)
+
+        with patch.object(
+            configured_parallel_learner, "_create_sequential_learner", return_value=mock_sequential
+        ):
+            states = [
+                s
+                async for s in configured_parallel_learner.start(
+                    learner_names=["l1", "l2"],
+                    learner_configs={"l1": None, "l2": None},
+                    model_names=["m1"],
+                    max_iter=1,
+                )
+            ]
+
+        assert tracker.on_stop.call_args.args[0] is states[-1]
+
+    @pytest.mark.asyncio
     async def test_teach_learner_failure_handling(self, configured_parallel_learner):
         """Test handling of learner failures in parallel execution."""
         # Create a mock sequential learner that fails

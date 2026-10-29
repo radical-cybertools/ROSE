@@ -166,6 +166,26 @@ class TestParallelReinforcementLearner:
             assert "learner-1" in configured_parallel_learner.metric_values_per_iteration
 
     @pytest.mark.asyncio
+    async def test_trackers_get_final_state(self, configured_parallel_learner):
+        async def mock_start(*args, **kwargs):
+            yield IterationState(iteration=0)
+
+        mock_sequential = MagicMock()
+        mock_sequential.start = mock_start
+        mock_sequential.metric_values_per_iteration = {}
+        tracker = MagicMock()
+        configured_parallel_learner._trackers.append(tracker)
+
+        with patch.object(
+            configured_parallel_learner, "_create_sequential_learner", return_value=mock_sequential
+        ):
+            states = [
+                s async for s in configured_parallel_learner.start(parallel_learners=2, max_iter=1)
+            ]
+
+        assert tracker.on_stop.call_args.args[0] is states[-1]
+
+    @pytest.mark.asyncio
     async def test_start_handles_learner_exceptions(self, configured_parallel_learner):
         """Test that start properly handles exceptions from individual learners."""
 
