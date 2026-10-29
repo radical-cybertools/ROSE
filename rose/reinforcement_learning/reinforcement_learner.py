@@ -625,7 +625,7 @@ class ParallelExperience(ReinforcementLearner):
                 experience banks are merged; the update task runs alone.
             stream: Optional :class:`~rose.stream.Stream`. Each iteration waits
                 for a window, passed as first argument to every environment task
-                (each gets its own copy), or to the update task with
+                (each gets its own list; items are shared), or to the update task with
                 ``skip_environment_step``. A met criterion marks the state
                 ``model_ready`` (always set without a criterion) and fires
                 :meth:`on_model_ready` instead of ending the loop.

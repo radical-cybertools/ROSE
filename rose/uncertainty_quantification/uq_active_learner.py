@@ -148,7 +148,7 @@ class SeqUQLearner(UQLearner):
                     "simulation",
                     iteration_count,
                 )
-                # each model gets its own copy of the window
+                # each model gets its own copy of the window list (items are shared)
                 self._inject_window(None if window is None else list(window), sim_config)
 
                 training_config: TaskConfig = copy.deepcopy(
@@ -312,7 +312,7 @@ class SeqUQLearner(UQLearner):
                     if self.is_stopped:
                         _stop_reason = "stopped"
                         break
-                    stops = dict(zip(stop_tasks.keys(), results, strict=False))
+                    stops = dict(zip(stop_tasks.keys(), results, strict=True))
 
                     model_stop: bool
                     stop_value: float
@@ -629,7 +629,7 @@ class ParallelUQLearner(SeqUQLearner):
             raise ValueError(f"publish_on must be 'all' or 'any', got {publish_on!r}")
 
         subs = dict(
-            zip(learner_names, self._subscribe_children(stream, len(learner_names)), strict=False)
+            zip(learner_names, self._subscribe_children(stream, len(learner_names)), strict=True)
         )
 
         print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")

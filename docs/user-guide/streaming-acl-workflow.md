@@ -88,7 +88,7 @@ all others. To share one stream between learners, use `ParallelActiveLearner`.
 ## UQ learners
 
 `SeqUQLearner.start(stream=..., publish_on="all")` and `ParallelUQLearner.start(...)`
-stream the same way. Every model gets its own copy of the window as first argument
+stream the same way. Every model gets its own copy of the window list (items are shared) as first argument
 of its simulation: `simulation(window, *args)` (UQ simulations take no upstream
 result). In stream mode no model is retired, and neither the UQ threshold nor the
 criterion ends the loop. A state is `model_ready` when
@@ -110,7 +110,7 @@ or to the update task with `skip_environment_step=True`:
 |---|---|
 | sequential, environment | `environment(window, *args[, criterion_result])` |
 | sequential, `skip_environment_step` | `update(window, *args[, criterion_result])` |
-| `ParallelExperience` | every environment task gets its own copy: `environment(window, *args[, criterion_result])` |
+| `ParallelExperience` | every environment task gets its own copy of the window list: `environment(window, *args[, criterion_result])` |
 | `ParallelExperience`, `skip_environment_step` | `update(window, *args)`; no environment tasks, no bank merge |
 
 The criterion gates publishing as for the active learners; without a criterion
