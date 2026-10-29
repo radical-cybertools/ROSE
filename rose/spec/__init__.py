@@ -26,7 +26,7 @@ def load_spec(path: str | Path, validate_imports: bool = False) -> WorkflowSpec:
     spec = WorkflowSpec(WorkflowConfig.from_yaml(path))
     if validate_imports:
         _validate_task_imports(spec.config)
-        resolve_client_callables(spec.config)
+        resolve_client_callables(spec.config, keep_path=False)
     return spec
 
 
@@ -55,11 +55,7 @@ def _validate_task_imports(cfg: WorkflowConfig) -> None:
     import importlib
     import sys as _sys
 
-    # remote.pythonpath (workers) and the YAML dir (as for `rose run --local`)
-    paths = list(cfg.remote.pythonpath)
-    if cfg._source_dir is not None:
-        paths.append(str(cfg._source_dir))
-    added = [p for p in paths if p not in _sys.path]
+    added = [p for p in cfg.remote.pythonpath if p not in _sys.path]
     for p in added:
         _sys.path.insert(0, p)
     try:

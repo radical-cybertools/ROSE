@@ -224,3 +224,25 @@ async def test_unstarted_sources_closed_on_aclose():
     stream = Stream(sources=gen)
     await stream.aclose()  # never pulled: the pump never ran
     assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_sources_closed_when_stream_closed_before_first_pull():
+    from rose import Stream
+
+    closed = []
+
+    async def source():
+        try:
+            yield 1
+        finally:
+            closed.append(True)
+
+    gen = source()
+    await gen.__anext__()
+    stream = Stream(sources=gen)
+    sub = stream._subscribe()
+    stream.close()
+    assert await sub.next_window() == []  # _start() on a closed stream
+    await stream.aclose()
+    assert closed == [True]

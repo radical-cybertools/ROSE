@@ -39,20 +39,28 @@ def _client_path(cfg: WorkflowConfig) -> None:
         sys.path.insert(0, str(source_dir))
 
 
-def resolve_client_callables(cfg: WorkflowConfig) -> None:
+def resolve_client_callables(cfg: WorkflowConfig, keep_path: bool = True) -> None:
     """Import the client-side callables now, so a typo fails before any backend or HPC job starts.
+
+    Args:
+        keep_path: Keep the YAML dir on sys.path afterwards (for the run); False for a pure check.
 
     Raises:
         ValueError: Listing every callable that cannot be imported or is not callable.
     """
+    before = list(sys.path)
     _client_path(cfg)
     failures = []
-    for spec in client_specs(cfg):
-        try:
-            if not callable(_resolve(spec)):
-                failures.append(f"  {spec!r}: not callable")
-        except Exception as exc:  # any import-time error of the user's module
-            failures.append(f"  {spec!r}: {exc}")
+    try:
+        for spec in client_specs(cfg):
+            try:
+                if not callable(_resolve(spec)):
+                    failures.append(f"  {spec!r}: not callable")
+            except Exception as exc:  # any import-time error of the user's module
+                failures.append(f"  {spec!r}: {exc}")
+    finally:
+        if not keep_path:
+            sys.path[:] = before
     if failures:
         raise ValueError(
             "stream callables are not importable on the client:\n" + "\n".join(failures)
@@ -69,6 +77,9 @@ async def _build_stream(stream_def: StreamDef):
             if inspect.isawaitable(source):
                 source = await source
             if not hasattr(source, "__aiter__"):
+                close = getattr(source, "close", None)
+                if callable(close):
+                    close()  # e.g. a sync generator returned by mistake
                 raise TypeError(f"stream source {src.function!r} did not return an async iterator")
             sources.append(source)
     except BaseException:
