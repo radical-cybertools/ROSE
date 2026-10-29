@@ -166,10 +166,29 @@ class TestLearnerConfigGetTaskConfig:
         assert config.get_task_config("training", 1234).kwargs == {"--it": "1234"}
 
     def test_callable_accepted_for_uq_uncertainty(self):
-        from rose.uq.uq_learner import UQLearnerConfig
+        from rose.uncertainty_quantification.uq_learner import UQLearnerConfig
 
         config = UQLearnerConfig(uncertainty=lambda i: TaskConfig(kwargs={"i": i}))
         assert config.get_task_config("uncertainty", 3).kwargs == {"i": 3}
+
+    def test_callable_may_return_args_kwargs_dict(self):
+        config = LearnerConfig(training=lambda i: {"kwargs": {"--it": str(i)}})
+        assert config.get_task_config("training", 2) == TaskConfig(kwargs={"--it": "2"})
+
+    def test_callable_with_bad_result_raises(self):
+        config = LearnerConfig(training=lambda i: {"bogus": i})
+        with pytest.raises(ValueError):
+            config.get_task_config("training", 0)
+
+    def test_adaptive_schedule_is_memoized(self):
+        calls = []
+        schedule = Learner(MagicMock(spec=WorkflowEngine)).create_adaptive_schedule(
+            "training", lambda i: calls.append(i) or {"kwargs": {"n": len(calls)}}
+        )
+        config = LearnerConfig(training=schedule)
+        first = config.get_task_config("training", 4)
+        assert config.get_task_config("training", 4) is first
+        assert calls == [4]
 
     def test_adaptive_schedule_has_no_iteration_limit(self):
         learner = Learner(MagicMock(spec=WorkflowEngine))

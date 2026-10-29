@@ -19,9 +19,9 @@ def _iteration_schedule(base: dict):
 
     A factory, so each learner's schedule binds its own ``base`` (no late binding in loops).
     """
-    from rose.learner import TaskConfig
+    from rose.learner import adaptive_schedule
 
-    return lambda n: TaskConfig(kwargs={**base, "iteration": n})
+    return adaptive_schedule(lambda n: {"kwargs": {**base, "iteration": n}})
 
 
 def _get_learner_class(learner_type: str):

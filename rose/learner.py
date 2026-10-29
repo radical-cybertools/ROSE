@@ -185,10 +185,32 @@ class TaskConfig(BaseModel):
         }
 
 
-# A task's configuration: one TaskConfig for all iterations, a dict keyed by iteration (-1 or
-# 'default' as fallback), or a callable mapping the iteration to a TaskConfig. The callable form
-# is evaluated on every lookup and is not JSON/pickle-serializable.
+# A task's configuration: one TaskConfig for all iterations, a dict keyed by iteration (-1 as
+# fallback), or a callable mapping the iteration to a TaskConfig (or an equivalent args/kwargs
+# dict). A callable is evaluated on every lookup, including by trackers, so it must be
+# deterministic; it is not JSON/pickle-serializable.
 TaskSchedule = TaskConfig | dict[int, TaskConfig] | Callable[[int], TaskConfig] | None
+
+
+def adaptive_schedule(
+    param_schedule: Callable[[int], dict[str, Any]],
+) -> Callable[[int], TaskConfig]:
+    """Lazy schedule: ``param_schedule(iteration)`` returns an args/kwargs dict.
+
+    Results are memoized per iteration, so the learner and trackers see the same config even
+    if ``param_schedule`` is not deterministic.
+    """
+    cache: dict[int, TaskConfig] = {}
+
+    def schedule(iteration: int) -> TaskConfig:
+        if iteration not in cache:
+            config = param_schedule(iteration)
+            cache[iteration] = TaskConfig(
+                args=config.get("args", ()), kwargs=config.get("kwargs", {})
+            )
+        return cache[iteration]
+
+    return schedule
 
 
 class LearnerConfig(BaseModel):
@@ -261,7 +283,10 @@ class LearnerConfig(BaseModel):
 
         # A callable computes the config for this iteration
         if callable(task_config):
-            return task_config(iteration)
+            result = task_config(iteration)
+            if result is None or isinstance(result, TaskConfig):
+                return result
+            return TaskConfig.model_validate(result)  # args/kwargs dict; raises on bad shape
 
         return None
 
@@ -438,12 +463,7 @@ class Learner:
 
             adaptive_config = learner.create_adaptive_schedule('training', adaptive_lr)
         """
-
-        def schedule(iteration: int) -> TaskConfig:
-            config = param_schedule(iteration)
-            return TaskConfig(args=config.get("args", ()), kwargs=config.get("kwargs", {}))
-
-        return schedule
+        return adaptive_schedule(param_schedule)
 
     def register_decorator(self, task_attr_name: str) -> Callable:
         """Decorator factory that registers a task function under a given name."""
