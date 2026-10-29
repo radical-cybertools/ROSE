@@ -294,6 +294,7 @@ class SeqUQLearner(UQLearner):
                 # Check stop criterion if configured
                 metric_value: float | None = None
                 should_stop = False
+                should_stop_count = 0  # models that met the criterion this iteration
 
                 if self.criterion_function:
                     stop_tasks = {}
@@ -315,7 +316,6 @@ class SeqUQLearner(UQLearner):
                     model_stop: bool
                     stop_value: float
                     # The pipeline will stop once all models meet the exit criteria.
-                    should_stop_count: int = 0
                     final_results = []
                     for model_name, stop in stops.items():
                         model_stop, stop_value = self._check_stop_criterion(stop)
@@ -345,14 +345,11 @@ class SeqUQLearner(UQLearner):
                             f"with value: {stop_value}"
                         )
 
+                crit_all = should_stop  # all evaluated models met the criterion
                 should_stop = should_stop or uq_met
                 model_ready = False
                 if sub is not None:
-                    crit_gate = self.criterion_function and (
-                        should_stop_count == len(stops)
-                        if publish_on == "all"
-                        else should_stop_count > 0
-                    )
+                    crit_gate = crit_all if publish_on == "all" else should_stop_count > 0
                     no_gate = not self.uncertainty_function and not self.criterion_function
                     model_ready = bool(no_gate or uq_met or crit_gate)
 
@@ -621,6 +618,8 @@ class ParallelUQLearner(SeqUQLearner):
         learner_configs = learner_configs or {name: None for name in learner_names}
         if len(learner_configs) != len(learner_names):
             raise ValueError("learner_configs length must match learner_names")
+        if len(set(learner_names)) != len(learner_names):
+            raise ValueError("learner_names must be unique")
         if stream is not None and skip_pre_loop:
             raise ValueError("stream cannot be combined with skip_pre_loop")
         if publish_on not in ("all", "any"):
