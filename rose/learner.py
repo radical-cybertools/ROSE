@@ -203,14 +203,14 @@ def _as_task_config(result: Any) -> TaskConfig | None:
 
 
 def _memoized_schedule(schedule: Callable[[int], Any]) -> Callable[[int], TaskConfig | None]:
-    if getattr(schedule, "_rose_memoized", False):
-        return schedule
+    """Wrap a schedule with its own cache; re-wrapping (config copies) starts a fresh cache."""
+    schedule = getattr(schedule, "_rose_schedule", schedule)
 
     @functools.lru_cache(maxsize=8)  # the learner looks up i and i + 1; trackers look up i
     def memoized(iteration: int) -> TaskConfig | None:
         return _as_task_config(schedule(iteration))
 
-    memoized._rose_memoized = True
+    memoized._rose_schedule = schedule
     return memoized
 
 
@@ -260,6 +260,7 @@ class LearnerConfig(BaseModel):
         """Pydantic configuration for LearnerConfig."""
 
         extra = "forbid"
+        validate_assignment = True  # assigned schedules are memoized and checked too
         json_encoders = {
             tuple: list,
         }
