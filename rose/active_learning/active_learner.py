@@ -9,7 +9,7 @@ from typing import Any
 from radical.asyncflow import WorkflowEngine
 
 from ..learner import IterationState, Learner, LearnerConfig, _stream_parallel
-from ..stream import Stream, _Subscription
+from ..stream import Stream
 
 
 class SequentialActiveLearner(Learner):
@@ -138,12 +138,7 @@ class SequentialActiveLearner(Learner):
         _stop_reason = "max_iter_reached"
 
         # a Subscription is passed in by ParallelActiveLearner
-        sub = None
-        if stream is not None:
-            sub = stream if isinstance(stream, _Subscription) else stream._subscribe()
-            self._subscriptions.append(sub)
-            if self.is_stopped:
-                sub.wake()  # stop() came before the subscription existed
+        sub = self._subscribe_stream(stream)
         window_size: int | None = None
         last_should_stop = False  # of this run
 
@@ -331,23 +326,8 @@ class SequentialActiveLearner(Learner):
             _stop_reason = "error"
             raise
         finally:
-            if sub is not None:
-                sub.unsubscribe()
-                self._subscriptions.remove(sub)
+            self._release_stream(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
-
-    @staticmethod
-    async def _pull_window(sub: _Subscription | None) -> list[Any] | None:
-        """Next window, None without stream; empty means stopped or exhausted."""
-        return await sub.next_window() if sub is not None else None
-
-    @staticmethod
-    def _inject_window(window: list[Any] | None, task_config: dict[str, Any]) -> int | None:
-        """Prepend the window to the task's args; return its size (None without stream)."""
-        if window is None:
-            return None
-        task_config["args"] = (window, *task_config["args"])
-        return len(window)
 
     def set_next_config(self, config: LearnerConfig) -> None:
         """Set configuration for the next iteration.
@@ -572,9 +552,7 @@ class ParallelActiveLearner(Learner):
         if stream is not None and skip_pre_loop:
             raise ValueError("stream cannot be combined with skip_pre_loop")
 
-        # subscribe all learners before any pulls a window, so all see the backlog
-        subs = [stream._subscribe() if stream is not None else None for _ in learner_configs]
-        self._subscriptions.extend(sub for sub in subs if sub is not None)
+        subs = self._subscribe_children(stream, parallel_learners)
 
         print(f"Starting Parallel Active Learning with {parallel_learners} learners")
 
@@ -585,9 +563,7 @@ class ParallelActiveLearner(Learner):
                     sequential_learner: SequentialActiveLearner = self._create_sequential_learner(
                         learner_id, learner_configs[learner_id]
                     )
-                    if stream is not None:
-                        # parent stop() wakes the subscription and stops the learner
-                        sequential_learner._stop_event = self._stop_event
+                    self._adopt_child(sequential_learner, stream)
                     async for state in sequential_learner.start(
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
@@ -625,10 +601,7 @@ class ParallelActiveLearner(Learner):
                     self._track_parallel_state(state)
                     self._notify_trackers_iteration(state)
                     yield state
-            if self.is_stopped:
-                _stop_reason = "stopped"
-            elif stream is not None and stream._exhausted:
-                _stop_reason = "stream_exhausted"
+            _stop_reason = self._parallel_stop_reason(stream, _stop_reason)
         except (GeneratorExit, asyncio.CancelledError):
             _stop_reason = "stopped"  # consumer left the async for loop, or cancelled
             raise
@@ -636,10 +609,7 @@ class ParallelActiveLearner(Learner):
             _stop_reason = "error"
             raise
         finally:
-            for sub in subs:
-                if sub is not None:
-                    sub.unsubscribe()
-                    self._subscriptions.remove(sub)
+            self._release_children(subs)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(

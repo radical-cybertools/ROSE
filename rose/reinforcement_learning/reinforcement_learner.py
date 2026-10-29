@@ -10,6 +10,7 @@ import typeguard
 from radical.asyncflow import WorkflowEngine
 
 from rose.learner import IterationState, Learner, LearnerConfig, _stream_parallel
+from rose.stream import Stream, _Subscription
 
 
 class ReinforcementLearner(Learner):
@@ -115,6 +116,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         skip_pre_loop: bool = False,
         skip_environment_step: bool = False,
         initial_config: LearnerConfig | None = None,
+        stream: Stream | _Subscription | None = None,
     ) -> AsyncIterator[IterationState]:
         """Start the learner and yield state at each iteration.
 
@@ -131,6 +133,14 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 experiences are provided externally. Defaults to False.
             initial_config: Initial configuration object. Can be modified
                 between iterations via set_next_config().
+            stream: Optional :class:`~rose.stream.Stream`. Each iteration waits
+                for a window, passed as first argument to the environment task
+                (to the update task with ``skip_environment_step``):
+                ``environment(window, *args[, criterion_result])``. A met
+                criterion marks the state ``model_ready`` (always set without a
+                criterion) and fires :meth:`on_model_ready` instead of ending the
+                loop. The loop ends on ``stop()``, stream exhaustion, or
+                ``max_iter``.
 
         Yields:
             IterationState containing current iteration info, metrics, and
@@ -164,13 +174,18 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             raise ValueError("Environment function must be set unless using external experiences!")
         if not self.update_function:
             raise ValueError("Update function must be set!")
-        if not max_iter and not self.criterion_function:
+        if not max_iter and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter > 0 or criterion_function must be provided.")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
 
         self._max_iter = max_iter if max_iter > 0 else None
         learner_config = initial_config
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
+        sub = self._subscribe_stream(stream)
+        window_size: int | None = None
+        last_should_stop = False
 
         learner_suffix = f" (Learner-{self.learner_id})" if self.learner_id is not None else ""
         print(f"Starting Sequential RL Learner{learner_suffix}")
@@ -184,37 +199,41 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         env_result: Any = None
         update_result: Any = None
 
-        if not skip_pre_loop:
-            if skip_environment_step:
-                update_config = self._get_iteration_task_config(
-                    self.update_function, learner_config, "update", 0
-                )
-                update_task = self._register_task(update_config)
-            else:
-                env_config = self._get_iteration_task_config(
-                    self.environment_function, learner_config, "environment", 0
-                )
-                update_config = self._get_iteration_task_config(
-                    self.update_function, learner_config, "update", 0
-                )
-                env_task = self._register_task(env_config)
-                update_task = self._register_task(update_config, deps=env_task)
-
-                # Await environment result (extract state later, inside loop)
-                env_result = await env_task
-
-            # Await update result (extract state later, inside loop)
-            update_result = await update_task
-
-        # Determine iteration range
-        iteration_range: Iterator[int] | range
-        if max_iter == 0:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
-
-        # Main iteration loop
         try:
+            if not skip_pre_loop:
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    return
+
+                update_config = self._get_iteration_task_config(
+                    self.update_function, learner_config, "update", 0
+                )
+                if skip_environment_step:
+                    window_size = self._inject_window(window, update_config)
+                    update_task = self._register_task(update_config)
+                else:
+                    env_config = self._get_iteration_task_config(
+                        self.environment_function, learner_config, "environment", 0
+                    )
+                    window_size = self._inject_window(window, env_config)
+                    env_task = self._register_task(env_config)
+                    update_task = self._register_task(update_config, deps=env_task)
+
+                    # Await environment result (extract state later, inside loop)
+                    env_result = await env_task
+
+                # Await update result (extract state later, inside loop)
+                update_result = await update_task
+
+            # Determine iteration range
+            iteration_range: Iterator[int] | range
+            if max_iter == 0:
+                iteration_range = itertools.count()
+            else:
+                iteration_range = range(max_iter)
+
+            # Main iteration loop
             for i in iteration_range:
                 learner_prefix = (
                     f"[Learner-{self.learner_id}] " if self.learner_id is not None else ""
@@ -231,6 +250,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
 
                 # Clear transient state from previous iteration
                 self.clear_state()
+                if window_size is not None:
+                    self.register_state("window_size", window_size)  # task results may override
 
                 # Extract state from env/update results
                 # (prepared in previous iteration or pre-loop)
@@ -244,6 +265,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 # Check stop criterion if configured
                 metric_value: float | None = None
                 should_stop = False
+                stop_task: Any = None  # no criterion: next tasks get no criterion dep
 
                 if self.criterion_function:
                     criterion_config = self._get_iteration_task_config(
@@ -251,6 +273,9 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                     )
                     stop_task = self._register_task(criterion_config, deps=update_task)
                     stop_result = await stop_task
+                    if self.is_stopped:
+                        _stop_reason = "stopped"
+                        break
 
                     # Extract state from criterion result, excluding handled keys
                     self._extract_state_from_result(
@@ -265,15 +290,28 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                     metric_value=metric_value,
                     should_stop=should_stop,
                     current_config=learner_config,
+                    model_ready=sub is not None and (should_stop or not self.criterion_function),
                 )
+                last_should_stop = should_stop
 
-                # Notify trackers then yield control to caller
+                # Notify trackers and model callbacks, then yield control to caller
                 self._notify_trackers_iteration(self._iteration_state)
+                if self._iteration_state.model_ready:
+                    await self._notify_model_ready(self._iteration_state)
                 yield self._iteration_state
 
                 # Check if caller broke out or criterion met
-                if should_stop:
+                # (in stream mode the criterion only gates publishing)
+                if should_stop and sub is None:
                     _stop_reason = "criterion_met"
+                    break
+                if sub is not None and self._max_iter is not None and i + 1 == self._max_iter:
+                    break
+
+                # Wait for data first, so a config set meanwhile applies to the whole iteration
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
                     break
 
                 # Prepare next iteration using potentially updated config
@@ -285,11 +323,13 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 if skip_environment_step:
                     env_task = ()
                     env_result = None
+                    window_size = self._inject_window(window, next_update_config)
                     update_task = self._register_task(next_update_config, deps=stop_task)
                 else:
                     next_env_config = self._get_iteration_task_config(
                         self.environment_function, next_config, "environment", i + 1
                     )
+                    window_size = self._inject_window(window, next_env_config)
                     env_task = self._register_task(next_env_config, deps=stop_task)
                     update_task = self._register_task(next_update_config, deps=env_task)
 
@@ -304,10 +344,18 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 if self.is_stopped:
                     _stop_reason = "stopped"
                     break
+        except GeneratorExit:
+            # consumer left the async for loop, e.g. on should_stop as documented for streams
+            _stop_reason = "criterion_met" if last_should_stop else "stopped"
+            raise
+        except asyncio.CancelledError:
+            _stop_reason = "stopped"
+            raise
         except Exception:
             _stop_reason = "error"
             raise
         finally:
+            self._release_stream(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     def set_next_config(self, config: LearnerConfig) -> None:
@@ -351,6 +399,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
         skip_pre_loop: bool = False,
         skip_simulation_step: bool = False,
         learner_config: LearnerConfig | None = None,
+        stream: Stream | None = None,
     ) -> IterationState | None:
         """Run reinforcement learning loop to completion.
 
@@ -364,6 +413,8 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             skip_pre_loop: If True, skips the initial environment and update phases.
             skip_simulation_step: If True, skips environment tasks.
             learner_config: Configuration for the learner.
+            stream: Optional Stream, see :meth:`start`. With an unbounded
+                stream, learn() returns only after stop() or Stream.close().
 
         Returns:
             Final IterationState after completion, or None if no iterations ran.
@@ -380,6 +431,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             skip_pre_loop=skip_pre_loop,
             skip_environment_step=skip_simulation_step,
             initial_config=learner_config,
+            stream=stream,
         ):
             final_state = state
         return final_state

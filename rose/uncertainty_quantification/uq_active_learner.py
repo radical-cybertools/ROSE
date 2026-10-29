@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import copy
 import dataclasses
 import itertools
@@ -11,6 +12,7 @@ from radical.asyncflow import WorkflowEngine
 from rose.uncertainty_quantification.uq_learner import UQLearner, UQLearnerConfig
 
 from ..learner import IterationState, TaskConfig, _stream_parallel
+from ..stream import Stream, _Subscription
 
 
 class SeqUQLearner(UQLearner):
@@ -42,6 +44,8 @@ class SeqUQLearner(UQLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learning_config: dict[str, UQLearnerConfig] | None = None,
+        stream: Stream | _Subscription | None = None,
+        publish_on: str = "all",
     ) -> AsyncIterator[IterationState]:
         """Start the UQ learner and yield state at each iteration.
 
@@ -62,6 +66,15 @@ class SeqUQLearner(UQLearner):
             learning_config: Configuration object containing per-iteration
                 parameters for simulation, training, prediction,
                 active learning, and criterion functions.
+            stream: Optional :class:`~rose.stream.Stream`. Each iteration waits
+                for a window, passed to every model's simulation as
+                ``simulation(window, *args)``. Neither the UQ threshold nor the
+                criterion ends the loop or retires models; they mark the state
+                ``model_ready`` and fire :meth:`on_model_ready`. The loop ends on
+                ``stop()``, stream exhaustion, or ``max_iter``.
+            publish_on: Stream mode only: ``"all"`` (default) marks the model
+                ready when all models meet the criterion, ``"any"`` when at least
+                one does. A met UQ threshold always marks it ready.
 
         Yields:
             IterationState containing current iteration info, metrics, and
@@ -90,8 +103,12 @@ class SeqUQLearner(UQLearner):
                 "Simulation, Training, prediction, and at least one AL function must be set!"
             )
         # Validate exit criteria
-        if not max_iter and not self.criterion_function:
+        if not max_iter and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter or stop_criterion_function must be provided.")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
+        if publish_on not in ("all", "any"):
+            raise ValueError(f"publish_on must be 'all' or 'any', got {publish_on!r}")
 
         # Initialize learner configs if not provided
         learning_config = learning_config or {}
@@ -104,7 +121,10 @@ class SeqUQLearner(UQLearner):
         print(f"{prefix} {model_names}")
 
         async def _training_stage(
-            learning_config: TaskConfig, model_name: str, iteration_count: int
+            learning_config: TaskConfig,
+            model_name: str,
+            iteration_count: int,
+            window: list[Any] | None = None,
         ) -> dict[str, Any]:
             """Run a simulation, train of a single model, and generate a set of predictions for that
             model.
@@ -128,6 +148,8 @@ class SeqUQLearner(UQLearner):
                     "simulation",
                     iteration_count,
                 )
+                # each model gets its own copy of the window
+                self._inject_window(None if window is None else list(window), sim_config)
 
                 training_config: TaskConfig = copy.deepcopy(
                     self._get_iteration_task_config(
@@ -170,26 +192,35 @@ class SeqUQLearner(UQLearner):
         stop_training = {name: False for name in model_names}
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
+        sub = self._subscribe_stream(stream)
+        window_size: int | None = None
+        last_should_stop = False
 
         # Initialize tasks for pre-loop
         training_tasks: tuple = ()
 
-        if not skip_pre_loop:
-            futures: list[Any] = [
-                _training_stage(learning_config, model_name, 0) for model_name in model_names
-            ]
-
-            training_tasks = await asyncio.gather(*futures)
-
-        # Determine iteration range
-        iteration_range: Iterator[int] | range
-        if not max_iter:
-            iteration_range = itertools.count()
-        else:
-            iteration_range = range(max_iter)
-
-        # Main learning loop
         try:
+            if not skip_pre_loop:
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    return
+                window_size = None if window is None else len(window)
+                futures: list[Any] = [
+                    _training_stage(learning_config, model_name, 0, window)
+                    for model_name in model_names
+                ]
+
+                training_tasks = await asyncio.gather(*futures)
+
+            # Determine iteration range
+            iteration_range: Iterator[int] | range
+            if not max_iter:
+                iteration_range = itertools.count()
+            else:
+                iteration_range = range(max_iter)
+
+            # Main learning loop
             for i in iteration_range:
                 if self.is_stopped:
                     print(f"[Learner {self.learner_name}] Stop requested, exiting learning loop.")
@@ -198,12 +229,15 @@ class SeqUQLearner(UQLearner):
 
                 # Clear transient state from previous iteration
                 self.clear_state()
+                if window_size is not None:
+                    self.register_state("window_size", window_size)
 
                 print(f"[Learner {self.learner_name}] Starting Iteration-{i}")
 
                 # Check uncertainty if configured
                 uq_task: tuple = ()
                 uq_stop_value: float | None = None
+                uq_met = False
                 if self.uncertainty_function:
                     # Get iteration-specific configurations
                     uq_config: TaskConfig = self._get_iteration_task_config(
@@ -218,8 +252,10 @@ class SeqUQLearner(UQLearner):
 
                     uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                     self.register_state("uq_value", uq_stop_value)
+                    uq_met = uq_model_stop
 
-                    if uq_model_stop:
+                    # in stream mode the UQ threshold only gates publishing
+                    if uq_model_stop and sub is None:
                         print(
                             f"[Learner {self.learner_name}] UQ value reached "
                             f"its threshold - Stopping training for all models"
@@ -284,13 +320,14 @@ class SeqUQLearner(UQLearner):
                         model_stop, stop_value = self._check_stop_criterion(stop)
                         final_results.append(stop_value)
                         if model_stop:
-                            stop_training[model_name] = True
                             should_stop_count += 1
-                            print(
-                                f"[Learner {self.learner_name}] Model "
-                                f"{model_name} will stop training"
-                                f" as stop criterion is met at iteration {i}"
-                            )
+                            if sub is None:  # stream mode never retires models
+                                stop_training[model_name] = True
+                                print(
+                                    f"[Learner {self.learner_name}] Model "
+                                    f"{model_name} will stop training"
+                                    f" as stop criterion is met at iteration {i}"
+                                )
 
                     # Store criterion results in state
                     self.register_state("criterion_values", final_results)
@@ -307,26 +344,49 @@ class SeqUQLearner(UQLearner):
                             f"with value: {stop_value}"
                         )
 
+                should_stop = should_stop or uq_met
+                model_ready = False
+                if sub is not None:
+                    crit_gate = self.criterion_function and (
+                        should_stop_count == len(model_names)
+                        if publish_on == "all"
+                        else should_stop_count > 0
+                    )
+                    no_gate = not self.uncertainty_function and not self.criterion_function
+                    model_ready = bool(no_gate or uq_met or crit_gate)
+
                 # Build iteration state
                 self._iteration_state = self.build_iteration_state(
                     iteration=i,
                     metric_value=metric_value,
                     should_stop=should_stop,
                     current_config=learning_config,
+                    model_ready=model_ready,
                 )
+                last_should_stop = should_stop
 
-                # Notify trackers then yield control to caller
+                # Notify trackers and model callbacks, then yield control to caller
                 self._notify_trackers_iteration(self._iteration_state)
+                if model_ready:
+                    await self._notify_model_ready(self._iteration_state)
                 yield self._iteration_state
 
-                # Check if stopping criterion met
-                if should_stop:
+                # Check if stopping criterion met (in stream mode it only gates publishing)
+                if should_stop and sub is None:
                     _stop_reason = "criterion_met"
                     break
+                if sub is not None and max_iter and i + 1 == max_iter:
+                    break
+
+                window = await self._pull_window(sub)
+                if window == []:
+                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    break
+                window_size = None if window is None else len(window)
 
                 iteration_count = i + 1
                 futures: list[Any] = [
-                    _training_stage(learning_config, model_name, iteration_count)
+                    _training_stage(learning_config, model_name, iteration_count, window)
                     for model_name in model_names
                     if not stop_training[model_name]
                 ]
@@ -336,10 +396,18 @@ class SeqUQLearner(UQLearner):
                     break
 
                 print(f"[Learner {self.learner_name}] Completed {iteration_count + 1} iteration(s)")
+        except GeneratorExit:
+            # consumer left the async for loop, e.g. on should_stop as documented for streams
+            _stop_reason = "criterion_met" if last_should_stop else "stopped"
+            raise
+        except asyncio.CancelledError:
+            _stop_reason = "stopped"
+            raise
         except Exception:
             _stop_reason = "error"
             raise
         finally:
+            self._release_stream(sub)
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
@@ -349,6 +417,8 @@ class SeqUQLearner(UQLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learning_config: dict[str, UQLearnerConfig] | None = None,
+        stream: Stream | None = None,
+        publish_on: str = "all",
     ) -> list[dict[str, Any]]:
         """Run sequential UQ active learning loop to completion.
 
@@ -363,6 +433,8 @@ class SeqUQLearner(UQLearner):
             max_iter: Maximum number of iterations to run.
             skip_pre_loop: If True, skips the initial simulation and training.
             learning_config: Configuration for the learner.
+            stream: Optional Stream, see :meth:`start`.
+            publish_on: See :meth:`start`.
 
         Returns:
             List of dictionaries containing iteration results with 'iterations',
@@ -383,6 +455,8 @@ class SeqUQLearner(UQLearner):
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learning_config=learning_config,
+            stream=stream,
+            publish_on=publish_on,
         ):
             # Build result dict in old format
             result_dict = {
@@ -485,6 +559,8 @@ class ParallelUQLearner(SeqUQLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: dict[str, UQLearnerConfig | None] | None = None,
+        stream: Stream | None = None,
+        publish_on: str = "all",
     ) -> AsyncIterator[IterationState]:
         """Run parallel UQ active learning by launching multiple SeqUQLearners.
 
@@ -508,6 +584,11 @@ class ParallelUQLearner(SeqUQLearner):
                 If None, all learners will use the default configuration.
                 If provided, the length must match the number
                 of elements in learner_names.
+            stream: Optional Stream; every learner receives every streamed item
+                (see SeqUQLearner.start). on_model_ready callbacks registered on
+                this learner fire with ``learner_id`` set. A failing learner
+                stops all others.
+            publish_on: See SeqUQLearner.start.
 
         Yields:
             IterationState for each iteration of each learner, in arrival order.
@@ -532,13 +613,21 @@ class ParallelUQLearner(SeqUQLearner):
         ):
             raise ValueError("Simulation, Training, and Active Learning functions must be set!")
 
-        if not max_iter and not self.criterion_function:
+        if not max_iter and not self.criterion_function and stream is None:
             raise ValueError("Either max_iter or stop_criterion_function must be provided.")
 
         # Prepare learner configurations
         learner_configs = learner_configs or {name: None for name in learner_names}
         if len(learner_configs) != len(learner_names):
             raise ValueError("learner_configs length must match learner_names")
+        if stream is not None and skip_pre_loop:
+            raise ValueError("stream cannot be combined with skip_pre_loop")
+        if publish_on not in ("all", "any"):
+            raise ValueError(f"publish_on must be 'all' or 'any', got {publish_on!r}")
+
+        subs = dict(
+            zip(learner_names, self._subscribe_children(stream, len(learner_names)), strict=False)
+        )
 
         print(f"Starting Parallel UQ Active Learning with {len(learner_names)} learners")
 
@@ -547,6 +636,7 @@ class ParallelUQLearner(SeqUQLearner):
             async def run_learner(queue: asyncio.Queue) -> None:
                 try:
                     sequential_learner: SeqUQLearner = self._create_sequential_learner(learner_name)
+                    self._adopt_child(sequential_learner, stream)
                     print(f"[Parallel-Learner-{learner_name}] Starting sequential learning")
                     async for state in sequential_learner.start(
                         model_names=model_names,
@@ -554,12 +644,15 @@ class ParallelUQLearner(SeqUQLearner):
                         max_iter=max_iter,
                         skip_pre_loop=skip_pre_loop,
                         learning_config=learner_configs[learner_name],
+                        stream=subs[learner_name],
+                        publish_on=publish_on,
                     ):
                         if self.is_stopped:
                             sequential_learner.stop()
-                        await queue.put(
-                            ("state", dataclasses.replace(state, learner_id=learner_name))
-                        )
+                        state = dataclasses.replace(state, learner_id=learner_name)
+                        if state.model_ready:
+                            await self._notify_model_ready(state)
+                        await queue.put(("state", state))
                     self.metric_values_per_iteration[f"learner-{learner_name}"] = (
                         sequential_learner.metric_values_per_iteration
                     )
@@ -569,6 +662,8 @@ class ParallelUQLearner(SeqUQLearner):
                 except Exception as e:
                     print(f"[Parallel-Learner-{learner_name}] Failed with error: {e}")
                     await queue.put(("error", e))
+                    if stream is not None:
+                        self.stop()  # others would wait for windows forever
                 finally:
                     await queue.put(("done", None))
 
@@ -577,14 +672,23 @@ class ParallelUQLearner(SeqUQLearner):
         self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
-            async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
-                self._track_parallel_state(state)
-                self._notify_trackers_iteration(state)
-                yield state
+            # aclosing: a consumer break must reap the learner tasks before unsubscribing
+            async with contextlib.aclosing(
+                _stream_parallel([make_run_fn(name) for name in learner_names])
+            ) as states:
+                async for state in states:
+                    self._track_parallel_state(state)
+                    self._notify_trackers_iteration(state)
+                    yield state
+            _stop_reason = self._parallel_stop_reason(stream, _stop_reason)
+        except (GeneratorExit, asyncio.CancelledError):
+            _stop_reason = "stopped"  # consumer left the async for loop, or cancelled
+            raise
         except Exception:
             _stop_reason = "error"
             raise
         finally:
+            self._release_children(list(subs.values()))
             self._notify_trackers_stop(self._iteration_state, _stop_reason)
 
     async def teach(
@@ -595,6 +699,8 @@ class ParallelUQLearner(SeqUQLearner):
         max_iter: int = 0,
         skip_pre_loop: bool = False,
         learner_configs: dict[str, UQLearnerConfig | None] | None = None,
+        stream: Stream | None = None,
+        publish_on: str = "all",
     ) -> list[Any]:
         """Run parallel UQ active learning loop to completion.
 
@@ -609,6 +715,8 @@ class ParallelUQLearner(SeqUQLearner):
             max_iter: Maximum number of iterations for each learner.
             skip_pre_loop: If True, skips the initial simulation and training.
             learner_configs: Configuration for each learner.
+            stream: Optional Stream, see :meth:`start`.
+            publish_on: See :meth:`start`.
 
         Returns:
             List of final IterationState from each learner, in learner_names order.
@@ -626,6 +734,8 @@ class ParallelUQLearner(SeqUQLearner):
             max_iter=max_iter,
             skip_pre_loop=skip_pre_loop,
             learner_configs=learner_configs,
+            stream=stream,
+            publish_on=publish_on,
         ):
             final_states[state.learner_id] = state
         return [final_states.get(name) for name in learner_names]

@@ -12,6 +12,7 @@ from radical.asyncflow import (
 )
 
 from .metrics import LearningMetrics as Metrics
+from .stream import Stream, _Subscription
 from .tracking import CriterionManifest, PipelineManifest, TaskManifest, TrackerBase
 
 
@@ -383,6 +384,60 @@ class Learner:
                     await result
             except Exception as e:
                 print(f"on_model_ready callback failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Stream helpers, shared by all stream-capable learners
+    # ------------------------------------------------------------------
+
+    def _subscribe_stream(self, stream: "Stream | _Subscription | None") -> "_Subscription | None":
+        """Subscribe to a stream (parallel parents pass a ready subscription); stop() wakes it."""
+        if stream is None:
+            return None
+        sub = stream if isinstance(stream, _Subscription) else stream._subscribe()
+        self._subscriptions.append(sub)
+        if self.is_stopped:
+            sub.wake()  # stop() came before the subscription existed
+        return sub
+
+    def _release_stream(self, sub: "_Subscription | None") -> None:
+        if sub is not None:
+            sub.unsubscribe()
+            self._subscriptions.remove(sub)
+
+    def _subscribe_children(self, stream: "Stream | None", n: int) -> list:
+        """Subscribe n parallel children up front, so all of them see the backlog."""
+        if stream is None:
+            return [None] * n
+        return [self._subscribe_stream(stream._subscribe()) for _ in range(n)]
+
+    def _release_children(self, subs: list) -> None:
+        for sub in subs:
+            self._release_stream(sub)
+
+    def _adopt_child(self, child: "Learner", stream: "Stream | None") -> None:
+        """In stream mode a child shares the parent's stop event: parent stop() stops it."""
+        if stream is not None:
+            child._stop_event = self._stop_event
+
+    def _parallel_stop_reason(self, stream: "Stream | None", default: str) -> str:
+        if self.is_stopped:
+            return "stopped"
+        if stream is not None and stream._exhausted:
+            return "stream_exhausted"
+        return default
+
+    @staticmethod
+    async def _pull_window(sub: "_Subscription | None") -> list[Any] | None:
+        """Next window, None without stream; empty means stopped or exhausted."""
+        return await sub.next_window() if sub is not None else None
+
+    @staticmethod
+    def _inject_window(window: list[Any] | None, task_config: dict[str, Any]) -> int | None:
+        """Prepend the window to the task's args; return its size (None without stream)."""
+        if window is None:
+            return None
+        task_config["args"] = (window, *task_config["args"])
+        return len(window)
 
     def _get_iteration_task_config(
         self,
