@@ -203,7 +203,7 @@ class SeqUQLearner(UQLearner):
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     return
                 window_size = None if window is None else len(window)
                 futures: list[Any] = [
@@ -269,6 +269,7 @@ class SeqUQLearner(UQLearner):
                             should_stop=True,
                             current_config=learning_config,
                         )
+                        last_should_stop = True
                         _stop_reason = "criterion_met"
                         self._notify_trackers_iteration(self._iteration_state)
                         yield self._iteration_state
@@ -348,7 +349,7 @@ class SeqUQLearner(UQLearner):
                 model_ready = False
                 if sub is not None:
                     crit_gate = self.criterion_function and (
-                        should_stop_count == len(model_names)
+                        should_stop_count == len(stops)
                         if publish_on == "all"
                         else should_stop_count > 0
                     )
@@ -380,7 +381,7 @@ class SeqUQLearner(UQLearner):
 
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     break
                 window_size = None if window is None else len(window)
 

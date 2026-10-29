@@ -158,7 +158,7 @@ class SequentialActiveLearner(Learner):
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     return
 
                 train_config = self._get_iteration_task_config(
@@ -280,7 +280,7 @@ class SequentialActiveLearner(Learner):
                 # Wait for data first, so a config set meanwhile applies to the whole iteration
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     break
 
                 # Prepare next iteration using potentially updated config

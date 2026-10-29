@@ -204,7 +204,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     return
 
                 update_config = self._get_iteration_task_config(
@@ -312,7 +312,7 @@ class SequentialReinforcementLearner(ReinforcementLearner):
                 # Wait for data first, so a config set meanwhile applies to the whole iteration
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     break
 
                 # Prepare next iteration using potentially updated config
@@ -670,7 +670,7 @@ class ParallelExperience(ReinforcementLearner):
             if not skip_pre_loop:
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     return
                 window_size = None if window is None else len(window)
 
@@ -785,7 +785,7 @@ class ParallelExperience(ReinforcementLearner):
                 # Wait for data first, so a config set meanwhile applies to the whole iteration
                 window = await self._pull_window(sub)
                 if window == []:
-                    _stop_reason = "stopped" if self.is_stopped else "stream_exhausted"
+                    _stop_reason = self._window_end_reason()
                     break
                 window_size = None if window is None else len(window)
 

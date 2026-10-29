@@ -426,6 +426,10 @@ class Learner:
             return "stream_exhausted"
         return default
 
+    def _window_end_reason(self) -> str:
+        """Stop reason for an empty window: stop() or stream exhaustion."""
+        return "stopped" if self.is_stopped else "stream_exhausted"
+
     @staticmethod
     async def _pull_window(sub: "_Subscription | None") -> list[Any] | None:
         """Next window, None without stream; empty means stopped or exhausted."""
