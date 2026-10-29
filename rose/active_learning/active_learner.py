@@ -613,6 +613,7 @@ class ParallelActiveLearner(Learner):
 
             return run_learner
 
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
         try:
             # aclosing: a consumer break must reap the learner tasks before unsubscribing
@@ -620,6 +621,9 @@ class ParallelActiveLearner(Learner):
                 _stream_parallel([make_run_fn(i) for i in range(parallel_learners)])
             ) as states:
                 async for state in states:
+                    self._iteration_state = (
+                        state  # final_state for trackers: last state of any learner
+                    )
                     self._notify_trackers_iteration(state)
                     yield state
             if self.is_stopped:
