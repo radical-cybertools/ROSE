@@ -168,6 +168,7 @@ class SeqUQLearner(UQLearner):
         # Track iterations and results for this pipeline
         iteration_count: int = 0
         stop_training = {name: False for name in model_names}
+        self._iteration_state = None  # no stale state from an earlier run
         _stop_reason = "max_iter_reached"
 
         # Initialize tasks for pre-loop

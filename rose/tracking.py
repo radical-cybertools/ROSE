@@ -164,8 +164,9 @@ class TrackerBase:
         stopped, or raised an exception.
 
         Args:
-            final_state: The last ``IterationState`` that was yielded, or
-                ``None`` if no iterations ran (e.g. validation error on start).
+            final_state: The last ``IterationState`` that was yielded (for
+                parallel learners: the last state of the most advanced learner),
+                or ``None`` if no iterations ran (e.g. validation error on start).
             reason: One of:
                 - ``"criterion_met"`` — stop criterion threshold was reached
                 - ``"max_iter_reached"`` — all iterations completed normally

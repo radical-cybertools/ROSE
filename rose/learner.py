@@ -1033,8 +1033,8 @@ class Learner:
         Called from the ``finally`` block of every ``start()`` implementation.
 
         Args:
-            final_state: Last yielded ``IterationState``, or ``None`` if no
-                iterations ran.
+            final_state: Last yielded ``IterationState`` (parallel learners: last
+                state of the most advanced learner), or ``None`` if no iterations ran.
             reason: Exit reason — ``"criterion_met"``, ``"max_iter_reached"``,
                 ``"stopped"``, ``"stream_exhausted"``, or ``"error"``.
         """

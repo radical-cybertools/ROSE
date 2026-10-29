@@ -188,12 +188,15 @@ class TestParallelActiveLearner:
 
     @pytest.mark.asyncio
     async def test_trackers_final_state_is_most_advanced(self, configured_parallel_learner):
+        fast_done = asyncio.Event()
+
         async def fast(*args, **kwargs):
             for i in range(3):
                 yield IterationState(iteration=i)
+            fast_done.set()
 
         async def slow(*args, **kwargs):
-            await asyncio.sleep(0.05)
+            await fast_done.wait()  # arrive last, deterministically
             yield IterationState(iteration=0)
 
         children = [MagicMock(start=fast), MagicMock(start=slow)]
