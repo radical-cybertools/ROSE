@@ -577,7 +577,7 @@ class ParallelUQLearner(SeqUQLearner):
         _stop_reason = "max_iter_reached"
         try:
             async for state in _stream_parallel([make_run_fn(name) for name in learner_names]):
-                self._iteration_state = state  # trackers: final state = last of any learner
+                self._track_parallel_state(state)
                 self._notify_trackers_iteration(state)
                 yield state
         except Exception:

@@ -1006,6 +1006,12 @@ class Learner:
             parallel_count=None,  # overridden by parallel learners
         )
 
+    def _track_parallel_state(self, state: IterationState) -> None:
+        """Parallel parents: keep the most advanced learner's last state as final_state."""
+        current = self._iteration_state
+        if current is None or state.iteration >= current.iteration:
+            self._iteration_state = state
+
     def _notify_trackers_iteration(self, state: IterationState) -> None:
         """Notify all registered trackers of a completed iteration.
 

@@ -941,7 +941,7 @@ class ParallelReinforcementLearner(ReinforcementLearner):
         _stop_reason = "max_iter_reached"
         try:
             async for state in _stream_parallel([make_run_fn(i) for i in range(parallel_learners)]):
-                self._iteration_state = state  # trackers: final state = last of any learner
+                self._track_parallel_state(state)
                 self._notify_trackers_iteration(state)
                 yield state
         except Exception:
