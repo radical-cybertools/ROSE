@@ -45,6 +45,7 @@ class StopCriterionDef(BaseModel):
     model_config = {"extra": "forbid"}
 
     _custom_default: ClassVar[str | None] = "<"
+    _block: ClassVar[str] = "stop_criterion"
 
     @model_validator(mode="after")
     def _check_operator(self) -> StopCriterionDef:
@@ -55,12 +56,15 @@ class StopCriterionDef(BaseModel):
             if self.operator is not None and self.operator != builtin:
                 # the learner would silently use the built-in direction instead
                 raise ValueError(
-                    f"'{self.metric}' uses operator '{builtin}'; omit 'operator' or set it so"
+                    f"{self._block}: '{self.metric}' uses operator '{builtin}'; "
+                    "omit 'operator' or set it so"
                 )
             self.operator = builtin  # the operator actually used (and logged by trackers)
         elif self.operator is None:
             if self._custom_default is None:
-                raise ValueError(f"custom metric '{self.metric}' requires an 'operator'")
+                raise ValueError(
+                    f"{self._block}: custom metric '{self.metric}' requires an 'operator'"
+                )
             self.operator = self._custom_default
         return self
 
@@ -68,6 +72,7 @@ class StopCriterionDef(BaseModel):
 class UncertaintyCriterionDef(StopCriterionDef):
     # custom uncertainty metrics have no natural direction: require an operator
     _custom_default: ClassVar[str | None] = None
+    _block: ClassVar[str] = "uncertainty_criterion"
 
 
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
