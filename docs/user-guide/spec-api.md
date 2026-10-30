@@ -538,7 +538,8 @@ uncertainty_criterion:          # the uncertainty task; the run ends once it is 
   metric: predictive_variance
   threshold: 0.001
   evaluator: {type: python, function: tasks:ensemble_variance}
-stop_criterion:                 # optional; per model; the run ends once all models meet it
+stop_criterion:                 # optional; per model; ends the run once all models meet it
+                                # (or earlier, once the uncertainty threshold is met)
   metric: mse
   threshold: 0.01
   evaluator: {type: python, function: tasks:check_mse}

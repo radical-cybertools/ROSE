@@ -624,7 +624,8 @@ class ParallelUQLearner(SeqUQLearner):
             model_names: List of model names to train.
             num_predictions: Number of predictions per training model.
             max_iter: Maximum number of iterations for each learner. If 0,
-                learners run until their individual stop criteria are met.
+                learners run until their stop criterion or uncertainty threshold
+                is met.
             skip_pre_loop: If True, all learners skip their initial simulation
                 and training phases.
             learner_configs: A dict of configuration objects, one for each learner.
