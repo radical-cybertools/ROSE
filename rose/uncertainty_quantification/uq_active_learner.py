@@ -109,6 +109,8 @@ class SeqUQLearner(UQLearner):
             raise ValueError("stream cannot be combined with skip_pre_loop")
         if publish_on not in ("all", "any"):
             raise ValueError(f"publish_on must be 'all' or 'any', got {publish_on!r}")
+        if len(set(model_names)) != len(model_names):
+            raise ValueError("model_names must be unique")
 
         print(f"[Learner {self.learner_name}] Starting execution...")
         if len(model_names) > 1:
@@ -136,7 +138,9 @@ class SeqUQLearner(UQLearner):
                     Active learning Iteration count
                 retired:
                     The model met its stop criterion: skip simulation and training and
-                    predict from its last training result, so it stays in the ensemble.
+                    predict from its last training result, so it stays in the ensemble
+                    (a model without a training result yet, e.g. with skip_pre_loop, is
+                    trained once).
             Returns:
                 The result from last task (prediction) execution.
             Raises:
@@ -206,6 +210,7 @@ class SeqUQLearner(UQLearner):
 
         trained: dict[str, Any] = {}  # model name -> its latest training result
         latest: dict[str, Any] = {}  # model name -> its latest predictions
+        crit_latest: dict[str, float] = {}  # model name -> its latest criterion value
 
         # Track iterations and results for this pipeline
         iteration_count: int = 0
@@ -343,9 +348,10 @@ class SeqUQLearner(UQLearner):
                     # The pipeline will stop once all models meet the exit criteria.
                     final_results = []
                     for model_name, stop in stops.items():
-                        self.iteration = i  # per-model checks overwrite; the mean is stored below
+                        self.iteration = i  # the check advances it; the mean is stored below
                         model_stop, stop_value = self._check_stop_criterion(stop)
                         final_results.append(stop_value)
+                        crit_latest[model_name] = stop_value
                         if model_stop:
                             should_stop_count += 1
                             if sub is None:  # stream mode never retires models
@@ -361,7 +367,8 @@ class SeqUQLearner(UQLearner):
 
                     # Use average of criterion values as the metric value
                     if final_results:
-                        metric_value = sum(final_results) / len(final_results)
+                        # mean over all models (retired ones with their last value)
+                        metric_value = sum(crit_latest.values()) / len(crit_latest)
                         self.metric_values_per_iteration[i] = metric_value
 
                     if should_stop_count == len(stops):
