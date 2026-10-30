@@ -124,9 +124,12 @@ def test_uncertainty_operator_defaults_to_metric_direction(tmp_path):
             "  evaluator: {type: python, function: m:u}",
         ),
     )
-    assert cfg.uncertainty_criterion.operator is None
+    from rose.metrics import LearningMetrics
+
+    builtin = LearningMetrics.get_operator("predictive_entropy")
+    assert cfg.uncertainty_criterion.operator == builtin  # resolved: the operator actually used
     learner = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build()
-    assert learner.uncertainty_function["operator"] == ""
+    assert learner.uncertainty_function["operator"] == builtin
 
 
 @pytest.mark.parametrize(
@@ -155,3 +158,36 @@ def test_uq_tasks_get_iteration_without_parameters(tmp_path):
     cfg = load(tmp_path, UQ_YAML.replace("parameters:\n  dataset: ds\n", ""))
     lc = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build_learner_config()
     assert lc.get_task_config("training", 2).kwargs["iteration"] == 2
+
+
+@pytest.mark.parametrize(
+    ("metric", "operator", "expect"),
+    [
+        ("mse", None, "<"),  # custom: default "<"
+        ("mse", ">", ">"),
+        ("model_accuracy", None, "builtin"),
+        ("model_accuracy", "<", "error"),  # reverses the built-in direction (">=")
+        ("model_accuracy", ">", "builtin"),  # same direction: accepted, resolved to ">="
+    ],
+)
+def test_stop_criterion_operator_rules(tmp_path, metric, operator, expect):
+    from rose.metrics import LearningMetrics
+
+    text = SEQ_YAML.replace("metric: mse", f"metric: {metric}")
+    if operator:
+        text = text.replace("  threshold: 0.1\n", f'  threshold: 0.1\n  operator: "{operator}"\n')
+    if expect == "error":
+        with pytest.raises(ValueError, match="operator"):
+            load(tmp_path, text)
+        return
+    op = load(tmp_path, text).stop_criterion.operator
+    assert op == (LearningMetrics.get_operator(metric) if expect == "builtin" else expect)
+
+
+def test_custom_uncertainty_metric_needs_operator(tmp_path):
+    text = UQ_YAML.replace("metric: predictive_entropy", "metric: my_spread").replace(
+        '  operator: "<"\n  evaluator: {type: python, function: m:u}',
+        "  evaluator: {type: python, function: m:u}",
+    )
+    with pytest.raises(ValueError, match="uncertainty_criterion: custom metric"):
+        load(tmp_path, text)

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
 ### Changed
+- **Breaking (YAML spec)**: a `stop_criterion` / `uncertainty_criterion` whose `operator`
+  reverses a built-in metric's direction (e.g. `model_accuracy` with `"<"`) now fails at load;
+  such runs silently used the built-in direction before. An omitted operator resolves to the
+  built-in direction; custom stop metrics still default to `"<"`.
 - **UQ metric history**: `SeqUQLearner` stores uncertainty and criterion values per loop
   iteration (keys 0, 1, 2, ...); the criterion value is the mean over models. Before, both checks
   advanced one shared counter (keys 0, 3, 6, ... with two models), and `get_metric_results()` /

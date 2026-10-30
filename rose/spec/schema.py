@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
@@ -34,32 +34,54 @@ class TaskDef(BaseModel):
 
 
 # ── Stop criterion ────────────────────────────────────────────────────────────
+_Operator = Literal["<", ">", "==", "<=", ">="]
+
+
+def _direction(op: str) -> str:
+    """'<' for "<"/"<=", '>' for ">"/">=", else the operator itself."""
+    return op[0] if op in ("<", "<=", ">", ">=") else op
+
+
 class StopCriterionDef(BaseModel):
     metric: str
     threshold: float
-    operator: Literal["<", ">", "==", "<=", ">="] = "<"
+    # built-in metrics bring their own direction (resolved below); custom metrics default to
+    # _custom_default
+    operator: Literal["<", ">", "==", "<=", ">="] | None = None
     evaluator: TaskDef
 
     model_config = {"extra": "forbid"}
 
-
-class UncertaintyCriterionDef(StopCriterionDef):
-    # built-in UQ metrics bring their own direction; custom metric names need an operator
-    operator: Literal["<", ">", "==", "<=", ">="] | None = None
+    _custom_default: ClassVar[_Operator | None] = "<"
+    _block: ClassVar[str] = "stop_criterion"
 
     @model_validator(mode="after")
-    def _check_operator(self) -> UncertaintyCriterionDef:
+    def _check_operator(self) -> StopCriterionDef:
         from rose.metrics import LearningMetrics
 
         if LearningMetrics.is_supported_metric(self.metric):
             builtin = LearningMetrics.get_operator(self.metric)
-            if self.operator is not None and self.operator != builtin:
+            # only a reversed direction is a contradiction; "<" vs "<=" is not
+            if self.operator is not None and _direction(self.operator) != _direction(builtin):
+                # the learner would silently use the built-in direction instead
                 raise ValueError(
-                    f"'{self.metric}' uses operator '{builtin}'; omit 'operator' or set it so"
+                    f"{self._block}: '{self.metric}' uses operator '{builtin}'; "
+                    "omit 'operator' or set it so"
                 )
+            self.operator = builtin  # the operator actually used (and logged by trackers)
         elif self.operator is None:
-            raise ValueError(f"custom uncertainty metric '{self.metric}' requires an 'operator'")
+            if self._custom_default is None:
+                raise ValueError(
+                    f"{self._block}: custom metric '{self.metric}' requires an 'operator'"
+                )
+            self.operator = self._custom_default
         return self
+
+
+class UncertaintyCriterionDef(StopCriterionDef):
+    # custom uncertainty metrics have no natural direction: require an operator
+    _custom_default: ClassVar[_Operator | None] = None
+    _block: ClassVar[str] = "uncertainty_criterion"
 
 
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────
