@@ -323,3 +323,67 @@ async def test_uq_criterion_uses_per_iteration_config():
     await collect(learner.start(model_names=["m1"], max_iter=1, learning_config=config))
 
     assert seen == [{"it": 0, "--model_name": "m1"}]
+
+
+def _spy_kwargs(learner):
+    seen = []
+    reg = learner._register_task
+
+    def spy(task_obj, deps=None):
+        seen.append((task_obj["name"], dict(task_obj["kwargs"]), deps))
+        return reg(task_obj, deps)
+
+    learner._register_task = spy
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_uq_retired_model_stays_in_ensemble():
+    # m1 meets the criterion at iteration 0 and is retired; m2 never does
+    def metrics(task_obj, n):
+        return 0.5 if task_obj["kwargs"]["--model_name"] == "m1" else 2.0
+
+    learner, _ = make_uq(metrics, uncertainty=True)
+    learner._check_uncertainty = MagicMock(return_value=(False, 1.0))
+    seen = _spy_kwargs(learner)
+
+    await collect(learner.start(model_names=["m1", "m2"], max_iter=3))
+
+    trains = [kw["--model_name"] for name, kw, _ in seen if name == "train"]
+    assert trains.count("m1") == 1  # retired after iteration 0: no more training
+    uq_inputs = [deps for name, _, deps in seen if name == "uq"]
+    assert len(uq_inputs) == 3
+    assert all(isinstance(d, list) and len(d) == 2 for d in uq_inputs)  # whole ensemble, one arg
+
+
+@pytest.mark.asyncio
+async def test_uq_values_keyed_by_iteration():
+    learner, _ = make_uq(lambda task_obj, n: 2.0, uncertainty=True)
+    reg = learner._register_task
+
+    def uq_value(task_obj, deps=None):
+        if task_obj["name"] != "uq":
+            return reg(task_obj, deps)
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(5.0)  # uncertainty never below the threshold
+        return future
+
+    learner._register_task = uq_value
+
+    await collect(learner.start(model_names=["m1", "m2"], max_iter=3))
+
+    assert list(learner.metric_values_per_iteration) == [0, 1, 2]
+    assert list(learner.uncertainty_values_per_iteration) == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_uq_skip_pre_loop_starts_without_ensemble():
+    learner, _ = make_uq(uncertainty=True)
+    learner._check_uncertainty = MagicMock(return_value=(False, 1.0))
+    seen = _spy_kwargs(learner)
+
+    await collect(learner.start(model_names=["m1", "m2"], max_iter=2, skip_pre_loop=True))
+
+    uq_inputs = [deps for name, _, deps in seen if name == "uq"]
+    assert uq_inputs[0] == ()
+    assert len(uq_inputs[1]) == 2

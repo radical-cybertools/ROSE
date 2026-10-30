@@ -122,6 +122,7 @@ class SeqUQLearner(UQLearner):
             model_name: str,
             iteration_count: int,
             window: list[Any] | None = None,
+            retired: bool = False,
         ) -> dict[str, Any]:
             """Run a simulation, train of a single model, and generate a set of predictions for that
             model.
@@ -133,12 +134,20 @@ class SeqUQLearner(UQLearner):
                     Name of mode used for training.
                 iteration_count:
                     Active learning Iteration count
+                retired:
+                    The model met its stop criterion: skip simulation and training and
+                    predict from its last training result, so it stays in the ensemble.
             Returns:
                 The result from last task (prediction) execution.
             Raises:
                 Exception: If the training fails during execution.
             """
             try:
+                if retired and model_name in trained:
+                    return await asyncio.gather(
+                        *_predictions(learning_config, model_name, iteration_count)
+                    )
+
                 sim_config: TaskConfig = self._get_iteration_task_config(
                     self.simulation_function,
                     learning_config,
@@ -159,20 +168,8 @@ class SeqUQLearner(UQLearner):
                 training_config["kwargs"]["--model_name"] = model_name
 
                 sim_task = self._register_task(sim_config)
-                training_task = await self._register_task(training_config, deps=sim_task)
-
-                prediction_tasks = []
-                for i in range(num_predictions):
-                    prediction_config: TaskConfig = self._get_iteration_task_config(
-                        self.prediction_function,
-                        learning_config,
-                        "prediction",
-                        iteration_count,
-                    )
-                    prediction_config["kwargs"]["--model_name"] = model_name
-                    prediction_config["kwargs"]["--iteration"] = i
-                    prediction_task = self._register_task(prediction_config, deps=training_task)
-                    prediction_tasks.append(prediction_task)
+                trained[model_name] = await self._register_task(training_config, deps=sim_task)
+                prediction_tasks = _predictions(learning_config, model_name, iteration_count)
 
                 print(
                     f"[{self.learner_name}-{model_name}] Completed training "
@@ -183,6 +180,32 @@ class SeqUQLearner(UQLearner):
             except Exception as e:
                 print(f"[{self.learner_name}-{model_name}] Failed train/prediction with error: {e}")
                 raise
+
+        def _predictions(learning_config, model_name: str, iteration_count: int) -> list[Any]:
+            prediction_tasks = []
+            for i in range(num_predictions):
+                prediction_config: TaskConfig = self._get_iteration_task_config(
+                    self.prediction_function,
+                    learning_config,
+                    "prediction",
+                    iteration_count,
+                )
+                prediction_config["kwargs"]["--model_name"] = model_name
+                prediction_config["kwargs"]["--iteration"] = i
+                prediction_tasks.append(
+                    self._register_task(prediction_config, deps=trained[model_name])
+                )
+            return prediction_tasks
+
+        def _ensemble(results: list[Any]) -> list[Any] | tuple:
+            """Per model (model_names order) its latest predictions, as one list argument."""
+            latest.update(zip(model_names, results, strict=True))
+            if len(latest) < len(model_names):
+                return ()  # skip_pre_loop: no model has predicted yet
+            return [latest[m] for m in model_names]
+
+        trained: dict[str, Any] = {}  # model name -> its latest training result
+        latest: dict[str, Any] = {}  # model name -> its latest predictions
 
         # Track iterations and results for this pipeline
         iteration_count: int = 0
@@ -209,7 +232,7 @@ class SeqUQLearner(UQLearner):
                     for model_name in model_names
                 ]
 
-                training_tasks = await asyncio.gather(*futures)
+                training_tasks = _ensemble(await asyncio.gather(*futures))
 
             # Determine iteration range
             iteration_range: Iterator[int] | range
@@ -248,6 +271,7 @@ class SeqUQLearner(UQLearner):
                         break
                     print(f"[Learner {self.learner_name}] {uq_value}")
 
+                    self.iteration = i  # key values by loop iteration (the checks increment it)
                     uq_model_stop, uq_stop_value = self._check_uncertainty(uq_value)
                     self.register_state("uq_value", uq_stop_value)
                     uq_met = uq_model_stop
@@ -319,6 +343,7 @@ class SeqUQLearner(UQLearner):
                     # The pipeline will stop once all models meet the exit criteria.
                     final_results = []
                     for model_name, stop in stops.items():
+                        self.iteration = i  # per-model checks overwrite; the mean is stored below
                         model_stop, stop_value = self._check_stop_criterion(stop)
                         final_results.append(stop_value)
                         if model_stop:
@@ -337,6 +362,7 @@ class SeqUQLearner(UQLearner):
                     # Use average of criterion values as the metric value
                     if final_results:
                         metric_value = sum(final_results) / len(final_results)
+                        self.metric_values_per_iteration[i] = metric_value
 
                     if should_stop_count == len(stops):
                         should_stop = True
@@ -384,12 +410,18 @@ class SeqUQLearner(UQLearner):
                 window_size = None if window is None else len(window)
 
                 iteration_count = i + 1
+                # retired models re-predict from their last training, so the ensemble stays whole
                 futures: list[Any] = [
-                    _training_stage(learning_config, model_name, iteration_count, window)
+                    _training_stage(
+                        learning_config,
+                        model_name,
+                        iteration_count,
+                        window,
+                        retired=stop_training[model_name],
+                    )
                     for model_name in model_names
-                    if not stop_training[model_name]
                 ]
-                training_tasks = await asyncio.gather(*futures)
+                training_tasks = _ensemble(await asyncio.gather(*futures))
                 if self.is_stopped:
                     _stop_reason = "stopped"
                     break

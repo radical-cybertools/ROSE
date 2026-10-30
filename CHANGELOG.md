@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
 ### Changed
+- **UQ metric history**: `SeqUQLearner` stores uncertainty and criterion values per loop
+  iteration (keys 0, 1, 2, ...); the criterion value is the mean over models. Before, both checks
+  advanced one shared counter (keys 0, 3, 6, ... with two models), and `get_metric_results()` /
+  `metric_history` held one value per model check. Per-model values remain in
+  `state.criterion_values`.
 - **YAML spec**: the `uncertainty:` task slot is replaced by `uncertainty_criterion` (it never
   worked: the threshold had no place in the spec).
 - **`UQLearner.uncertainty_quantification`**: `query_size` may be `None` (the learner never
@@ -40,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it instead.
 
 ### Fixed
+- **UQ ensemble shrinking**: without a stream, a model that met the stop criterion dropped out
+  of the uncertainty task's input; with one model left the variance was ~0 and the run stopped
+  spuriously. Retired models now skip training but re-predict from their last training result,
+  so the uncertainty (and active-learning) task always gets the whole ensemble. Only tasks that
+  pass return values benefit; file-based tasks manage their own prediction files.
 - **UQ criterion config**: `SeqUQLearner` ignored the `criterion` entry of its
   `learning_config`; it now applies it per iteration like the other learners (e.g. a
   `criterion=TaskConfig(kwargs=...)` is now passed to the criterion task).
