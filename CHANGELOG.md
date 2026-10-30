@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iteration (keys 0, 1, 2, ...); the criterion value is the mean over models. Before, both checks
   advanced one shared counter (keys 0, 3, 6, ... with two models), and `get_metric_results()` /
   `metric_history` held one value per model check. Per-model values remain in
-  `state.criterion_values`; the mean includes retired models' last values. Each `start()` starts
-  with an empty history. `SeqUQLearner.start` rejects duplicate `model_names`.
+  `state.criterion_values` (latest per model); the mean includes retired models' last values.
+  Each `SeqUQLearner.start()` starts with an empty history. `SeqUQLearner.start` rejects duplicate `model_names`.
 - **YAML spec**: the `uncertainty:` task slot is replaced by `uncertainty_criterion` (it never
   worked: the threshold had no place in the spec).
 - **`UQLearner.uncertainty_quantification`**: `query_size` may be `None` (the learner never

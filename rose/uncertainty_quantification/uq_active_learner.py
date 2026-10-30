@@ -125,7 +125,7 @@ class SeqUQLearner(UQLearner):
             iteration_count: int,
             window: list[Any] | None = None,
             retired: bool = False,
-        ) -> dict[str, Any]:
+        ) -> list[Any]:
             """Run a simulation, train of a single model, and generate a set of predictions for that
             model.
 
@@ -185,7 +185,10 @@ class SeqUQLearner(UQLearner):
                 print(f"[{self.learner_name}-{model_name}] Failed train/prediction with error: {e}")
                 raise
 
-        def _predictions(learning_config, model_name: str, iteration_count: int) -> list[Any]:
+        def _predictions(
+            learning_config: UQLearnerConfig | None, model_name: str, iteration_count: int
+        ) -> list[Any]:
+            """Prediction tasks for a model from its latest training result (trained[model])."""
             prediction_tasks = []
             for i in range(num_predictions):
                 prediction_config: TaskConfig = self._get_iteration_task_config(
@@ -358,7 +361,9 @@ class SeqUQLearner(UQLearner):
                                 )
 
                     # Store criterion results in state
-                    self.register_state("criterion_values", final_results)
+                    # latest value per model (retired ones included), consistent with the mean
+                    latest_values = [crit_latest[m] for m in model_names if m in crit_latest]
+                    self.register_state("criterion_values", latest_values)
 
                     # Use average of criterion values as the metric value
                     if final_results:
