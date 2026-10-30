@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it instead.
 
 ### Fixed
+- **YAML spec `stop_criterion.operator`**: for built-in metrics (e.g. `model_accuracy`) the learner
+  always uses the metric's own direction, so a contradicting operator (or the old `"<"` default)
+  was silently ignored. A contradicting operator is now rejected at load, an omitted one resolves
+  to the built-in direction; custom metrics still default to `"<"`.
 - **UQ ensemble shrinking**: without a stream, a model that met the stop criterion dropped out
   of the uncertainty task's input; with one model left the variance was ~0 and the run stopped
   spuriously. Retired models now skip training but re-predict from their last training result,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
@@ -37,29 +37,37 @@ class TaskDef(BaseModel):
 class StopCriterionDef(BaseModel):
     metric: str
     threshold: float
-    operator: Literal["<", ">", "==", "<=", ">="] = "<"
+    # built-in metrics bring their own direction (resolved below); custom metrics default to
+    # _custom_default
+    operator: Literal["<", ">", "==", "<=", ">="] | None = None
     evaluator: TaskDef
 
     model_config = {"extra": "forbid"}
 
-
-class UncertaintyCriterionDef(StopCriterionDef):
-    # built-in UQ metrics bring their own direction; custom metric names need an operator
-    operator: Literal["<", ">", "==", "<=", ">="] | None = None
+    _custom_default: ClassVar[str | None] = "<"
 
     @model_validator(mode="after")
-    def _check_operator(self) -> UncertaintyCriterionDef:
+    def _check_operator(self) -> StopCriterionDef:
         from rose.metrics import LearningMetrics
 
         if LearningMetrics.is_supported_metric(self.metric):
             builtin = LearningMetrics.get_operator(self.metric)
             if self.operator is not None and self.operator != builtin:
+                # the learner would silently use the built-in direction instead
                 raise ValueError(
                     f"'{self.metric}' uses operator '{builtin}'; omit 'operator' or set it so"
                 )
+            self.operator = builtin  # the operator actually used (and logged by trackers)
         elif self.operator is None:
-            raise ValueError(f"custom uncertainty metric '{self.metric}' requires an 'operator'")
+            if self._custom_default is None:
+                raise ValueError(f"custom metric '{self.metric}' requires an 'operator'")
+            self.operator = self._custom_default
         return self
+
+
+class UncertaintyCriterionDef(StopCriterionDef):
+    # custom uncertainty metrics have no natural direction: require an operator
+    _custom_default: ClassVar[str | None] = None
 
 
 # ── Stream (YAML key: "stream") ──────────────────────────────────────────────

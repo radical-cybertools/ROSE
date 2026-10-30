@@ -504,7 +504,8 @@ async def check_mse(*args, **kwargs):
 stop_criterion:
   metric: mse
   threshold: 0.01
-  operator: "<"        # default; also: >, ==, <=, >=
+  operator: "<"        # also: >, ==, <=, >=; default "<" for custom metrics,
+                       # built-in metrics use (and require) their own direction
   evaluator:
     type: python
     function: tasks:check_mse

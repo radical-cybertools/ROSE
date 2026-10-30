@@ -81,7 +81,7 @@ class LearnerBuilder:
                 uq_metric_name=uq_crit.metric,
                 query_size=None,  # unused by the learner; pass via parameters if a task needs it
                 threshold=uq_crit.threshold,
-                operator=uq_crit.operator or "",  # "": the built-in metric's direction
+                operator=uq_crit.operator,  # resolved by the schema
                 as_executable=TaskAdapterFactory.as_executable(uq_crit.evaluator),
             )(TaskAdapterFactory.make_closure(uq_crit.evaluator, cfg.remote))
 
