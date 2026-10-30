@@ -201,21 +201,16 @@ class SeqUQLearner(UQLearner):
                 )
             return prediction_tasks
 
-        def _ensemble(results: list[Any]) -> list[Any] | tuple:
-            """Per model (model_names order) its latest predictions, as one list argument."""
-            latest.update(zip(model_names, results, strict=True))
-            if len(latest) < len(model_names):
-                return ()  # skip_pre_loop: no model has predicted yet
-            return [latest[m] for m in model_names]
-
         trained: dict[str, Any] = {}  # model name -> its latest training result
-        latest: dict[str, Any] = {}  # model name -> its latest predictions
         crit_latest: dict[str, float] = {}  # model name -> its latest criterion value
 
         # Track iterations and results for this pipeline
         iteration_count: int = 0
         stop_training = {name: False for name in model_names}
         self._iteration_state = None  # no stale state from an earlier run
+        # values are keyed by loop iteration: start each run with an empty history
+        self.metric_values_per_iteration = {}
+        self.uncertainty_values_per_iteration = {}
         _stop_reason = "max_iter_reached"
         sub = None
         window_size: int | None = None
@@ -237,7 +232,7 @@ class SeqUQLearner(UQLearner):
                     for model_name in model_names
                 ]
 
-                training_tasks = _ensemble(await asyncio.gather(*futures))
+                training_tasks = await asyncio.gather(*futures)
 
             # Determine iteration range
             iteration_range: Iterator[int] | range
@@ -428,7 +423,8 @@ class SeqUQLearner(UQLearner):
                     )
                     for model_name in model_names
                 ]
-                training_tasks = _ensemble(await asyncio.gather(*futures))
+                # all models, in model_names order: one list argument for the uncertainty task
+                training_tasks = await asyncio.gather(*futures)
                 if self.is_stopped:
                     _stop_reason = "stopped"
                     break
@@ -660,6 +656,8 @@ class ParallelUQLearner(SeqUQLearner):
             raise ValueError("learner_configs length must match learner_names")
         if len(set(learner_names)) != len(learner_names):
             raise ValueError("learner_names must be unique")
+        if len(set(model_names)) != len(model_names):
+            raise ValueError("model_names must be unique")
         if set(learner_configs) != set(learner_names):
             raise ValueError("learner_configs keys must match learner_names")
         if stream is not None and skip_pre_loop:
