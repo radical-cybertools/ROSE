@@ -538,7 +538,8 @@ uncertainty_criterion:          # the uncertainty task; the run ends once it is 
   metric: predictive_variance
   threshold: 0.001
   evaluator: {type: python, function: tasks:ensemble_variance}
-stop_criterion:                 # evaluated per model; the run ends once all models meet it
+stop_criterion:                 # optional; per model; ends the run once all models meet it
+                                # (or earlier, once the uncertainty threshold is met)
   metric: mse
   threshold: 0.01
   evaluator: {type: python, function: tasks:check_mse}
@@ -826,7 +827,7 @@ With `validate_imports=True`, every `module:callable` string is resolved in the 
 | `learner.publish_on` | `all` \| `any` | no | `all` | UQ with `stream` only |
 | `uncertainty_criterion` | object | UQ yes | — | Uncertainty task and threshold (same shape as `stop_criterion`) |
 | `learners` | list | no | — | Per-learner task definitions for heterogeneous parallel |
-| `stop_criterion` | object | unless `stream` | — | Stopping condition (with `stream`: publish gate) |
+| `stop_criterion` | object | unless `stream` or UQ | — | Stopping condition (with `stream`: publish gate) |
 | `stream` | object | no | `null` | Streamed input — see [Stream](#stream) |
 | `stream.sources` | list | with `stream` | — | `{function, args, kwargs}` factories returning async iterators |
 | `stream.on_model_ready` | object | no | `null` | `{function}` called with each ready model's state |

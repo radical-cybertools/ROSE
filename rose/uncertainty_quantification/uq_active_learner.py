@@ -60,7 +60,8 @@ class SeqUQLearner(UQLearner):
                 the UQ metrics must be calculated based on
                 multiple predictions.
             max_iter: Maximum number of iterations to run. If 0, runs until
-                stop criterion is met (requires criterion_function to be set).
+                stop criterion or the uncertainty threshold is met (requires
+                criterion_function or uncertainty_function).
             skip_pre_loop: If True, skips the initial simulation and training
                 phases before the main learning loop.
             learning_config: Configuration object containing per-iteration
@@ -82,7 +83,7 @@ class SeqUQLearner(UQLearner):
 
         Raises:
             ValueError: If required functions are not set or if neither
-                max_iter nor criterion_function is provided.
+                max_iter, criterion_function nor uncertainty_function is provided.
 
         Example:
             Basic usage::
@@ -103,8 +104,15 @@ class SeqUQLearner(UQLearner):
                 "Simulation, Training, prediction, and at least one AL function must be set!"
             )
         # Validate exit criteria
-        if not max_iter and not self.criterion_function and stream is None:
-            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
+        if (
+            not max_iter
+            and not self.criterion_function
+            and not self.uncertainty_function
+            and stream is None
+        ):
+            raise ValueError(
+                "Either max_iter, a stop criterion or an uncertainty function must be provided."
+            )
         if stream is not None and skip_pre_loop:
             raise ValueError("stream cannot be combined with skip_pre_loop")
         if publish_on not in ("all", "any"):
@@ -616,7 +624,8 @@ class ParallelUQLearner(SeqUQLearner):
             model_names: List of model names to train.
             num_predictions: Number of predictions per training model.
             max_iter: Maximum number of iterations for each learner. If 0,
-                learners run until their individual stop criteria are met.
+                learners run until their stop criterion or uncertainty threshold
+                is met.
             skip_pre_loop: If True, all learners skip their initial simulation
                 and training phases.
             learner_configs: A dict of configuration objects, one for each learner.
@@ -635,7 +644,8 @@ class ParallelUQLearner(SeqUQLearner):
 
         Raises:
             ValueError: If required base functions are not set.
-            ValueError: If neither max_iter nor criterion_function is provided.
+            ValueError: If neither max_iter, criterion_function nor uncertainty_function
+                is provided.
             ValueError: If learner_configs length doesn't match learner_names.
             Exception: Re-raises any exception from a learner after all learners finish.
 
@@ -652,8 +662,15 @@ class ParallelUQLearner(SeqUQLearner):
         ):
             raise ValueError("Simulation, Training, and Active Learning functions must be set!")
 
-        if not max_iter and not self.criterion_function and stream is None:
-            raise ValueError("Either max_iter or stop_criterion_function must be provided.")
+        if (
+            not max_iter
+            and not self.criterion_function
+            and not self.uncertainty_function
+            and stream is None
+        ):
+            raise ValueError(
+                "Either max_iter, a stop criterion or an uncertainty function must be provided."
+            )
 
         # Prepare learner configurations
         learner_configs = learner_configs or {name: None for name in learner_names}

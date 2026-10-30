@@ -289,7 +289,7 @@ class WorkflowConfig(BaseModel):
     update: TaskDef | None = None
     prediction: TaskDef | None = None
     learners: list[LearnerDef] | None = None
-    stop_criterion: StopCriterionDef | None = None  # required unless stream is set
+    stop_criterion: StopCriterionDef | None = None  # required unless stream is set or UQ
     # uq_active_learner: the uncertainty task and its threshold (metric = uq metric name)
     uncertainty_criterion: UncertaintyCriterionDef | None = None
     stream: StreamDef | None = None
@@ -386,8 +386,12 @@ class WorkflowConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_stream(self) -> WorkflowConfig:
         if self.stream is None:
-            if self.stop_criterion is None:
-                raise ValueError("'stop_criterion' is required unless 'stream' is set")
+            # uq_active_learner always has uncertainty_criterion as its exit
+            if self.stop_criterion is None and self.learner.type != "uq_active_learner":
+                raise ValueError(
+                    "'stop_criterion' is required unless 'stream' is set or "
+                    "learner.type is uq_active_learner"
+                )
             return self
         ltype = self.learner.type
         slot = _STREAM_WINDOW_SLOT.get(ltype)

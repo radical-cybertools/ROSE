@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
 ### Changed
+- **UQ without a stop criterion**: `uq_active_learner` specs no longer need `stop_criterion`
+  (`uncertainty_criterion` ends the run), and `SeqUQLearner` / `ParallelUQLearner` accept
+  `max_iter=0` with only an uncertainty function.
 - **Breaking (YAML spec)**: a `stop_criterion` / `uncertainty_criterion` whose `operator`
   reverses a built-in metric's direction (e.g. `model_accuracy` with `"<"`) now fails at load;
   such runs silently used the built-in direction before. An omitted operator resolves to the

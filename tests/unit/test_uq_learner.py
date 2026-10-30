@@ -138,14 +138,16 @@ class TestParallelUQLearner:
             ):
                 pass
 
-        with pytest.raises(
-            Exception,
-            match="Either max_iter or stop_criterion_function must be provided.",
-        ):
-            async for _ in parallel_learner.start(
-                learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
-            ):
-                pass
+        saved = parallel_learner.uncertainty_function
+        parallel_learner.uncertainty_function = {}  # it would also count as an exit
+        try:
+            with pytest.raises(Exception, match="Either max_iter"):
+                async for _ in parallel_learner.start(
+                    learner_names=["l1", "l2"], model_names=["m1"], max_iter=0
+                ):
+                    pass
+        finally:
+            parallel_learner.uncertainty_function = saved
 
         with pytest.raises(
             Exception,
