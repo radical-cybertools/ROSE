@@ -166,7 +166,8 @@ def test_uq_tasks_get_iteration_without_parameters(tmp_path):
         ("mse", None, "<"),  # custom: default "<"
         ("mse", ">", ">"),
         ("model_accuracy", None, "builtin"),
-        ("model_accuracy", "<", "error"),  # contradicts the built-in direction
+        ("model_accuracy", "<", "error"),  # reverses the built-in direction (">=")
+        ("model_accuracy", ">", "builtin"),  # same direction: accepted, resolved to ">="
     ],
 )
 def test_stop_criterion_operator_rules(tmp_path, metric, operator, expect):
@@ -181,3 +182,12 @@ def test_stop_criterion_operator_rules(tmp_path, metric, operator, expect):
         return
     op = load(tmp_path, text).stop_criterion.operator
     assert op == (LearningMetrics.get_operator(metric) if expect == "builtin" else expect)
+
+
+def test_custom_uncertainty_metric_needs_operator(tmp_path):
+    text = UQ_YAML.replace("metric: predictive_entropy", "metric: my_spread").replace(
+        '  operator: "<"\n  evaluator: {type: python, function: m:u}',
+        "  evaluator: {type: python, function: m:u}",
+    )
+    with pytest.raises(ValueError, match="uncertainty_criterion: custom metric"):
+        load(tmp_path, text)

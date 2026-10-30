@@ -34,6 +34,14 @@ class TaskDef(BaseModel):
 
 
 # ── Stop criterion ────────────────────────────────────────────────────────────
+_Operator = Literal["<", ">", "==", "<=", ">="]
+
+
+def _direction(op: str) -> str:
+    """'<' for "<"/"<=", '>' for ">"/">=", else the operator itself."""
+    return op[0] if op in ("<", "<=", ">", ">=") else op
+
+
 class StopCriterionDef(BaseModel):
     metric: str
     threshold: float
@@ -44,7 +52,7 @@ class StopCriterionDef(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    _custom_default: ClassVar[str | None] = "<"
+    _custom_default: ClassVar[_Operator | None] = "<"
     _block: ClassVar[str] = "stop_criterion"
 
     @model_validator(mode="after")
@@ -53,7 +61,8 @@ class StopCriterionDef(BaseModel):
 
         if LearningMetrics.is_supported_metric(self.metric):
             builtin = LearningMetrics.get_operator(self.metric)
-            if self.operator is not None and self.operator != builtin:
+            # only a reversed direction is a contradiction; "<" vs "<=" is not
+            if self.operator is not None and _direction(self.operator) != _direction(builtin):
                 # the learner would silently use the built-in direction instead
                 raise ValueError(
                     f"{self._block}: '{self.metric}' uses operator '{builtin}'; "
@@ -71,7 +80,7 @@ class StopCriterionDef(BaseModel):
 
 class UncertaintyCriterionDef(StopCriterionDef):
     # custom uncertainty metrics have no natural direction: require an operator
-    _custom_default: ClassVar[str | None] = None
+    _custom_default: ClassVar[_Operator | None] = None
     _block: ClassVar[str] = "uncertainty_criterion"
 
 
