@@ -391,12 +391,23 @@ async def test_uq_skip_pre_loop_starts_without_ensemble():
 
 @pytest.mark.asyncio
 async def test_uq_uncertainty_only_exit():
-    learner, _ = make_uq(uncertainty=True)
-    learner._check_uncertainty = MagicMock(side_effect=[(False, 1.0), (True, 0.1)])
+    learner, _ = make_uq(uncertainty=True)  # threshold 1.0, "<"
+    reg = learner._register_task
+    values = iter([2.0, 0.5])  # met on the second check
+
+    def uq_values(task_obj, deps=None):
+        if task_obj["name"] != "uq":
+            return reg(task_obj, deps)
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(next(values))
+        return future
+
+    learner._register_task = uq_values
 
     states = await collect(learner.start(model_names=["m1"], max_iter=0))
 
     assert [s.should_stop for s in states] == [False, True]
+    assert learner.uncertainty_values_per_iteration == {0: 2.0, 1: 0.5}
 
 
 @pytest.mark.asyncio

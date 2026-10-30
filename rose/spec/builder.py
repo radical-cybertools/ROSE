@@ -65,7 +65,7 @@ class LearnerBuilder:
             self._register_flat_tasks(learner, cfg)
 
         crit = cfg.stop_criterion
-        if crit is not None:  # optional with a stream
+        if crit is not None:  # optional with a stream, and for uq_active_learner
             c_closure = TaskAdapterFactory.make_closure(crit.evaluator, cfg.remote)
             c_as_exec = TaskAdapterFactory.as_executable(crit.evaluator)
             learner.as_stop_criterion(

@@ -111,7 +111,7 @@ class SeqUQLearner(UQLearner):
             and stream is None
         ):
             raise ValueError(
-                "Either max_iter, stop_criterion_function or uncertainty_function must be provided."
+                "Either max_iter, a stop criterion or an uncertainty function must be provided."
             )
         if stream is not None and skip_pre_loop:
             raise ValueError("stream cannot be combined with skip_pre_loop")
@@ -668,7 +668,7 @@ class ParallelUQLearner(SeqUQLearner):
             and stream is None
         ):
             raise ValueError(
-                "Either max_iter, stop_criterion_function or uncertainty_function must be provided."
+                "Either max_iter, a stop criterion or an uncertainty function must be provided."
             )
 
         # Prepare learner configurations
