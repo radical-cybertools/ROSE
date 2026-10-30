@@ -387,3 +387,20 @@ async def test_uq_skip_pre_loop_starts_without_ensemble():
     uq_inputs = [deps for name, _, deps in seen if name == "uq"]
     assert uq_inputs[0] == ()
     assert len(uq_inputs[1]) == 2
+
+
+@pytest.mark.asyncio
+async def test_uq_uncertainty_only_exit():
+    learner, _ = make_uq(uncertainty=True)
+    learner._check_uncertainty = MagicMock(side_effect=[(False, 1.0), (True, 0.1)])
+
+    states = await collect(learner.start(model_names=["m1"], max_iter=0))
+
+    assert [s.should_stop for s in states] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_uq_without_any_exit_rejected():
+    learner, _ = make_uq()
+    with pytest.raises(ValueError, match="Either max_iter"):
+        await collect(learner.start(model_names=["m1"], max_iter=0))

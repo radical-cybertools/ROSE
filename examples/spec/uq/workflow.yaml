@@ -31,11 +31,3 @@ uncertainty_criterion:     # ends the run once the ensemble agrees (built-in met
   evaluator:
     type: python
     function: tasks:ensemble_variance
-
-stop_criterion:            # per model, gets kwargs["--model_name"]; here: never met
-  metric: slope_error
-  threshold: 0.0
-  operator: "<"
-  evaluator:
-    type: python
-    function: tasks:slope_error

@@ -191,3 +191,13 @@ def test_custom_uncertainty_metric_needs_operator(tmp_path):
     )
     with pytest.raises(ValueError, match="uncertainty_criterion: custom metric"):
         load(tmp_path, text)
+
+
+def test_uq_spec_without_stop_criterion(tmp_path):
+    i = UQ_YAML.index("stop_criterion:")
+    j = UQ_YAML.index("parameters:")
+    cfg = load(tmp_path, UQ_YAML[:i] + UQ_YAML[j:])
+    assert cfg.stop_criterion is None
+    learner = LearnerBuilder(cfg, MagicMock(spec=WorkflowEngine)).build()
+    assert not learner.criterion_function
+    assert learner.uncertainty_function["threshold"] == 0.5

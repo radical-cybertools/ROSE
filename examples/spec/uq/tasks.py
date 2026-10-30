@@ -37,7 +37,3 @@ def ensemble_variance(per_model_predictions, **kwargs):
 def active_learn(uq_value, **kwargs):
     print(f"iteration {kwargs['iteration']}: ensemble variance {uq_value:.5f}")
     return {"variance": uq_value}
-
-
-def slope_error(acl_result, **kwargs):
-    return 1.0  # placeholder per-model check; the uncertainty criterion ends this run
