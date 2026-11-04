@@ -73,22 +73,35 @@ def test_shell_task_fine_without_stream(tmp_path):
     WorkflowConfig.from_yaml(spec(tmp_path, shell=True, stream=False, criterion=True))
 
 
-def test_stream_rejected_for_uq(tmp_path):
-    text = (
-        textwrap.dedent("""\
-        learner:
-          type: uq_active_learner
-        simulation: {type: python, function: m:s}
-        training: {type: python, function: m:t}
-        prediction: {type: python, function: m:p}
-        active_learn: {type: python, function: m:a}
-        uncertainty: {type: python, function: m:u}
-    """)
-        + STREAM
-    )
+UQ_YAML = """\
+learner:
+  type: uq_active_learner
+  model_names: [m1, m2]
+simulation: {type: SIMTYPE, SIMFIELD}
+training: {type: python, function: m:t}
+prediction: {type: python, function: m:p}
+active_learn: {type: python, function: m:a}
+uncertainty_criterion:
+  metric: predictive_entropy
+  threshold: 0.5
+  evaluator: {type: python, function: m:u}
+"""
+
+
+def test_stream_accepted_for_uq(tmp_path):
     p = tmp_path / "spec.yaml"
-    p.write_text(text)
-    with pytest.raises(ValueError, match="not supported"):
+    sim = UQ_YAML.replace("SIMTYPE", "python").replace("SIMFIELD", "function: m:s")
+    p.write_text(sim + STREAM + "  \n")
+    cfg = WorkflowConfig.from_yaml(p)
+    assert cfg.stream is not None
+
+
+def test_stream_rejects_shell_simulation_for_uq(tmp_path):
+    p = tmp_path / "spec.yaml"
+    p.write_text(
+        UQ_YAML.replace("SIMTYPE", "shell").replace("SIMFIELD", "command: sim.sh") + STREAM
+    )
+    with pytest.raises(ValueError, match="python task"):
         WorkflowConfig.from_yaml(p)
 
 

@@ -67,3 +67,37 @@ async def env_window(window, *args, **kwargs):
 
 async def update(*args, **kwargs):
     return {"loss": 0.1}
+
+
+# ── UQ helpers ────────────────────────────────────────────────────────────────
+
+uq_calls: list = []
+
+
+async def uq_sim(*args, **kwargs):
+    uq_calls.append(("sim", list(args[0]) if args else None, dict(kwargs)))
+    return [1.0, 2.0, 3.0]
+
+
+async def uq_train(sim_result, **kwargs):
+    uq_calls.append(("train", kwargs.get("--model_name"), dict(kwargs)))
+    return {"model": kwargs.get("--model_name")}
+
+
+async def uq_predict(model, **kwargs):
+    return [0.1, 0.2]
+
+
+async def uq_uncertainty(per_model_preds, **kwargs):
+    # one argument: per model (2), its prediction results (num_predictions = 2)
+    assert len(per_model_preds) == 2 and all(len(p) == 2 for p in per_model_preds)
+    return 0.3
+
+
+async def uq_active_learn(uq_value, **kwargs):
+    return {"selected": 1}
+
+
+async def uq_criterion(acl_result, **kwargs):
+    uq_calls.append(("crit", kwargs.get("--model_name"), dict(kwargs)))
+    return 0.5

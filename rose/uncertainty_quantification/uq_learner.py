@@ -52,7 +52,7 @@ class UQLearner(Learner):
     def uncertainty_quantification(
         self,
         uq_metric_name: str,
-        query_size: float,
+        query_size: float | None,
         threshold: float,
         operator: str = "",
         as_executable: bool = True,

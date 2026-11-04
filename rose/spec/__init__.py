@@ -42,8 +42,9 @@ def _collect_python_specs(cfg: WorkflowConfig) -> list[str]:
         for td in cfg.tasks.values():
             if td.type == "python":
                 specs.append(td.function)
-    if cfg.stop_criterion is not None and cfg.stop_criterion.evaluator.type == "python":
-        specs.append(cfg.stop_criterion.evaluator.function)
+    for crit in (cfg.stop_criterion, cfg.uncertainty_criterion):
+        if crit is not None and crit.evaluator.type == "python":
+            specs.append(crit.evaluator.function)
     return list(dict.fromkeys(specs))  # deduplicate, preserve order
 
 

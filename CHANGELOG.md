@@ -17,10 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returning async iterators) and `on_model_ready`, for the sequential/parallel active learners and
   the sequential RL learner. `stop_criterion` is optional with a stream. Sources and the callback
   run on the client and are import-checked before any backend or HPC job starts.
+- **Spec-driven UQ runs**: `uq_active_learner` specs now run (`rose run`, `--remote`), via
+  `learner.model_names`, `learner.num_predictions` and an `uncertainty_criterion` block, also
+  with `stream:` (plus `learner.publish_on`).
 - **`skip_environment_step`** for `ParallelExperience` (update runs alone) and
   `ParallelReinforcementLearner` (passed through to its learners; was dropped).
 
 ### Changed
+- **UQ without a stop criterion**: `uq_active_learner` specs no longer need `stop_criterion`
+  (`uncertainty_criterion` ends the run), and `SeqUQLearner` / `ParallelUQLearner` accept
+  `max_iter=0` with only an uncertainty function.
+- **Breaking (YAML spec)**: a `stop_criterion` / `uncertainty_criterion` whose `operator`
+  reverses a built-in metric's direction (e.g. `model_accuracy` with `"<"`) now fails at load;
+  such runs silently used the built-in direction before. An omitted operator resolves to the
+  built-in direction; custom stop metrics still default to `"<"`.
+- **UQ metric history**: `SeqUQLearner` stores uncertainty and criterion values per loop
+  iteration (keys 0, 1, 2, ...); the criterion value is the mean over models. Before, both checks
+  advanced one shared counter (keys 0, 3, 6, ... with two models), and `get_metric_results()` /
+  `metric_history` held one value per model check. Per-model values remain in
+  `state.criterion_values` (latest per model); the mean includes retired models' last values.
+  Each `SeqUQLearner.start()` starts with an empty history. `SeqUQLearner.start` rejects duplicate `model_names`.
+- **YAML spec**: the `uncertainty:` task slot is replaced by `uncertainty_criterion` (it never
+  worked: the threshold had no place in the spec).
+- **`UQLearner.uncertainty_quantification`**: `query_size` may be `None` (the learner never
+  reads it).
 - **`LearnerConfig` task fields accept a callable** `(iteration) -> TaskConfig` (or an
   args/kwargs dict), evaluated lazily on every lookup, besides a `TaskConfig` or a
   per-iteration dict. It must be a deterministic function of the iteration. A `LearnerConfig`
@@ -33,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it instead.
 
 ### Fixed
+- **UQ ensemble shrinking**: without a stream, a model that met the stop criterion dropped out
+  of the uncertainty task's input; with one model left the variance was ~0 and the run stopped
+  spuriously. Retired models now skip training but re-predict from their last training result,
+  so the uncertainty (and active-learning) task always gets the whole ensemble. Only tasks that
+  pass return values benefit; file-based tasks manage their own prediction files.
+- **UQ criterion config**: `SeqUQLearner` ignored the `criterion` entry of its
+  `learning_config`; it now applies it per iteration like the other learners (e.g. a
+  `criterion=TaskConfig(kwargs=...)` is now passed to the criterion task).
 - **YAML spec**: a `learners:` block on a non-parallel learner type was accepted and silently used;
   it is now rejected.
 - **Parallel learners report their final state to trackers**: `ParallelActiveLearner`,
